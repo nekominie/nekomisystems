@@ -1,7 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
+@font-face{
+  font-family: 'Chewy-Bubble';
+  src: url('./fonts/chewy-bubble.otf') format('truetype');
+}
+
 :root {
     --font-press-start: 'Press Start 2P', cursive;
+    --infoColor: #67007e;
 }
 
 .press-start-2p-regular {
@@ -35,10 +41,7 @@
     }
 }
 
-@font-face{
-    font-family: 'Chewy-Bubble';
-    src: url('./fonts/Chewy-Bubble.otf') format('truetype');
-}
+
 
 .main-title{
   display: block;
