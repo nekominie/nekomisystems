@@ -3,7 +3,7 @@
 import type { AppConfig } from '../types';
 
 defineProps<{ 
-    apps: AppConfig[]
+    pinnedApps: AppConfig[]
 }>()
 
 const emit = defineEmits<{
@@ -12,22 +12,29 @@ const emit = defineEmits<{
     
 </script>
 
+<style>
+
+</style>
+
 <style scoped>
     @import '../styles/taskbar.css';
+    @import '../styles/start.css';
 </style>
 
 <template>
     <div class="taskbar">
-        <div class="start-container">
+        <div class="taskbar-elements">
+            <div class="start-container">
+                <div class="orb">
+                    <i class="bi bi-house-door-fill"></i>
+                </div>
+            </div>
 
-        </div>
-
-        <div class="apps-container">
-
-        </div>
-        
-        <div class="info-container">
-
+            <div class="apps-container">
+            </div>
+            
+            <div class="info-container">
+            </div>
         </div>
     </div>
 </template>

@@ -4,7 +4,7 @@
     import Desktop from './dekstop.vue'
     import type { AppConfig } from '../types'
 
-    const installedApps = ref<AppConfig[]>([
+    const pinnedApps = ref<AppConfig[]>([
         {
             id: 'notepad',
             name: 'Notepad',
@@ -27,7 +27,7 @@
         <Desktop />
 
         <Taskbar 
-            :apps="installedApps"
+            :pinnedApps="pinnedApps"
         />
     </div>
 </template>

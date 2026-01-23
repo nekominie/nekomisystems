@@ -1,8 +1,31 @@
 .taskbar{
-    height: 3rem;
+    height: 27px;
     background-color: #00000066;
     position: absolute;
     width: 100%;
     backdrop-filter: blur(100px);
     opacity: 76%;
+    padding: 9px 0px;
+}
+
+.taskbar-elements{
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+
+    height: 100%;
+    padding: 0 8px;
+}
+
+.start-container i{
+    color: rgb(212, 212, 212);
+    font-size: 23px;
+}
+
+.icons-container{
+
+}
+.icons-container .icon{
+
 }
