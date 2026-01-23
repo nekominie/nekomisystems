@@ -1,0 +1,8 @@
+.taskbar{
+    height: 3rem;
+    background-color: #00000066;
+    position: absolute;
+    width: 100%;
+    backdrop-filter: blur(100px);
+    opacity: 76%;
+}
