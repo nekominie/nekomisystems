@@ -5,6 +5,49 @@ import { Modal } from 'bootstrap'
 
 const title = ref('Biboo-Tax');
 
+const emit = defineEmits([
+    'change-character',
+    'start-game'
+]);
+
+defineProps([
+    'characterImage',
+    'initialIndex'
+])
+
+const hide = () => modalInstance.hide();
+const show = () => modalInstance.show();
+
+const changeButtonEvent = () => {
+    emit('change-character');
+}
+
+defineExpose({
+    show,
+    hide
+});
+
+const phrases = [
+    'the gaaaame!!',
+    'you shall not play',
+    'la sopa del macaco',
+    'best score buys dinner',
+    'the end is near',
+    `today is ${new Date().toDateString()}!!`,
+    'bro moment',
+    'bruuuuh',
+    'sticking out ur gyatt for nerizzler',
+    'youre so biboo tax',
+    'i just wanna be your shiori',
+    'youre so bau bau',
+    'oh hello there pebble',
+    'window cleaner laugh',
+    'beeeeejou',
+    'koseki bijou'
+];
+
+const subtitlePhrase = ref('');
+
 const letras = computed(() => {
   return title.value.split('')
 })
@@ -12,11 +55,15 @@ const letras = computed(() => {
 const modalElement = ref(null);
 let modalInstance = null;
 
-const show = () => modalInstance.show();
+const generarFraseAleatoria = () => {
+    const indice = Math.floor(Math.random() * phrases.length)
+    subtitlePhrase.value = phrases[indice]
+}
 
 onMounted(() => {
     modalInstance = new Modal(modalElement.value);
     modalInstance.show();
+    generarFraseAleatoria();
 });
 
 </script>
@@ -38,28 +85,22 @@ onMounted(() => {
                         </span>
                     </h1>               
                     
-                    <div id="SubtitlePhrase" class="press-start-2p-regular subtitle-phrase">the gaaaame!!</div>
+                    <div class="press-start-2p-regular subtitle-phrase">
+                        {{ subtitlePhrase }}
+                    </div>
 
                     <div class="d-flex flex-row" style="width: 100%;">
                         <div class="d-flex flex-column align-items-center">
                             <label>Your character</label>
                             <div class="d-flex align-items-center justify-content-center" style="width: 16rem; height: 14rem;">
-                                <img id="ImgCharacterPreview" style="max-width: 100%; max-height: 100%;">
+                                <img :src="characterImage" style="max-width: 100%; max-height: 100%;">
                             </div>
-                            <button onclick="OpenChangeCharacterModal()">Change</button>
+                            <button @click="changeButtonEvent">Change</button>
                         </div>
 
                         <div class="d-flex align-items-center">
-                            <button class="box a" onclick="StartGameplay()">Play</button>
-                        </div>
-                    
-                        <main style="height: 100%; display: none;">
-                            <button>
-                                <div>
-                                    <span>Play</span>
-                                </div>
-                            </button>                    
-                        </main>
+                            <button @click="emit('start-game')" class="box a" onclick="StartGameplay()">Play</button>
+                        </div>                
                     </div>
                 
                     <img id="BibooRoll" src="../images/biboowalk.gif" style="top: 21.5rem; position: absolute; left: 18rem; width: 16rem; object-fit: cover;" />
