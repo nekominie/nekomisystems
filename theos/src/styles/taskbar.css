@@ -1,11 +1,20 @@
 .taskbar{
-    height: 27px;
+    height: 30px;
     background-color: #00000066;
     position: absolute;
     width: 100%;
     backdrop-filter: blur(100px);
     opacity: 76%;
     padding: 9px 0px;
+}
+
+.taskbar-btn:hover{
+    backdrop-filter: contrast(0.8);
+    box-shadow: 0px 0px 4px 2px #ffffff42;
+}
+
+.taskbar-btn{
+    border-radius: 6px;
 }
 
 .taskbar-elements{
@@ -28,4 +37,37 @@
 }
 .icons-container .icon{
 
+}
+
+.apps-container{
+    display: flex;
+    flex-direction: row;
+}
+
+.info-container{
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 0 8px;
+}
+
+.taskbar .app-icon{
+    color: white;
+    font-size: 25px;
+    padding: 5px 10px;
+    margin: 0px 10px;
+}
+
+.taskbar .app-icon:hover{
+    color: rgb(212, 212, 212);
+
+    cursor: pointer;
+    transform: scale(1.05) rotate(2deg);
+    box-shadow: 0 0 15px #646cff50;
+    transition: all 0.3s ease;
+}
+
+.taskbar .app-icon:hover::before {
+    top: 100%;
+    left: 100%;
 }
