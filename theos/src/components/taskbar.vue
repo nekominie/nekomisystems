@@ -50,9 +50,8 @@ onUnmounted(() => {
             </div>
 
             <div class="apps-container" >
-                <div class="app taskbar-btn" v-for="app in pinnedApps" :key="app.id" @click="emit('launchApp', app.id)">
-                    <div class="app-icon">
-                        {{ app.id }}
+                <div class="app taskbar-btn" v-for="app in pinnedApps" :key="app.id" @click="emit('launchApp', app.id)" :class="{ 'running-app': app.isOpen }">
+                    <div class="app-icon">                        
                         <i :class="`${app.icon}`"></i>
                     </div>
                 </div>

@@ -7,11 +7,77 @@
 }
 
 .window-header{
-    background-color: red;
+    background-color: #393939;
     display: flex;
     justify-content: space-between;
+    padding: 4px 3px 4px 12px;
+    color: white;
+    border-radius: 10px 10px 0px 0px;
+}
+
+.window-header i {
+    display: flex;
 }
 
 .window-content{
 
+}
+
+.window-header-btns{
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+}
+
+.window-header-btns button{
+    margin: 0px 6px;
+}
+
+.minimize-btn{
+    cursor: pointer;
+    color: white;
+    border: none;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.maximize-btn{
+    cursor: pointer;
+    color: white;
+    border: none;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.close-btn{
+    cursor: pointer;
+    background-color: rgb(230, 100, 100);
+    color: white;
+    border: none;
+    border-radius: 50%;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 17px;
+    height: 17px;
+}
+
+.close-btn i{
+    font-size: 9px;
+}
+
+.close-btn:hover{
+    background-color: rgb(255, 0, 0);
+}
+
+.minimize-btn:hover{
+    background-color: #c0c0c0;
+}
+
+.window-header-titles{
+    display: flex;
+    align-items: center;
+}
+
+.window-header-titles i{
+    margin-right: 5px;
 }

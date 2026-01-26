@@ -52,16 +52,17 @@ const startDrag = (event: MouseEvent) => {
     >
         
         <div class="window-header"@mousedown="startDrag">
-            <div>
-                {{ appData.name }}
+            <div class="window-header-titles">
+                <i :class="appData.icon"></i>
+                <div>{{ appData.name }}</div>
             </div>
 
             <div></div>
 
-            <div>
-                <button @click.stop="emit('minimize', appData.id)"><i class="bi bi-dash-lg"></i></button>
-                <button @click.stop="emit('maximize', appData.id)"><i class="bi bi-arrows-fullscreen"></i></button>
-                <button @click.stop="emit('close', appData.id)"><i class="bi bi-x-lg"></i></button>
+            <div class="window-header-btns">
+                <button class="minimize-btn" @click.stop="emit('minimize', appData.id)"><i class="bi bi-dash-lg"></i></button>
+                <button class="maximize-btn" @click.stop="emit('maximize', appData.id)"><i class="bi bi-arrows-fullscreen"></i></button>
+                <button class="close-btn" @click.stop="emit('close', appData.id)"><i class="bi bi-x-lg"></i></button>
             </div>
         </div>
         <div class="window-content"></div>
