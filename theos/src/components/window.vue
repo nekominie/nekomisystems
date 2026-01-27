@@ -244,8 +244,10 @@ const startResize = (direction: string, event: MouseEvent) => {
             >
             </div>
 
-            <component :is="component" v-if="component" />
-            <div v-else>El componente no se encuentra</div>
+            <div class="content-container">
+                <component :is="component" v-if="component" />
+                <div v-else>El componente no se encuentra</div>
+            </div>
         </div>
     </div>
 </template>
