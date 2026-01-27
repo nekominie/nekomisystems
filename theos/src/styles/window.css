@@ -2,7 +2,7 @@
     background-color: #464646a3;
     border-radius: 10px;
     backdrop-filter: blur(56px);
-    box-shadow: 0px 6px 20px 1px #00000078;
+    box-shadow: 0px 5px 5px 0px #0000006b;
     position: absolute;
 }
 
@@ -17,10 +17,6 @@
 
 .window-header i {
     display: flex;
-}
-
-.window-content{
-
 }
 
 .window-header-btns{
@@ -80,4 +76,8 @@
 
 .window-header-titles i{
     margin-right: 5px;
+}
+
+.focused{
+    box-shadow: 0px 8px 10px 2px #00000070;
 }

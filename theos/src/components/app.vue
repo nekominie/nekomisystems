@@ -11,6 +11,7 @@
             icon: 'bi-journals',
             isOpen: false,
             isMinimized: false,
+            isFocused: false,
             zIndex: 0,
             position: {
                 x: 0,
@@ -27,6 +28,7 @@
             icon: 'bi-calculator-fill',
             isOpen: false,
             isMinimized: false,
+            isFocused: false,
             zIndex: 0,
             position: {
                 x: 0,
@@ -43,6 +45,7 @@
             icon: 'bi-folder-fill',
             isOpen: false,
             isMinimized: false,
+            isFocused: false,
             zIndex: 0,
             position: {
                 x: 0,
@@ -59,6 +62,7 @@
             icon: 'bi-music-note-beamed',
             isOpen: false,
             isMinimized: false,
+            isFocused: false,
             zIndex: 0,
             position: {
                 x: 0,
@@ -130,6 +134,10 @@ const topZ = ref(100);
 const bringToFront = (appId: string) => {
     const app = installedApps.value.find(a => a.id === appId);
     if (app) {
+
+        installedApps.value.forEach(a => a.isFocused = false);
+        app.isFocused = true;
+
         const maxZ = Math.max(...installedApps.value.map(a => a.zIndex));
         
         if (app.zIndex < maxZ || app.zIndex === 0) {

@@ -32,13 +32,6 @@
     font-size: 23px;
 }
 
-.icons-container{
-
-}
-.icons-container .icon{
-
-}
-
 .apps-container{
     display: flex;
     flex-direction: row;
@@ -55,7 +48,7 @@
     color: white;
     font-size: 25px;
     padding: 5px 10px;
-    margin: 0px 10px;
+    margin: 0px 4px;
 }
 
 .taskbar .app-icon:hover{
@@ -67,13 +60,12 @@
     transition: all 0.3s ease;
 }
 
-.taskbar .app-icon:hover::before {
+/*.taskbar .app-icon:hover::before {
     top: 100%;
     left: 100%;
-}
+}*/
 
 .running-app{
     backdrop-filter: contrast(0.8);
     box-shadow: 0px 0px 4px 2px #ffffff42;
-
 }

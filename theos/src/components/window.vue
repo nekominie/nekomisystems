@@ -41,6 +41,8 @@ const startDrag = (event: MouseEvent) => {
 
 <template>
     <div class="window-frame"
+        :class="{'focused' : appData.isFocused }"
+
         :style="{
             zIndex: appData.zIndex,
             left: appData.position.x + 'px',

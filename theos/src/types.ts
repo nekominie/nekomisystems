@@ -4,6 +4,7 @@ export interface AppConfig {
   icon: string; // Ruta de la imagen o clase de FontAwesome
   isOpen: boolean;
   isMinimized: boolean;
+  isFocused: boolean;
   zIndex: number;
   position: {
     x: number;
