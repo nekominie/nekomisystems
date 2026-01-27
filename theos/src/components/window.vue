@@ -1,9 +1,11 @@
 <script setup lang="ts">
 
 import type { AppConfig } from '../types'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{
-    appData: AppConfig
+    appData: AppConfig,
+    component: any
 }>()
 
 const emit = defineEmits<{
@@ -13,7 +15,12 @@ const emit = defineEmits<{
     (e: 'focus', id: string): void
 }>()
 
+const isDragging = ref(false);
+
 const startDrag = (event: MouseEvent) => {
+
+    isDragging.value = true;
+
     emit('focus', props.appData.id);
 
     const startX = event.clientX - props.appData.position.x;
@@ -22,9 +29,36 @@ const startDrag = (event: MouseEvent) => {
     const onMouseMove = (e: MouseEvent) => {
         props.appData.position.x = e.clientX - startX;
         props.appData.position.y = e.clientY - startY;
+
+        let newX = e.clientX - startX;
+        let newY = e.clientY - startY;
+
+        //# # # # LA VENTANA NO SE PUEDE MOVER FUERA DE LA PANTALLA
+        /*const maxX = window.innerWidth - props.appData.size.width;
+        const maxY = window.innerHeight - props.appData.size.height - 48;
+
+        newX = Math.max(0, Math.min(newX, maxX));
+        newY = Math.max(0, Math.min(newY, maxY));*/
+       // # # # # # # #
+
+       // # # # # LA VENTANA NO SE PUEDE MOVER FUERA DE LA PANTALLA VERTICALMENTE
+        const minVisibleWidth = 100;
+        const minX = -(props.appData.size.width - minVisibleWidth);
+        const maxX = window.innerWidth - minVisibleWidth;
+
+        newX = Math.max(minX, Math.min(newX, maxX));
+
+        const taskbarHeight = 48; 
+        const maxY = window.innerHeight - taskbarHeight - 26;
+        newY = Math.max(0, Math.min(newY, maxY));
+       // # # # # # # #   
+
+        props.appData.position.x = newX;
+        props.appData.position.y = newY;
     };
 
     const onMouseUp = () => {
+        isDragging.value = false;
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
     };
@@ -32,6 +66,29 @@ const startDrag = (event: MouseEvent) => {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
 }
+
+const windowStyles = computed(() => {
+    const taskbarHeight = '48px';
+
+    if (props.appData.isMaximized) {
+        return {
+            zIndex: props.appData.zIndex,
+            top: '0px',
+            left: '0px',
+            width: '100%',
+            //height: '100%' // O 
+            height: `calc(100% - ${taskbarHeight})`
+        };
+    }
+
+    return {
+        zIndex: props.appData.zIndex,
+        left: props.appData.position.x + 'px',
+        top: props.appData.position.y + 'px',
+        width: props.appData.size.width + 'px',
+        height: props.appData.size.height + 'px'
+    };
+})
 
 </script>
 
@@ -41,15 +98,13 @@ const startDrag = (event: MouseEvent) => {
 
 <template>
     <div class="window-frame"
-        :class="{'focused' : appData.isFocused }"
+        :class="{
+            'focused' : appData.isFocused,
+            'maximized' : appData.isMaximized,
+            'dragging' : isDragging
+        }"        
 
-        :style="{
-            zIndex: appData.zIndex,
-            left: appData.position.x + 'px',
-            top: appData.position.y + 'px',
-            width: appData.size.width + 'px',
-            height: appData.size.height + 'px'
-        }"
+        :style="windowStyles"
         @mousedown="$emit('focus', appData.id)"
     >
         
@@ -67,6 +122,10 @@ const startDrag = (event: MouseEvent) => {
                 <button class="close-btn" @click.stop="emit('close', appData.id)"><i class="bi bi-x-lg"></i></button>
             </div>
         </div>
-        <div class="window-content"></div>
+
+        <div class="window-content">
+            <component :is="component" v-if="component" />
+            <div v-else>El componente no se encuentra</div>
+        </div>
     </div>
 </template>

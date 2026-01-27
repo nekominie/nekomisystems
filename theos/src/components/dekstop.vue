@@ -3,6 +3,7 @@
 import type { AppConfig } from '../types'
 import { computed, ref,  } from 'vue'
 import Window from './window.vue'
+import { appComponents } from './apps/index.ts'
 
 const props = defineProps<{
     installedApps: AppConfig[]
@@ -10,19 +11,38 @@ const props = defineProps<{
 
 const emits = defineEmits<{
     (e: 'focus-app', id: string): void,
-    (e: 'close-app', id: string): void
+    (e: 'close-app', id: string): void,
+    (e: 'maximize-app', id: string): void
 }>()
 
 const openedApps = computed(() => {
   return props.installedApps.filter(app => app.isOpen)
 })
 
-
 const minimizeWindow = (id: string) => {
     
 }
 const maximizeWindow = (id: string) => {
-    
+    const app = props.installedApps.find(a => a.id === id);
+    if (!app) return;
+
+    if (!app.isMaximized) {
+        app.tempSettings = {
+            position: { ...app.position },
+            size: { ...app.size }
+        };
+
+        app.position = { x: 0, y: 0 };
+        app.isMaximized = true;
+    }
+    else{
+        if (app.tempSettings) {
+            app.position = { ...app.tempSettings.position };
+            app.size = { ...app.tempSettings.size };
+        }
+
+        app.isMaximized = false;
+    }
 }
 
 </script>
@@ -38,6 +58,7 @@ const maximizeWindow = (id: string) => {
                 v-for="app in openedApps"
                 :key="app.id"
                 :app-data="app"
+                :component="appComponents[app.id]"
                 @close="$emit('close-app', $event)"
                 @minimize="minimizeWindow"
                 @maximize="maximizeWindow"

@@ -14,4 +14,15 @@ export interface AppConfig {
     width: number;
     height: number;
   };
+  isMaximized: boolean;
+  tempSettings?: {
+    position: {
+      x:number;
+      y:number;
+    };
+    size: {
+      width: number;
+      height: number;
+    };
+  }
 }

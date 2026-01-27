@@ -4,6 +4,24 @@
     backdrop-filter: blur(56px);
     box-shadow: 0px 5px 5px 0px #0000006b;
     position: absolute;
+
+    transition:
+        width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+        height 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+        top 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+        left 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.1s ease;
+    will-change: width, height, top, left;
+
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.window-frame.dragging{
+    transition: none !important;
+    user-select: none;
 }
 
 .window-header{
@@ -80,4 +98,16 @@
 
 .focused{
     box-shadow: 0px 8px 10px 2px #00000070;
+}
+
+.maximized .window-header{
+    border-radius: 0;
+}
+
+.maximized.window-frame, .maximized.focused{
+    box-shadow:  0 0 0 0 !important
+}
+
+.maximized.window-frame{
+    border-radius: 0 !important;
 }

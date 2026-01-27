@@ -1,79 +1,12 @@
 <script setup lang="ts">
-    import { ref, onMounted } from 'vue'
-    import Taskbar from './taskbar.vue'
-    import Desktop from './dekstop.vue'
-    import type { AppConfig } from '../types'
 
-    const installedApps = ref<AppConfig[]>([
-        {
-            id: 'notepad',
-            name: 'Notepad',
-            icon: 'bi-journals',
-            isOpen: false,
-            isMinimized: false,
-            isFocused: false,
-            zIndex: 0,
-            position: {
-                x: 0,
-                y: 0
-            },
-            size: {
-                width: 600,
-                height: 400
-            }
-        },
-        {
-            id: 'calculator',
-            name: 'Calculadora',
-            icon: 'bi-calculator-fill',
-            isOpen: false,
-            isMinimized: false,
-            isFocused: false,
-            zIndex: 0,
-            position: {
-                x: 0,
-                y: 0
-            },
-            size: {
-                width: 600,
-                height: 400
-            }
-        },
-        {
-            id: 'explorer',
-            name: 'Archivos',
-            icon: 'bi-folder-fill',
-            isOpen: false,
-            isMinimized: false,
-            isFocused: false,
-            zIndex: 0,
-            position: {
-                x: 0,
-                y: 0
-            },
-            size: {
-                width: 600,
-                height: 400
-            }
-        },
-        {
-            id: 'music',
-            name: 'Musica',
-            icon: 'bi-music-note-beamed',
-            isOpen: false,
-            isMinimized: false,
-            isFocused: false,
-            zIndex: 0,
-            position: {
-                x: 0,
-                y: 0
-            },
-            size: {
-                width: 600,
-                height: 400
-            }
-        }
-    ])
+import { ref, onMounted } from 'vue'
+import Taskbar from './taskbar.vue'
+import Desktop from './dekstop.vue'
+
+import { apps } from '../data/apps'
+
+const installedApps = ref(apps)
 
 let cascadeOffset = 0;
 
@@ -158,6 +91,20 @@ const closeApp = (id: string) => {
         app.isOpen = false
     }
 }
+
+onMounted(() => {
+   window.addEventListener('resize', () => {
+        installedApps.value.forEach(app => {
+            if (app.isOpen) {
+                const maxX = window.innerWidth - app.size.width;
+                const maxY = window.innerHeight - app.size.height - 40;
+                
+                app.position.x = Math.max(0, Math.min(app.position.x, maxX));
+                app.position.y = Math.max(0, Math.min(app.position.y, maxY));
+            }
+        });
+    });     
+})
 
 </script>
 
