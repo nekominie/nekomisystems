@@ -113,6 +113,9 @@ const startResize = (direction: string, event: MouseEvent) => {
     /*document.body.style.cursor = direction + '-resize';
     document.body.style.userSelect = 'none';*/
 
+    document.body.classList.add('resizing-global');
+    document.body.style.cursor = direction + '-resize';
+
     if (props.appData.isMaximized) return;
     isResizing.value = true;
 
@@ -164,6 +167,10 @@ const startResize = (direction: string, event: MouseEvent) => {
 
     const onMouseUp = () => {
         isResizing.value = false;
+
+        document.body.classList.remove('resizing-global');
+        document.body.style.cursor = 'default';
+
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
         

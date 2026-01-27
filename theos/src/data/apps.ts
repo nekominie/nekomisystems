@@ -85,6 +85,29 @@ export const apps: AppConfig[] = [
                 position: { x: 0, y: 0, },
                 size: { width: 0, height: 0 }
             }
+        },
+        {
+            id: 'spotify',
+            name: 'Spotify',
+            icon: 'bi-spotify',
+            isOpen: false,
+            isMinimized: false,
+            isFocused: false,
+            zIndex: 0,
+            position: {
+                x: 0,
+                y: 0
+            },
+            size: {
+                width: 600,
+                height: 400
+            },
+            isMaximized: false,
+            tempSettings: {
+                position: { x: 0, y: 0, },
+                size: { width: 0, height: 0 }
+            }
         }
+
 ]
     

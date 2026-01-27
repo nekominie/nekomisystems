@@ -10,7 +10,7 @@
     background-repeat: no-repeat;
 }
 
-.resizing * {
+.resizing-global * {
     cursor: inherit !important;
     pointer-events: none !important;
     user-select: none !important;
