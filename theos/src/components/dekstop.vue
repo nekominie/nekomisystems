@@ -4,6 +4,7 @@ import type { AppConfig } from '../types'
 import { computed, ref,  } from 'vue'
 import Window from './window.vue'
 import { appComponents } from './apps/index.ts'
+import StartMenu from './startmenu.vue'
 
 const props = defineProps<{
     installedApps: AppConfig[]

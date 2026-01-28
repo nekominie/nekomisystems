@@ -2,17 +2,23 @@
 
 import { onMounted, onUnmounted, ref } from 'vue'
 import type { AppConfig } from '../types';
+import Startmenu from './startmenu.vue';
 
 defineProps<{ 
     pinnedApps: AppConfig[]
 }>()
 
 const emit = defineEmits<{
-    (e: 'taskbar-icon-clicked', id: string): void,
+    (e: 'taskbar-icon-clicked', id: string): void
 }>()
 
 const currentTime = ref('')
 const currentDate = ref('')
+const showingStartMenu = ref(false)
+
+const toggleStartMenu = () => {
+    showingStartMenu.value = !showingStartMenu.value
+}
 
 const updateTime = () => {
     const now = new Date()
@@ -27,6 +33,15 @@ let timer: number
 onMounted(() => {
     updateTime()
     timer = window.setInterval(updateTime, 1000)
+
+    window.addEventListener('mousedown', (e) => {
+        const isClickInsideMenu = (e.target as HTMLElement).closest('.start-menu');    
+        const isClickOnOrb = (e.target as HTMLElement).closest('.orb');
+
+        if (!isClickInsideMenu && !isClickOnOrb) {
+            showingStartMenu.value = false;
+        }
+    })
 })
 
 onUnmounted(() => {
@@ -37,14 +52,24 @@ onUnmounted(() => {
 
 <style scoped>
     @import '../styles/taskbar.css';
-    @import '../styles/start.css';
 </style>
 
 <template>
     <div class="taskbar">
+
+        <Teleport to="body">
+            <Transition name="start-menu-fade">
+                <Startmenu 
+                    v-show="showingStartMenu"
+                />
+            </Transition>
+        </Teleport>
+
         <div class="taskbar-elements">
             <div class="start-container">
-                <div class="orb taskbar-btn">
+                <div class="orb taskbar-btn"
+                @click="toggleStartMenu"
+            >
                     <i class="bi bi-house-door-fill"></i>
                 </div>
             </div>
