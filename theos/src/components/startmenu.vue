@@ -1,8 +1,6 @@
 <script setup lang="ts">
     import { ref } from 'vue'
 
-    
-
 </script>
 
 <style scoped>
@@ -15,6 +13,12 @@
             @click=""
         >
             Ver todas las aplicaciones
+        </button>
+
+        <button
+            @click="$emit('shutdown')"
+        >
+            Apagar
         </button>
   </div>
 </template>

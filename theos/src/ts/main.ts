@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import app from '../components/app.vue'
+import Computer from '../components/computer.vue'
 import 'bootstrap-icons/font/bootstrap-icons.css'
 
-createApp(app).mount('#app')
+createApp(Computer).mount('#app')

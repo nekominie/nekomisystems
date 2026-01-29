@@ -9,7 +9,8 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-    (e: 'taskbar-icon-clicked', id: string): void
+    (e: 'taskbar-icon-clicked', id: string): void,
+    (e: 'shutdown'): void
 }>()
 
 const currentTime = ref('')
@@ -65,6 +66,7 @@ const isImage = (iconString: string) => {
             <Transition name="start-menu-fade">
                 <Startmenu 
                     v-show="showingStartMenu"
+                    @shutdown="$emit('shutdown')"
                 />
             </Transition>
         </Teleport>

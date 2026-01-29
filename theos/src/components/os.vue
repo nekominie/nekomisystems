@@ -171,6 +171,7 @@ onMounted(() => {
         <Taskbar 
             :pinnedApps="installedApps"
             @taskbar-icon-clicked="taskbarIconClicked"
+            @shutdown="$emit('shutdown')"
         />
     </div>
 </template>
