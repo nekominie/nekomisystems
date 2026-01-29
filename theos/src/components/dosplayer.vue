@@ -19,7 +19,8 @@ const loadResources = () => {
         document.head.appendChild(link)
 
         const script = document.createElement('script')
-        script.src = 'https://v8.js-dos.com/latest/js-dos.js'
+        //script.src = 'https://v8.js-dos.com/latest/js-dos.js'
+        script.src = '/games/doom/js-dos.js'
         script.onload = resolve
         document.head.appendChild(script)
     })
