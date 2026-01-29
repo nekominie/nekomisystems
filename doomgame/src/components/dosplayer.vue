@@ -52,15 +52,5 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="dos-player-wrapper">
-        <div ref="dosContainer" class="dosbox-container"></div>
-    </div>
+    <div ref="dosContainer" class="dosbox-container"></div>
 </template>
-
-<style scoped>
-.dos-player-wrapper {
-    width: 100%;
-    height: 100%;
-    background: #393939;
-}
-</style>

@@ -1,18 +1,9 @@
-<script setup lang="ts">
-
-import DosPlayer from '../dosplayer.vue';
-
-const doomConfig = {
-  zipPath: '/games/doom/doom.jsdos',
-  executable: '/DOOM.EXE',
-  conf: 'doom.conf'
-};
-
+<script setup>
+const gameUrl = `${import.meta.env.VITE_GAME_URL}/doomgame/`
 </script>
 
 <template>
-    <DosPlayer
-            :zipPath="doomConfig.zipPath"
-            :executable="doomConfig.executable"
-    />
+  <iframe style="width: 100%; height: 100%;" 
+    :src="gameUrl"
+  ></iframe>
 </template>

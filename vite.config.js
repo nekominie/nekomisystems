@@ -16,6 +16,7 @@ export default defineConfig({
                 mikurig: resolve(__dirname, 'mikurig/index.html'),
                 bibootaxgame: resolve(__dirname, 'bibootaxgame/index.html'),
                 theos: resolve(__dirname, 'theos/index.html'),
+                doomgame: resolve(__dirname, 'doomgame/index.html'),
             }
         }
     }
