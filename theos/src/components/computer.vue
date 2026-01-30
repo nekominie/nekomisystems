@@ -6,6 +6,8 @@ import Kernel from './kernel.vue'
 const pcStatus = ref('off');
 const loadedOs = ref(false);
 const buttonPressed = ref(false);
+const iconGlowing = ref(false);
+const powerOnLed = ref(false);
 
 onMounted(() => {
     const savedStatus = localStorage.getItem('pc_power_state');
@@ -19,17 +21,34 @@ onMounted(() => {
 })
 
 const powerButtonClick = () => {
-  return;
-    if(pcStatus.value === 'on') {
-        //APAGAR
-        pcStatus.value = 'off';
-        loadedOs.value = false;
-    }
-    else{
-        //ENCENDER
-        pcStatus.value = 'on';
-    }
-    localStorage.setItem('pc_power_state', pcStatus.value);
+  const savedStatus = localStorage.getItem('pc_power_state');
+
+  if(savedStatus === 'on') {
+    //APAGAR
+    powerOnLed.value = false;
+    buttonPressed.value = false;
+    iconGlowing.value = false;
+    pcStatus.value = 'off';
+    loadedOs.value = false;
+    localStorage.setItem('pc_power_state', 'off');
+  }
+  else{
+    buttonPressed.value = true;
+    powerOnLed.value = true;
+
+    setTimeout(() => {
+      buttonPressed.value = false;
+    }, 500);
+
+    setTimeout(() => {
+      iconGlowing.value = true;
+    }, 1200);
+
+    setTimeout(() => {
+      pcStatus.value = 'on';
+      localStorage.setItem('pc_power_state', 'on');
+    }, 4000 );
+  }
 }
 
 const bootSuccess = () => {
@@ -39,13 +58,14 @@ const bootSuccess = () => {
 </script>
 
 <template>
-  <div class="off-screen-container main-font" :class="pcStatus">
+  <div class="off-screen-container main-font-pc" :class="pcStatus">
     
     <div v-if="pcStatus === 'off'" class="d-flex-center">
       
-      <div class="message-container" style="padding-bottom: 30px;">
+      <div class="message-container" style="padding-bottom: 70px;">
         Nada que ver aqui
       </div>
+
       <!--
       <div class="case-frame" style="margin-bottom: 12px; display: flex; flex-direction: row; align-items: center; justify-content: center;">
         <div></div>
@@ -66,19 +86,26 @@ const bootSuccess = () => {
       </div>
       -->
 
-      <div>
+      <div style="padding-bottom: 70px; width: 100%; ;display: flex; flex-direction: row; align-items: center; justify-content: center;">
+        <div style="flex: 1;"></div>
+        
         <button class="new-btn" ref="powerButton"
            @click="powerButtonClick"
-           @mousedown="buttonPressed = true"
-           @mouseup="buttonPressed = false"
-
            :class="{ 'new-btn-clicked': buttonPressed }"
         >
-          <i class="bi-power"
-            :class="{ 'icon-clicked': buttonPressed }"
+          <i class="bi-power icon-power"
+            :class="{ 'booting': iconGlowing }"
 
           ></i>
         </button>
+        
+        <div class="d-flex-center" style="flex: 1;">
+          <div 
+            class="status-led"
+            :class="{ 'status-led-on': powerOnLed }"
+          ></div>
+          <div style="color: #ffffffbf;">POWER</div>
+        </div>
       </div>
 
       <div class="message-container d-flex-center">
@@ -103,8 +130,25 @@ const bootSuccess = () => {
 </template>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@200..800&display=swap');
+
+.status-led{
+  margin-bottom: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #000000;
+  margin-right: 5px;
+  transition: background-color 0.5s, box-shadow 0.5s;
+}
+
+.status-led-on{
+  background-color: #b7ffb5;
+  box-shadow: 0px 0px 16px 6px #51ff00;
+}
 
 .new-btn{
+  flex: 1;
   position: relative;
   width: 14rem;
   height: 14rem;
@@ -113,8 +157,10 @@ const bootSuccess = () => {
   border: 10px #090909 solid;
   background: linear-gradient(15deg, #171717, #444245);
   box-shadow: inset 6px 2px 0px #7d7c7e, inset -6px -2px 0px #1c1c1c;
-  color: #a6a6a6;
+  color: #a6a6a64d;
   cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+  transform: translateY(0);
 }
 
 .new-btn::before{
@@ -134,20 +180,50 @@ const bootSuccess = () => {
 .new-btn-clicked{
   background: linear-gradient(-185deg, #131313, #444245);
   box-shadow: inset -6px -2px 0px #5e5e5e, inset 6px 2px 0px #1c1c1c;
+  transform: translateY(4px);
 }
 
-.icon-clicked{
-  color: #fff;
-  text-shadow: 0 0 15px #008ECE;
+/*.icon-clicked{
+  color: #00ff00 !important;
+  text-shadow: 0 0 20px #00ff00;
+  transition: color 0.1s ease;
+}*/
+
+.icon-power{
+  transition: color 2s ease;
+  position: relative;
+}
+
+.icon-power.booting {
+  animation: power-on-glow 1s forwards ease-in-out;
+}
+
+@keyframes power-on-glow {
+  /*0% {
+    color: #1a293a;
+    filter: drop-shadow(0 0 0px rgba(0, 255, 0, 0));
+  }*/
+  /*30% {
+    color: #2e9fcc;
+    filter: drop-shadow(0 0 5px rgba(46, 146, 204, 0.5));
+  }
+  50% {
+    color: #1a2d3a;
+    filter: drop-shadow(0 0 2px rgba(0, 140, 255, 0.2));
+  }*/
+  100% {
+    /* Estado encendido final: Luz sólida y resplandor amplio */
+    color: #ffffff;
+    filter: drop-shadow(0 0 8px rgba(44, 223, 255, 0.8)) 
+            drop-shadow(0 0 20px rgba(53, 174, 255, 0.4));
+  }
 }
 
 .new-btn i{
   font-size: 100px;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@200..800&display=swap');
-
-.main-font{
+.main-font-pc{
   font-family: "Oxanium", sans-serif;
   font-optical-sizing: auto;
   font-weight: 400;
@@ -166,7 +242,7 @@ const bootSuccess = () => {
 }
 
 .message-container{
-  color: rgb(102, 102, 102);  
+  color: #ffffff6e;  
   font-size: 50px;
 }
 
