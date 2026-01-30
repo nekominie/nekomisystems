@@ -6,3 +6,7 @@
     position: relative;
     /*cursor: url("../cursors/cursor2.png"), auto;*/
 }
+
+iframe{
+    border: 0;
+}

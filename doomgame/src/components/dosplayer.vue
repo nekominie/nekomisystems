@@ -51,6 +51,17 @@ onBeforeUnmount(() => {
 })
 </script>
 
+<style scoped>
+/* Ocultar la barra lateral (Side Panel) */
+:deep(.sidebar) {
+    display: none !important;
+}
+
+:deep(.w-12) {
+    display: none !important;
+}
+</style>
+
 <template>
     <div ref="dosContainer" class="dosbox-container"></div>
 </template>
