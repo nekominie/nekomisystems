@@ -6,7 +6,7 @@ const emit = defineEmits<{
     (e: 'shutdown'): void
 }>()
 
-const handleShutdown = () => {
+const acpiHandler = () => {
     emit('shutdown');
 }
 
@@ -14,6 +14,6 @@ const handleShutdown = () => {
 
 <template>
     <OperatingSystem 
-        @shutdown="handleShutdown"
+        @shutdown="acpiHandler"
     />
 </template>
