@@ -1,5 +1,5 @@
 <script setup>
-const gameUrl = `${import.meta.env.VITE_GAME_URL}/doomgame/`
+const gameUrl = '/doomgame/';//`${import.meta.env.VITE_GAME_URL}/doomgame/`
 </script>
 
 <template>

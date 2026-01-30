@@ -5,6 +5,7 @@ import Kernel from './kernel.vue'
 
 const pcStatus = ref('off');
 const loadedOs = ref(false);
+const buttonPressed = ref(false);
 
 onMounted(() => {
     const savedStatus = localStorage.getItem('pc_power_state');
@@ -18,6 +19,7 @@ onMounted(() => {
 })
 
 const powerButtonClick = () => {
+  return;
     if(pcStatus.value === 'on') {
         //APAGAR
         pcStatus.value = 'off';
@@ -44,7 +46,7 @@ const bootSuccess = () => {
       <div class="message-container" style="padding-bottom: 30px;">
         Nada que ver aqui
       </div>
-      
+      <!--
       <div class="case-frame" style="margin-bottom: 12px; display: flex; flex-direction: row; align-items: center; justify-content: center;">
         <div></div>
         
@@ -62,7 +64,23 @@ const bootSuccess = () => {
           </div>
         </div>
       </div>
-      
+      -->
+
+      <div>
+        <button class="new-btn" ref="powerButton"
+           @click="powerButtonClick"
+           @mousedown="buttonPressed = true"
+           @mouseup="buttonPressed = false"
+
+           :class="{ 'new-btn-clicked': buttonPressed }"
+        >
+          <i class="bi-power"
+            :class="{ 'icon-clicked': buttonPressed }"
+
+          ></i>
+        </button>
+      </div>
+
       <div class="message-container d-flex-center">
         <div style="padding-bottom: 77px;">Apagaste tu computadora</div>
         <div style="font-size: 40px;">
@@ -86,6 +104,47 @@ const bootSuccess = () => {
 
 <style scoped>
 
+.new-btn{
+  position: relative;
+  width: 14rem;
+  height: 14rem;
+  border-radius: 50%;
+  outline: none;
+  border: 10px #090909 solid;
+  background: linear-gradient(15deg, #171717, #444245);
+  box-shadow: inset 6px 2px 0px #7d7c7e, inset -6px -2px 0px #1c1c1c;
+  color: #a6a6a6;
+  cursor: pointer;
+}
+
+.new-btn::before{
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: inherit;
+  /*background: linear-gradient(145deg, #363636, #606060);*/
+  width: 14rem;
+  height: 14rem;
+  /*z-index: -1;*/
+  box-shadow: 11px 11px 22px #141414, -11px -11px 22px #525252;
+}
+
+.new-btn-clicked{
+  background: linear-gradient(-185deg, #131313, #444245);
+  box-shadow: inset -6px -2px 0px #5e5e5e, inset 6px 2px 0px #1c1c1c;
+}
+
+.icon-clicked{
+  color: #fff;
+  text-shadow: 0 0 15px #008ECE;
+}
+
+.new-btn i{
+  font-size: 100px;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@200..800&display=swap');
 
 .main-font{
@@ -98,7 +157,8 @@ const bootSuccess = () => {
 .off-screen-container {
   width: 100%;
   height: 100%;
-  background: #000000;
+  /*background: #000000;*/
+  background: linear-gradient(90deg, rgba(46,44,45,1) 0%, rgba(66,64,67,1) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
