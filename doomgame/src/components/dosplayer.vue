@@ -30,14 +30,12 @@ onMounted(async () => {
     await loadResources()
 
     try {
-        // 🔥 AQUÍ se ejecuta todo
         ci = window.Dos(dosContainer.value, {
             url: props.zipPath,
             executable: props.executable,
             autoStart: true
         })
 
-        console.log('DOOM arrancado automáticamente 🚀')
     } catch (e) {
         console.error('Error iniciando js-dos v8:', e)
     }
@@ -52,7 +50,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* Ocultar la barra lateral (Side Panel) */
 :deep(.sidebar) {
     display: none !important;
 }
