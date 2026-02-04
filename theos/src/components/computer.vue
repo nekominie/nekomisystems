@@ -8,11 +8,18 @@ const loadedOs = ref(false);
 const buttonPressed = ref(false);
 const iconGlowing = ref(false);
 const powerOnLed = ref(false);
+const hideHardware = ref(false);
+
+const shrink = ref(false);
+const slide = ref(false);
+const expand = ref(false);
 
 onMounted(() => {
     const savedStatus = localStorage.getItem('pc_power_state');
 
     if(savedStatus === 'on') {
+        hideHardware.value = true;
+        loadedOs.value = true;
         pcStatus.value = 'on';
     }
     else{
@@ -45,9 +52,23 @@ const powerButtonClick = () => {
     }, 1200);
 
     setTimeout(() => {
+
+      shrink.value = true;
+
+      setTimeout(() => {
+        slide.value = true;
+      }, 200);
+
+      setTimeout(() => {
+        expand.value = true;
+      }, 700);
+    }, 3000);
+
+    setTimeout(() => {
       pcStatus.value = 'on';
       localStorage.setItem('pc_power_state', 'on');
-    }, 4000 );
+      hideHardware.value = true;
+    }, 5000 );
   }
 }
 
@@ -58,68 +79,76 @@ const bootSuccess = () => {
 </script>
 
 <template>
-  <div class="off-screen-container main-font-pc" :class="pcStatus">
+  <div class=" main-font-pc" style="height: 100%; width: 100%;" :class="pcStatus, { 'off-screen-container': pcStatus === 'off'}">
+
+    <div v-if="pcStatus === 'off'" class="d-flex-center top-monitor" :class="{'slide-down': slide, 'hide-hardware': hideHardware }">
+      <div :class="{ 'view-expand': expand }"></div>
+    </div>
     
-    <div v-if="pcStatus === 'off'" class="d-flex-center">
-      
-      <div class="message-container" style="padding-bottom: 70px;">
-        Nada que ver aqui
-      </div>
-
-      <!--
-      <div class="case-frame" style="margin-bottom: 12px; display: flex; flex-direction: row; align-items: center; justify-content: center;">
-        <div></div>
+    <div v-if="pcStatus === 'off'" class="d-flex-center bottom-monitor" :class="{'slide-down': slide, 'hide-hardware': hideHardware }">
+      <div class="d-flex-center" :class="{ 'view-shrunk': shrink }">
+        <div class="d-flex-center">
         
-        <div class="btn-frame d-flex-center">
-          <button @click="powerButtonClick" class="btn-power-on d-flex-center">
-            <i class="bi-power d-flex"></i>
-            <div class="btn-shine"></div>
-          </button>
-        </div>
-        
-        <div>
-          <div>
-            <div></div>
-            <div>POWER</div>
+          <div class="message-container" style="padding-bottom: 70px;">
+            Nada que ver aqui
           </div>
-        </div>
-      </div>
-      -->
 
-      <div style="padding-bottom: 70px; width: 100%; ;display: flex; flex-direction: row; align-items: center; justify-content: center;">
-        <div style="flex: 1;"></div>
-        
-        <button class="new-btn" ref="powerButton"
-           @click="powerButtonClick"
-           :class="{ 'new-btn-clicked': buttonPressed }"
-        >
-          <i class="bi-power icon-power"
-            :class="{ 'booting': iconGlowing }"
+          <!--
+          <div class="case-frame" style="margin-bottom: 12px; display: flex; flex-direction: row; align-items: center; justify-content: center;">
+            <div></div>
+            
+            <div class="btn-frame d-flex-center">
+              <button @click="powerButtonClick" class="btn-power-on d-flex-center">
+                <i class="bi-power d-flex"></i>
+                <div class="btn-shine"></div>
+              </button>
+            </div>
+            
+            <div>
+              <div>
+                <div></div>
+                <div>POWER</div>
+              </div>
+            </div>
+          </div>
+          -->
 
-          ></i>
-        </button>
-        
-        <div class="d-flex-center" style="flex: 1;">
-          <div 
-            class="status-led"
-            :class="{ 'status-led-on': powerOnLed }"
-          ></div>
-          <div style="color: #ffffffbf;">POWER</div>
-        </div>
-      </div>
+          <div style="padding-bottom: 70px; width: 100%; ;display: flex; flex-direction: row; align-items: center; justify-content: center;">
+            <div style="flex: 1;"></div>
+            
+            <button class="new-btn" ref="powerButton"
+              @click="powerButtonClick"
+              :class="{ 'new-btn-clicked': buttonPressed }"
+            >
+              <i class="bi-power icon-power"
+                :class="{ 'booting': iconGlowing }"
 
-      <div class="message-container d-flex-center">
-        <div style="padding-bottom: 77px;">Apagaste tu computadora</div>
-        <div style="font-size: 40px;">
-          ¡Prendela de nuevo!
-        </div>
-        <div class="message-subtitle" style="font-size: 27px;">
-          Presiona el boton...
-        </div>
+              ></i>
+            </button>
+            
+            <div class="d-flex-center" style="flex: 1;">
+              <div 
+                class="status-led"
+                :class="{ 'status-led-on': powerOnLed }"
+              ></div>
+              <div style="color: #ffffffbf;">POWER</div>
+            </div>
+          </div>
+
+          <div class="message-container d-flex-center">
+            <div style="padding-bottom: 77px;">Apagaste tu computadora</div>
+            <div style="font-size: 40px;">
+              ¡Prendela de nuevo!
+            </div>
+            <div class="message-subtitle" style="font-size: 27px;">
+              Presiona el boton...
+            </div>
+          </div>
+        </div>      
       </div>
     </div>
 
-    <Boot v-if="pcStatus === 'on'"
+    <Boot v-if="pcStatus === 'on' && !loadedOs"
         @boot-success="bootSuccess"
     />
 
@@ -131,6 +160,54 @@ const bootSuccess = () => {
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@200..800&display=swap');
+
+.hide-hardware{
+  display: none !important;
+}
+
+.top-monitor{
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: -100%;
+  /*background-color: blue;*/
+  transition: transform 0.5s ease;
+}
+
+.top-monitor div:first-child{
+  height: 100%;
+  width: 100%;
+  background-color: rgb(0, 0, 0);
+  transform-origin: center;
+  scale: 90%;
+  transition: scale 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bottom-monitor{
+  width: 100%;
+  height: 100%;
+  /*background-color: red;*/
+  transition: transform 0.5s ease;
+}
+
+.bottom-monitor div:first-child{
+  /*background-color: gray;*/
+  transform-origin: center;
+  transition: scale 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-down{
+  transform: translateY(100%) !important;
+}
+
+.view-expand{
+  scale: 100% !important;
+}
+
+.view-shrunk {
+  scale: 90%; 
+  pointer-events: none;
+}
 
 .status-led{
   margin-bottom: 10px;
@@ -231,14 +308,13 @@ const bootSuccess = () => {
 }
 
 .off-screen-container {
-  width: 100%;
-  height: 100%;
-  /*background: #000000;*/
   background: linear-gradient(90deg, rgba(46,44,45,1) 0%, rgba(66,64,67,1) 100%);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   position: relative;
+  overflow: hidden;
 }
 
 .message-container{
@@ -338,4 +414,5 @@ const bootSuccess = () => {
   background: #0f0;
   box-shadow: 0 0 5px #0f0;
 }
+
 </style>

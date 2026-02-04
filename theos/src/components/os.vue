@@ -157,6 +157,14 @@ onMounted(() => {
         font-variation-settings: "wdth" 100;
         font-size: 13px;
     }
+
+    @media (max-width: 600px){
+        .display{
+            transform: scale(1.2);
+            transform-origin: center center;
+            
+        }
+    }
 </style>
 
 <template>
