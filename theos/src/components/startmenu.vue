@@ -9,16 +9,24 @@
 
 <template>
     <div class="start-menu" style="height: 600px; width: 300px;">
-        <button
-            @click=""
-        >
-            Ver todas las aplicaciones
-        </button>
+        <div class="start-menu-header">
 
-        <button
-            @click="$emit('shutdown')"
-        >
-            Apagar
-        </button>
+        </div>
+        
+        <div style="flex: 1;">
+            <button
+                @click=""
+            >
+                Ver todas las aplicaciones
+            </button>
+        </div>
+
+        <div class="start-menu-container">
+            <button class="start-menu-button"
+                @click="$emit('shutdown')"
+            >
+                Apagar
+            </button>
+        </div>
   </div>
 </template>
