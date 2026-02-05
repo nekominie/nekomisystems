@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import Boot from './boot.vue'
 import Kernel from './kernel.vue'
 
-const pcStatus = ref('off');
+const pcOn = ref(false);
 const loadedOs = ref(false);
 const startUp = ref(false);
 
@@ -13,8 +13,7 @@ const powerOnLed = ref(false);
 const hideHardware = ref(false);
 
 const shrink = ref(false);
-const slide = ref(false);
-const expand = ref(false);
+const slideUp = ref(false);
 
 onMounted(() => {
     const savedStatus = localStorage.getItem('pc_power_state');
@@ -22,10 +21,10 @@ onMounted(() => {
     if(savedStatus === 'on') {
         hideHardware.value = true;
         loadedOs.value = true;
-        pcStatus.value = 'on';
+        pcOn.value = true;
     }
     else{
-        pcStatus.value = 'off';
+        pcOn.value = false;
     }
 })
 
@@ -34,16 +33,29 @@ const powerButtonClick = () => {
 
   if(savedStatus === 'on') {
     //APAGAR
-    hideHardware.value = false;
-    powerOnLed.value = false;
-    slide.value = false;
-    shrink.value = false;
-    expand.value = false;
-    buttonPressed.value = false;
-    iconGlowing.value = false;
-    pcStatus.value = 'off';
-    loadedOs.value = false;
+    pcOn.value = false
+    hideHardware.value = false
+    powerOnLed.value = false
+    buttonPressed.value = false
+    iconGlowing.value = false
+
     localStorage.setItem('pc_power_state', 'off');
+
+    setTimeout(() => {
+      shrink.value = true
+
+      setTimeout(() => {
+        slideUp.value = false;
+      }, 200)
+
+      setTimeout(() => {
+        shrink.value = false
+      }, 700)
+    }, 1000);
+
+    setTimeout(() => {
+      loadedOs.value = false;
+    }, 2000);
   }
   else{
     //ENCENDER
@@ -59,20 +71,19 @@ const powerButtonClick = () => {
     }, 1200);
 
     setTimeout(() => {
-
       shrink.value = true;
 
       setTimeout(() => {
-        slide.value = true;
+        slideUp.value = true;
       }, 200);
 
       setTimeout(() => {
-        expand.value = true;
+        shrink.value = false;
       }, 700);
     }, 3000);
 
     setTimeout(() => {
-      pcStatus.value = 'on';
+      pcOn.value = true;
       localStorage.setItem('pc_power_state', 'on');
       hideHardware.value = true;
     }, 5000 );
@@ -87,14 +98,30 @@ const bootSuccess = () => {
 </script>
 
 <template>
-  <div class=" main-font-pc" style="height: 100%; width: 100%;" :class="pcStatus, { 'off-screen-container': pcStatus === 'off'}">
+  <div class=" main-font-pc" style="height: 100%; width: 100%;" :class="pcOn, { 'off-screen-container': !pcOn}">
 
-    <div v-if="pcStatus === 'off'" class="d-flex-center top-monitor" :class="{'slide-down': slide, 'hide-hardware': hideHardware }">
-      <div :class="{ 'view-expand': expand }"></div>
+    <div 
+      v-if="!pcOn"
+      class="d-flex-center monitor" 
+      style="top: -100%;"
+      :class="{
+        'slide-up': slideUp,
+        'hide-hardware': hideHardware,
+      }"
+    >
+      <div :class="{ 'shrink': shrink }" class="monitor-child" style="background-color: black; height: 100%; width: 100%;"></div>
     </div>
     
-    <div v-if="pcStatus === 'off'" class="d-flex-center bottom-monitor" :class="{'slide-down': slide, 'hide-hardware': hideHardware }">
-      <div class="d-flex-center" :class="{ 'view-shrunk': shrink }">
+    <div 
+      v-if="!pcOn" 
+      class="d-flex-center monitor"
+      style="top: 0%;"
+      :class="{
+        'slide-up': slideUp, 
+        'hide-hardware': hideHardware 
+      }"
+    >
+      <div class="d-flex-center monitor-child" :class="{ 'shrink': shrink }">
         <div class="d-flex-center">
         
           <div class="message-container" style="padding-bottom: 70px;">
@@ -156,7 +183,7 @@ const bootSuccess = () => {
       </div>
     </div>
 
-    <Boot v-if="pcStatus === 'on' && !loadedOs"
+    <Boot v-if="pcOn && !loadedOs"
         @boot-success="bootSuccess"
     />
 
@@ -174,47 +201,24 @@ const bootSuccess = () => {
   display: none !important;
 }
 
-.top-monitor{
+.monitor{
   width: 100%;
   height: 100%;
   position: absolute;
-  top: -100%;
-  /*background-color: blue;*/
   transition: transform 0.5s ease;
 }
 
-.top-monitor div:first-child{
-  height: 100%;
-  width: 100%;
-  background-color: rgb(0, 0, 0);
-  transform-origin: center;
-  scale: 90%;
-  transition: scale 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.bottom-monitor{
-  width: 100%;
-  height: 100%;
-  /*background-color: red;*/
-  transition: transform 0.5s ease;
-}
-
-.bottom-monitor div:first-child{
-  /*background-color: gray;*/
+.monitor-child{
   transform-origin: center;
   transition: scale 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.slide-down{
+.slide-up{
   transform: translateY(100%) !important;
 }
 
-.view-expand{
-  scale: 100% !important;
-}
-
-.view-shrunk {
-  scale: 90%; 
+.shrink {
+  scale: 90% !important; 
   pointer-events: none;
 }
 

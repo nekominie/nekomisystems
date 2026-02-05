@@ -60,17 +60,14 @@ const isImage = (iconString: string) => {
 </style>
 
 <template>
+    <Transition name="start-menu-fade">
+        <Startmenu 
+            v-show="showingStartMenu"
+            @shutdown="$emit('shutdown')"
+        />
+    </Transition>
+
     <div class="taskbar">
-
-        <Teleport to="body">
-            <Transition name="start-menu-fade">
-                <Startmenu 
-                    v-show="showingStartMenu"
-                    @shutdown="$emit('shutdown')"
-                />
-            </Transition>
-        </Teleport>
-
         <div class="taskbar-elements">
             <div class="start-container">
                 <div class="orb taskbar-btn"

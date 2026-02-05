@@ -1,6 +1,5 @@
 <script setup lang="ts">
 
-import { start } from '@popperjs/core';
 import OperatingSystem from './os.vue'
 import { onMounted, ref } from 'vue'
 
@@ -32,7 +31,11 @@ onMounted(() => {
 
 const acpiHandler = () => {
     runShutdown.value = true;
-    //emit('shutdown');
+
+    setTimeout(() => {
+        emit('shutdown');
+    }, 800);
+
 }
 </script>
 
@@ -53,7 +56,7 @@ const acpiHandler = () => {
         </div>
     </div>
 
-    <div v-if="runShutdown" class="shutdown">
+    <div class="shutdown-bg" v-if="runShutdown">
     </div>
 </template>
 
@@ -112,14 +115,14 @@ const acpiHandler = () => {
       }
     }
 
-    .shutdown{
+    .shutdown-bg{
         position: absolute;
         left: 0;
         top: 0;
         height: 100%;
         width: 100%;
         background-color: black;
-        z-index: 9999999999;
+        z-index: -1;
     }
 
     .shutdown-run {
