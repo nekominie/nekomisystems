@@ -7,6 +7,10 @@ const emit = defineEmits<{
 }>();
 
 const whiteFlash = ref(false);
+const blackScreen = ref(false);
+const showStartup = ref(true);
+const showBiosLoading = ref(false);
+
 const scrolledContainer = ref<HTMLElement | null>(null);
 let infoArray = ref<string[]>([]);
 
@@ -91,12 +95,31 @@ const fillInfoArray = async () => {
         }
     }
 
-    setTimeout(() => emit('boot-success'), 2000);
+    //cuanto tiempo se quedara en pantalla bios
+    const biosTextTime = 700;
+
+    //cuanto tiempo se quedara en pantalla loading os
+    const loadingOSTime = 500;
+
+    //cuanto tiempo esperará para el kernel
+    const kernelTime = 1000;
+
+    setTimeout(() => { 
+        showStartup.value = false; 
+    }, biosTextTime);
+
+    setTimeout(() => {
+        showBiosLoading.value = true;
+    }, biosTextTime + loadingOSTime);
+
+    setTimeout(() => {
+        emit('boot-success');
+    }, biosTextTime + loadingOSTime + kernelTime);
 }
 
 </script>
 
-<style>
+<style scoped>
     @import '../styles/boot.css';
 </style>
 
@@ -107,10 +130,10 @@ const fillInfoArray = async () => {
             'white-flash': whiteFlash 
         }"
     >
-        <div style="width: 100%; padding: 16px; max-height: 100%; display: flex; flex-direction: column;">
+        <div v-if="showStartup" style="width: 100%; padding: 16px; max-height: 100%; display: flex; flex-direction: column;">
             <div class="post-header">
                 <img src="../img/boot/nekomisystems_logo.png">
-                <div>NEKO_BIOS © 2026 v1.0 NekomiWorks Ltd.</div>
+                <div>NEKO_BIOS © 2026 v1.0 NekomiWorks Ltd. for nekomisystems.com</div>
             </div>
             <div ref="scrolledContainer"  class="posting-info-container">
                 <div class="post-info">
@@ -127,6 +150,11 @@ const fillInfoArray = async () => {
                 <div>(c) 2026 NekomiSystems Co. property of NekomiWorks Ltd.</div>
                 <div>build 4892-58936-1447884-259484</div>
             </div>
+        </div>
+
+        <div v-if="showBiosLoading" style="width: 100%; height: 100; display: flex; justify-content: center; align-items: center; flex-direction: column;">
+            <span class="loader"></span>
+            <div style="font-size: 30px; padding-top: 28px;">LOADING OS...</div>
         </div>
     </div>
 </template>

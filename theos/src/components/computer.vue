@@ -5,6 +5,8 @@ import Kernel from './kernel.vue'
 
 const pcStatus = ref('off');
 const loadedOs = ref(false);
+const startUp = ref(false);
+
 const buttonPressed = ref(false);
 const iconGlowing = ref(false);
 const powerOnLed = ref(false);
@@ -79,6 +81,7 @@ const powerButtonClick = () => {
 
 const bootSuccess = () => {
     loadedOs.value = true;
+    startUp.value = true;
 }
 
 </script>
@@ -158,6 +161,7 @@ const bootSuccess = () => {
     />
 
     <Kernel v-if="loadedOs"
+        :start-up="startUp"
         @shutdown="powerButtonClick"
     />
   </div>
