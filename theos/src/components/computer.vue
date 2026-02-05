@@ -40,8 +40,6 @@ const powerButtonClick = () => {
     iconGlowing.value = false
     slideUp.value = true
 
-    return
-
     localStorage.setItem('pc_power_state', 'off');    
 
     setTimeout(() => {
