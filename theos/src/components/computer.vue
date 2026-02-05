@@ -38,6 +38,7 @@ const powerButtonClick = () => {
     powerOnLed.value = false
     buttonPressed.value = false
     iconGlowing.value = false
+    slideUp.value = true
 
     localStorage.setItem('pc_power_state', 'off');
 
