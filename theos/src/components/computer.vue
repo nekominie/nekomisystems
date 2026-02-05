@@ -99,7 +99,7 @@ const bootSuccess = () => {
 </script>
 
 <template>
-  <div class=" main-font-pc" style="height: 100%; width: 100%;" :class="pcOn, { 'off-screen-container': !pcOn}">
+  <div class="main-font-pc" style="height: 100%; width: 100%;" :class="pcOn, { 'off-screen-container': !pcOn}">
 
     <div 
       v-if="!pcOn"

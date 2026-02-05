@@ -162,7 +162,6 @@ onMounted(() => {
         .display{
             transform: scale(1.2);
             transform-origin: center center;
-            
         }
     }
 </style>
