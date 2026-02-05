@@ -31,10 +31,23 @@
         "ELXP" 0;
 }
 
+.posting-info-container{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    overflow-y: scroll;
+    flex: 1;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
 .white-flash{
     background-color: white;
 }
 
+.post-footer{
+    font-size: 26px;
+}
 .post-header{
     font-size: 36px;
 }

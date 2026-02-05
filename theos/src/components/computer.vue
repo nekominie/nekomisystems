@@ -32,7 +32,11 @@ const powerButtonClick = () => {
 
   if(savedStatus === 'on') {
     //APAGAR
+    hideHardware.value = false;
     powerOnLed.value = false;
+    slide.value = false;
+    shrink.value = false;
+    expand.value = false;
     buttonPressed.value = false;
     iconGlowing.value = false;
     pcStatus.value = 'off';
@@ -40,6 +44,7 @@ const powerButtonClick = () => {
     localStorage.setItem('pc_power_state', 'off');
   }
   else{
+    //ENCENDER
     buttonPressed.value = true;
     powerOnLed.value = true;
 
