@@ -19,35 +19,46 @@ const isDragging = ref(false);
 const isResizing = ref(false);
 let ticking = false;
 
-const startDrag = (event: MouseEvent) => {
+const startDrag = (event: MouseEvent | TouchEvent) => {
+
+    const getCoords = (e: MouseEvent | TouchEvent) => {
+        if ('touches' in e && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY };
+    };
+
+    const initialCoords = getCoords(event);
     isDragging.value = true;
     emit('focus', props.appData.id);
 
-    let startX = event.clientX - props.appData.position.x;
-    let startY = event.clientY - props.appData.position.y;
+    let startX = initialCoords.x - props.appData.position.x;
+    let startY = initialCoords.y - props.appData.position.y;
 
-    const onMouseMove = (e: MouseEvent) => {
+    const onMove = (e: MouseEvent | TouchEvent) => {
+        const coords = getCoords(e);
+
         if(props.appData.isMaximized){
-            const mouseXRatio = event.clientX / window.innerWidth;
+            const mouseXRatio = coords.x / window.innerWidth;
 
             const restoredWidth = props.appData.tempSettings?.size.width || 600;
-            const newX = event.clientX - (restoredWidth * mouseXRatio);
+            const newX = coords.x - (restoredWidth * mouseXRatio);
 
             props.appData.isMaximized = false;
             props.appData.position.x = newX;
             props.appData.position.y = 0;
 
-            startX = event.clientX - props.appData.position.x;
-            startY = event.clientY - props.appData.position.y;
+            startX = coords.x - props.appData.position.x;
+            startY = coords.y - props.appData.position.y;
             
             return;
         }
                         
-        props.appData.position.x = e.clientX - startX;
-        props.appData.position.y = e.clientY - startY;
+        /*props.appData.position.x = e.clientX - startX;
+        props.appData.position.y = e.clientY - startY;*/
 
-        let newX = e.clientX - startX;
-        let newY = e.clientY - startY;
+        let newX = coords.x - startX;
+        let newY = coords.y - startY;
 
         //# # # # LA VENTANA NO SE PUEDE MOVER FUERA DE LA PANTALLA
         /*const maxX = window.innerWidth - props.appData.size.width;
@@ -73,15 +84,21 @@ const startDrag = (event: MouseEvent) => {
         props.appData.position.y = newY;        
     };
 
-    const onMouseUp = () => {
+    const onEnd = () => {
         isDragging.value = false;
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onEnd);
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onEnd);
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
 }
+
+    
 
 const windowStyles = computed(() => {
     const taskbarHeight = '48px';
@@ -106,7 +123,16 @@ const windowStyles = computed(() => {
     };
 })
 
-const startResize = (direction: string, event: MouseEvent) => {
+const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
+
+    const getCoords = (e: MouseEvent | TouchEvent) => {
+        if ('touches' in e) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    };
+
+    const initialCoords = getCoords(event);
 
     //Soluciona errores??!!
     //Si el contenido de tu ventana (el iframe o el textarea) captura el mouse mientras te mueves, el reescalado se detendrá. Asegúrate de añadir esto mientras reescalas:
@@ -119,23 +145,26 @@ const startResize = (direction: string, event: MouseEvent) => {
     if (props.appData.isMaximized) return;
     isResizing.value = true;
 
-    const startX = event.clientX;
-    const startY = event.clientY;
+    const startX = initialCoords.x;
+    const startY = initialCoords.y;
     const startWidth = props.appData.size.width;
     const startHeight = props.appData.size.height;
     const startPosX = props.appData.position.x;
     const startPosY = props.appData.position.y;
 
-    const onMouseMove = (e: MouseEvent) => {
-        if(!ticking){
-            window.requestAnimationFrame(() => {                
+    let ticking = false;
 
-                const deltaX = e.clientX - startX;
-                const deltaY = e.clientY - startY;
+    const onMove = (e: MouseEvent | TouchEvent) => {
+        if (e.cancelable) e.preventDefault();
+
+        if(!ticking){
+            window.requestAnimationFrame(() => {            
+                const coords = getCoords(e);
+                const deltaX = coords.x - startX;
+                const deltaY = coords.y - startY;
 
                 const defaultWidth = 200;
                 const defaultHeight = 200;
-
                 const appMinWidth = props.appData.minSize?.width;
                 const appMinHeight = props.appData.minSize?.height;
 
@@ -174,14 +203,16 @@ const startResize = (direction: string, event: MouseEvent) => {
         }
     };
 
-    const onMouseUp = () => {
+    const onEnd = () => {
         isResizing.value = false;
 
         document.body.classList.remove('resizing-global');
         document.body.style.cursor = 'default';
 
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onEnd);
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onEnd);        
         
         //Soluciona errores??!!
         //Si el contenido de tu ventana (el iframe o el textarea) captura el mouse mientras te mueves, el reescalado se detendrá. Asegúrate de añadir esto mientras reescalas:
@@ -189,8 +220,11 @@ const startResize = (direction: string, event: MouseEvent) => {
         document.body.style.userSelect = 'auto';*/
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
 }
 
 </script>
@@ -211,6 +245,7 @@ const startResize = (direction: string, event: MouseEvent) => {
 
         :style="windowStyles"
         @mousedown="$emit('focus', appData.id)"
+        @touchstart="$emit('focus', appData.id)"
     >
         <div class="resizer n" @mousedown.stop="startResize('n', $event)"></div>
         <div class="resizer s" @mousedown.stop="startResize('s', $event)"></div>
@@ -221,7 +256,7 @@ const startResize = (direction: string, event: MouseEvent) => {
         <div class="resizer sw" @mousedown.stop="startResize('sw', $event)"></div>
         <div class="resizer se" @mousedown.stop="startResize('se', $event)"></div>
         
-        <div class="window-header"@mousedown="startDrag" @dblclick="$emit('maximize', appData.id)">
+        <div class="window-header"@mousedown="startDrag" @touchstart="startDrag" @dblclick="$emit('maximize', appData.id)">
             <div class="window-header-titles">
                 <i :class="appData.icon"></i>
                 <div>{{ appData.name }}</div>

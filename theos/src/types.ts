@@ -46,3 +46,8 @@ export interface AppConfig {
     };
   }
 }
+
+export interface iconConfig {
+  id: string;
+  paths: string[];
+}

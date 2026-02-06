@@ -158,7 +158,5 @@ export const apps: AppConfig[] = [
             minSize: { width: 640, height: 426 },
             maxSize: { width: 0, height: 352 }
         }
-
-
 ]
     
