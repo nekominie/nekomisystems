@@ -1,14 +1,12 @@
 <script setup lang="ts">
 
 import { ref, onMounted } from 'vue'
+import { apps } from '../data/apps'
+
 import Taskbar from './taskbar.vue'
 import Desktop from './dekstop.vue'
 
-import { apps } from '../data/apps'
-
 const installedApps = ref(apps)
-
-let cascadeOffset = 0;
 
 const taskbarIconClicked = (appId: string) => {
     console.log('Attempting to launch: ', appId);
@@ -75,6 +73,7 @@ const taskbarIconClicked = (appId: string) => {
     }*/
 }
 
+//let cascadeOffset = 0;
 /*const taskbarIconClicked = (appId: string) => {
     const app = installedApps.value.find(a => a.id === appId);
     if (app && !app.isOpen) {
@@ -148,14 +147,12 @@ onMounted(() => {
 </style>
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');    
+    @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300..700&display=swap');    
     .main-font {
-        font-family: "Noto Sans", sans-serif;
+        font-family: "Quicksand", sans-serif;
         font-optical-sizing: auto;
-        font-weight: 500;
-        font-style: normal;
-        font-variation-settings: "wdth" 100;
-        font-size: 13px;
+        font-weight: 400;
+        font-style: normal;    
     }
 </style>
 

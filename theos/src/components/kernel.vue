@@ -1,7 +1,8 @@
 <script setup lang="ts">
 
-import OperatingSystem from './os.vue'
 import { onMounted, ref } from 'vue'
+import OperatingSystem from './os.vue'
+import WelcomeSetup from './os/welcome_setup.vue'
 
 const emit = defineEmits<{
     (e: 'shutdown'): void
@@ -13,21 +14,35 @@ const props = defineProps<{
 
 const doneLoading = ref(false);
 const runShutdown = ref(false);
+const showSetup = ref(false);
 
-onMounted(() => {
-    if(props.startUp) {
-        //es un booteo
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-        //return
-        setTimeout(() => {
-            doneLoading.value = true;
-        }, 4000);
+onMounted(async () => {
+
+    if (props.startUp) {
+        // Si es un booteo, esperamos los 4 segundos obligatorios
+        doneLoading.value = false;
+        await delay(4000);
     }
-    else{
-        //no es un booteo, mostrar os
-        doneLoading.value = true;
+    
+    const didSetup = localStorage.getItem('ranSetup') === 'true';
+
+    if (!didSetup) {
+        // Si no ha hecho el setup, lo mandamos para alla
+        showSetup.value = true;
+    } else {
+        // Si ya lo hizo, nos aseguramos que el setup esté oculto
+        showSetup.value = false;
     }
+
+    doneLoading.value = true;
 })
+
+const finishedSetup = () => {
+    showSetup.value = false;    
+    localStorage.setItem('ranSetup', 'true');
+}
 
 const acpiHandler = () => {
     runShutdown.value = true;
@@ -40,7 +55,12 @@ const acpiHandler = () => {
 </script>
 
 <template>
-    <OperatingSystem v-if="doneLoading" :class="{ 'shutdown-run': runShutdown }"
+
+    <WelcomeSetup v-if="showSetup"
+        @finishedSetup="finishedSetup"
+    />
+
+    <OperatingSystem v-if="doneLoading && !showSetup" :class="{ 'shutdown-run': runShutdown }"
         @shutdown="acpiHandler"
     />
 

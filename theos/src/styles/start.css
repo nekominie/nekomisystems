@@ -20,7 +20,7 @@
 
 .start-menu-container{
     height: 44px;
-    display: flex;
+    display: flex; 
     align-items: center;
 }
 
