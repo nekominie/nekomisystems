@@ -59,7 +59,7 @@ const fillProfile = async () => {
             >
             </div>
 
-            <div style="display:flex; justify-content: center; font-size: 20px;">{{ userName }}</div>
+            <div style="display:flex; justify-content: flex-end; font-size: 20px;">{{ userName }}</div>
 
         </div>
 
