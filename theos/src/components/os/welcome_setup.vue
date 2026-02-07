@@ -271,7 +271,7 @@ const finishSetup = async () => {
         height: 100%;
         width: 100%;
 
-        background-image: url('/wallpapers/default-wallpaper.png');
+        background-image: url('/wallpapers/default-wallpaper.jpg');
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;

@@ -1,5 +1,47 @@
 <script setup lang="ts">
-    import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import type { UserProfile } from '../types'
+
+const previewUrl = ref('')
+
+onMounted(() => {
+    fillProfile();
+})
+
+const getProfileFromDB = async (): Promise<UserProfile | null> => {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open("NekomiOS_DB", 1);
+
+        request.onsuccess = (e: any) => {
+            const db = e.target.result;
+            const transaction = db.transaction("user_data", "readonly");
+            const store = transaction.objectStore("user_data");
+
+            const getRequest = store.get("profile");
+
+            getRequest.onsuccess = () => {
+                resolve(getRequest.result as UserProfile || null); // Aquí viene { name, avatar, setupDate }
+            };
+
+            getRequest.onerror = () => reject("Error al obtener el perfil");
+        };
+
+        request.onerror = () => reject("No se pudo abrir la base de datos");
+    });
+};
+
+const fillProfile = async () => {
+    try{
+        const profile = await getProfileFromDB();
+
+        if(profile){
+            previewUrl.value = URL.createObjectURL(profile.avatar);
+        }
+    }
+    catch(e){
+        console.error(e);
+    }
+}
 
 </script>
 
@@ -10,8 +52,9 @@
 <template>
     <div class="start-menu" style="height: 600px; width: 300px;">
         <div class="start-menu-header">
-            <div class="user-picture">
-                <img>
+            <div class="user-picture"
+                :style="{ backgroundImage: `url(${previewUrl || ''})`, backgroundSize: 'cover' }"
+            >
             </div>
 
         </div>

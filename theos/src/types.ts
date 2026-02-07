@@ -47,7 +47,13 @@ export interface AppConfig {
   }
 }
 
-export interface iconConfig {
+export interface IconConfig {
   id: string;
   paths: string[];
+}
+
+export interface UserProfile{
+  name: string;
+  avatar: Blob;
+  setupDate: Date;
 }

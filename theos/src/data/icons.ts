@@ -1,6 +1,6 @@
-import type { iconConfig } from '../types'
+import type { IconConfig } from '../types'
 
-export const icons: iconConfig[] = [
+export const icons: IconConfig[] = [
     {
         id: 'notepad',
         paths: [
