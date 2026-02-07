@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const gameUrl = `${import.meta.env.VITE_GAME_URL}/bibootaxgame/`
+const gameUrl = '/bibootaxgame/' /*`${import.meta.env.VITE_GAME_URL}/bibootaxgame/`*/
 </script>
 
 <template>

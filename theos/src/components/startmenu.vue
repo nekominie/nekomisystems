@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import type { UserProfile } from '../types'
 
 const previewUrl = ref('')
+const userName = ref('')
 
 onMounted(() => {
     fillProfile();
@@ -36,6 +37,7 @@ const fillProfile = async () => {
 
         if(profile){
             previewUrl.value = URL.createObjectURL(profile.avatar);
+            userName.value = profile.name;
         }
     }
     catch(e){
@@ -56,6 +58,8 @@ const fillProfile = async () => {
                 :style="{ backgroundImage: `url(${previewUrl || ''})`, backgroundSize: 'cover' }"
             >
             </div>
+
+            <div style="display:flex; justify-content: center; font-size: 20px;">{{ userName }}</div>
 
         </div>
 
