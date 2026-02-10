@@ -13,14 +13,20 @@ const currentIcon = computed(() => {
 </script>
 
 <template>
+  <div
+    v-if="currentIcon && currentIcon.svg"
+    v-html="currentIcon.svg"  
+  >
+  </div>
+
   <svg
-    v-if="currentIcon"
+    v-else-if="currentIcon && currentIcon.paths"
     xmlns="http://www.w3.org/2000/svg" 
     viewBox="0 0 16 16" 
-    fill="currentColor" 
+    fill="currentColor"
     class="svg-icon"
   >
-    <path 
+    <path
         v-for="(pathData, index) in currentIcon.paths"
         :key="index"
         :d="pathData"

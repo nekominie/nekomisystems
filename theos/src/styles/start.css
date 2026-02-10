@@ -3,7 +3,7 @@
   bottom: 60px;
   left: 11px;
   background-color: #00000066;
-  border-radius: 10px;
+  border-radius: 13px;
   backdrop-filter: blur(38px);
   /*box-shadow: 0px 0px 13px 0px #00000070;*/
   z-index: 999999999;
@@ -38,7 +38,24 @@
 .start-menu-button{
     border: none;
     background-color: transparent;
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.start-menu-button:hover{
+    background-color: #0000005b;
+}
+
+.see-all-apps-btn{
+    margin: 6px; 
+    background-color: #00000000; 
+    border: 0; 
+    height: 29px; 
+    border-radius: 4px;
+}
+
+.see-all-apps-btn:hover{
+    background-color: #00000021;
 }
 
 .user-picture{
@@ -48,7 +65,6 @@
     height: 5rem;
     border-radius: 50%;
     top: -23px;
-    left: 31px;
     border-style: solid;
     border-width: 2px;
 }

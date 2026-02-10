@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import StartSettings from './start_settings.vue'
 import type { UserProfile } from '../types'
 
 const previewUrl = ref('')
@@ -52,40 +53,40 @@ const fillProfile = async () => {
 </style>
 
 <template>
-    <div class="start-menu" style="height: 600px; width: 300px;">
-        <div class="start-menu-header">
-            <div class="user-picture"
-                :style="{ backgroundImage: `url(${previewUrl || ''})`, backgroundSize: 'cover' }"
-            >
+    <div class="start-menu" style="height: 38rem; width: 23rem; flex-direction: row;">
+
+        <div style="display: flex; flex-direction: column; height: 100%; flex: 1;">
+
+            <div style="margin-right: 14px; height: 100%; display: flex; flex-direction: column;">
+                <div style="display: flex; height: 14%; justify-content: center; align-items: flex-end; padding-bottom: 7px;">
+                    <div class="user-picture"
+                        :style="{ backgroundImage: `url(${previewUrl || ''})`, backgroundSize: 'cover' }"
+                    >
+                    </div>            
+                    <div style="display:flex; justify-content: center; font-size: 16px;">{{ userName }}</div>
+                </div>
+                <div class="divider"></div>
+
+                <StartSettings />
+
+                <div class="divider"></div>
+
+                <div style="padding-top: 9px;">
+                    <button class="start-menu-button" style="border-radius: 4px; width: 100%; height: 28px;"
+                    @click="$emit('shutdown')"
+                    >
+                        <i class="bi-power" style="display: flex; font-size: 18px; margin-right: 5px;"></i>
+                        Apagar
+                    </button>            
+                </div>
             </div>
-
-            <div style="display:flex; justify-content: flex-end; font-size: 20px;">{{ userName }}</div>
-
         </div>
-
-        <div class="divider"></div>
-        
-        <div class="start-menu-main" style="flex: 1;">
-            <div style="display: flex; flex-direction: column;">
-                <div style="flex: 1;"></div>
-                <button
-                    @click=""
-                >
-                    Ver todas las aplicaciones
-                </button>
-            </div>
-
-            <div></div>
-
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="start-menu-container">
-            <button class="start-menu-button"
-                @click="$emit('shutdown')"
+        <div style="display: flex; flex-direction: column; height: 100%; background-color: #00000040; flex: 1; border-radius: 9px;">
+            <div style="flex: 1;"></div>
+            <button class="see-all-apps-btn"
+                @click=""
             >
-                Apagar
+                Ver todas las aplicaciones
             </button>
         </div>
   </div>
