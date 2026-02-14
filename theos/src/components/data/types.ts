@@ -1,4 +1,4 @@
-export interface AppConfig {
+export interface InstalledAppConfig {
   id: string;
   name: string;
   icon: string; // Ruta de la imagen o clase de FontAwesome  
@@ -35,9 +35,4 @@ export interface UserProfile{
   name: string;
   avatar: Blob;
   setupDate: Date;
-}
-
-export interface StartApp{
-  id: string;
-  name: string;
 }

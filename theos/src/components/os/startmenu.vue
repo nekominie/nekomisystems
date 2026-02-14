@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import StartSettings from './start_settings.vue'
-import type { UserProfile } from '../types'
+import type { UserProfile } from '../data/types'
 
 const previewUrl = ref('')
 const userName = ref('')
@@ -67,7 +67,9 @@ const fillProfile = async () => {
                 </div>
                 <div class="divider"></div>
 
-                <StartSettings />
+                <StartSettings 
+                    @close-startmenu="$emit('close-startmenu')"
+                />
 
                 <div class="divider"></div>
 

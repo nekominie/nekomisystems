@@ -4,7 +4,7 @@ import Spotify from './spotify.vue'
 import BibooTaxGame from './bibootaxgame.vue'
 import DoomGame from './doomgame.vue'
 
-export const appComponents: Record<string, any> = {
+export const InstalledAppsIndex: Record<string, any> = {
     notepad: markRaw(Notepad),
     spotify: markRaw(Spotify),
     bibootaxgame: markRaw(BibooTaxGame),

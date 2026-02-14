@@ -1,10 +1,10 @@
 <script setup lang="ts">
 
-import type { AppConfig } from '../types'
+import type { InstalledAppConfig } from '../data/types'
 import { computed, ref } from 'vue'
 
 const props = defineProps<{
-    appData: AppConfig,
+    appData: InstalledAppConfig,
     component: any
 }>()
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { contain } from 'three/src/extras/TextureUtils.js';
 import { onMounted, ref, nextTick } from 'vue';
 
 const emit = defineEmits<{

@@ -1,6 +1,6 @@
-import type { AppConfig } from '../types'
+import type { InstalledAppConfig } from './types.ts'
 
-export const apps: AppConfig[] = [
+export const InstalledApps: InstalledAppConfig[] = [
         {
             id: 'notepad',
             name: 'Notepad',

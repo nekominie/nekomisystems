@@ -1,8 +1,8 @@
 <script setup lang="ts">
 
 import { onMounted, ref } from 'vue'
-import OperatingSystem from './os.vue'
-import WelcomeSetup from './os/welcome_setup.vue'
+import OperatingSystem from '../os.vue'
+import WelcomeSetup from './welcome_setup.vue'
 
 const emit = defineEmits<{
     (e: 'shutdown'): void

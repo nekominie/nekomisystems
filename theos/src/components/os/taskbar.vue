@@ -1,12 +1,12 @@
 <script setup lang="ts">
 
 import { onMounted, onUnmounted, ref, computed } from 'vue'
-import type { AppConfig } from '../types';
+import type { InstalledAppConfig } from '../data/types';
 import Startmenu from './startmenu.vue';
 import IconManager from './iconmanager.vue';
 
 defineProps<{ 
-    pinnedApps: AppConfig[]
+    pinnedApps: InstalledAppConfig[]
 }>()
 
 const emit = defineEmits<{
@@ -65,6 +65,7 @@ const isImage = (iconString: string) => {
         <Startmenu 
             v-show="showingStartMenu"
             @shutdown="$emit('shutdown')"
+            @close-startmenu="toggleStartMenu"
         />
     </Transition>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import Boot from './boot.vue'
-import Kernel from './kernel.vue'
+import Boot from './os/boot.vue'
+import Kernel from './os/kernel.vue'
 
 const pcOn = ref(false);
 const loadedOs = ref(false);
