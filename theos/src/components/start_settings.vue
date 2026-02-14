@@ -8,7 +8,7 @@ import IconManager from './iconmanager.vue';
 
 <template>
     <div style="font-size: 14px; flex: 1;">
-        <div v-for="app in startApps" :key="app.id" style="display: flex; flex-direction: row; align-items: center;">
+        <div v-for="app in startApps" :key="app.id" class="start-app">
 
             <IconManager
                 :id="app.id"
@@ -21,10 +21,30 @@ import IconManager from './iconmanager.vue';
 </template>
 
 <style scoped>
+.start-app{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    max-height: 40px;
+    margin: 8px 0;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.start-app svg{
+    flex: 1;
+    max-height: 24px;
+}
+
+.start-app:hover{
+    background-color: #00000021;
+}
+
 .taskbar-icon-element{
     margin-right: 6px;
 }
-    .taskbar-icon-element *{
+.taskbar-icon-element *{
         max-width: 20px;
     }
 </style>

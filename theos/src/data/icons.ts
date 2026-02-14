@@ -42,7 +42,13 @@ export const icons: IconConfig[] = [
         ]
     },
     {
+        id: '',
+        svg: '<svg fill="#ffffff" viewBox="0 0 32.001 32.001" xmlns="http://www.w3.org/2000/svg"><g id="Group_8" data-name="Group 8" transform="translate(-381.999 -465.695)"><path id="Path_380" data-name="Path 380" d="M410,493.7H386v-28a4,4,0,0,0-4,4v24a4,4,0,0,0,4,4h24a4,4,0,0,0,4-4Z"/><rect id="Rectangle_59" data-name="Rectangle 59" width="4" height="11.998" transform="translate(389.999 477.696)"/><rect id="Rectangle_60" data-name="Rectangle 60" width="4.001" height="15.998" transform="translate(397.999 473.696)"/><rect id="Rectangle_61" data-name="Rectangle 61" width="4" height="19.999" transform="translate(406 469.696)"/></g></svg>'
+    },
+    {
         id: 'tasksupervisor',
-        svg: '<svg fill="#ffffff" width="800px" height="800px" viewBox="0 0 32.001 32.001" xmlns="http://www.w3.org/2000/svg"><g id="Group_8" data-name="Group 8" transform="translate(-381.999 -465.695)"><path id="Path_380" data-name="Path 380" d="M410,493.7H386v-28a4,4,0,0,0-4,4v24a4,4,0,0,0,4,4h24a4,4,0,0,0,4-4Z"/><rect id="Rectangle_59" data-name="Rectangle 59" width="4" height="11.998" transform="translate(389.999 477.696)"/><rect id="Rectangle_60" data-name="Rectangle 60" width="4.001" height="15.998" transform="translate(397.999 473.696)"/><rect id="Rectangle_61" data-name="Rectangle 61" width="4" height="19.999" transform="translate(406 469.696)"/></g></svg>'
+        paths: [
+            'M4.5 11.5A.5.5 0 0 1 5 11h10a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5m-2-4A.5.5 0 0 1 3 7h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m-2-4A.5.5 0 0 1 1 3h10a.5.5 0 0 1 0 1H1a.5.5 0 0 1-.5-.5'
+        ]
     }
 ]
