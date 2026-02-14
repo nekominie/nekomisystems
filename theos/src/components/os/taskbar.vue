@@ -4,10 +4,15 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import type { InstalledAppConfig } from '../data/types';
 import Startmenu from './startmenu.vue';
 import IconManager from './iconmanager.vue';
+import AppFinder from './apps_finder.vue';
 
-defineProps<{ 
+const props = defineProps<{ 
     pinnedApps: InstalledAppConfig[]
 }>()
+
+const runningApps = computed(() => {
+    return props.pinnedApps.filter(app => app.isOpen);
+});
 
 const emit = defineEmits<{
     (e: 'taskbar-icon-clicked', id: string): void,
@@ -17,6 +22,7 @@ const emit = defineEmits<{
 const currentTime = ref('')
 const currentDate = ref('')
 const showingStartMenu = ref(false)
+const showingAppFinder = ref(false)
 
 const toggleStartMenu = () => {
     showingStartMenu.value = !showingStartMenu.value
@@ -37,11 +43,17 @@ onMounted(() => {
     timer = window.setInterval(updateTime, 1000)
 
     window.addEventListener('mousedown', (e) => {
-        const isClickInsideMenu = (e.target as HTMLElement).closest('.start-menu');    
+        const isClickInsideMenu = (e.target as HTMLElement).closest('.start-menu');
+        const isClickInsideAppFinder = (e.target as HTMLElement).closest('.app-finder');
+        
         const isClickOnOrb = (e.target as HTMLElement).closest('.orb');
 
         if (!isClickInsideMenu && !isClickOnOrb) {
             showingStartMenu.value = false;
+        }
+
+        if (!isClickInsideAppFinder) {
+            showingAppFinder.value = false;
         }
     })
 })
@@ -52,6 +64,11 @@ onUnmounted(() => {
 
 const isImage = (iconString: string) => {
     return /\.(jpg|jpeg|png|webp|avif|svg)$/.test(iconString) || iconString.startsWith('/');
+}
+
+const viewAppFinder = () => {
+    toggleStartMenu();
+    showingAppFinder.value = !showingAppFinder.value
 }
     
 </script>
@@ -66,6 +83,14 @@ const isImage = (iconString: string) => {
             v-show="showingStartMenu"
             @shutdown="$emit('shutdown')"
             @close-startmenu="toggleStartMenu"
+            @view-app-finder="viewAppFinder"
+        />
+    </Transition>
+
+    <Transition name="app-finder-fade">
+        <AppFinder 
+            v-show="showingAppFinder"
+            @close-app-finder="showingAppFinder = false"
         />
     </Transition>
 
@@ -82,7 +107,7 @@ const isImage = (iconString: string) => {
             </div>
 
             <div class="apps-container" >
-                <div class="app" v-for="app in pinnedApps" :key="app.id" @click="emit('taskbar-icon-clicked', app.id)">
+                <div class="app" v-for="app in runningApps" :key="app.id" @click="emit('taskbar-icon-clicked', app.id)">
                     <div class="taskbar-btn app-icon" 
                     :class="{ 'running-app': app.isOpen, 'focused-app': app.isFocused }">  
 

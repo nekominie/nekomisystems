@@ -6,6 +6,13 @@ import type { UserProfile } from '../data/types'
 const previewUrl = ref('')
 const userName = ref('')
 
+const emit = defineEmits<{
+    (e: 'view-app-finder'): void,
+    (e: 'view-start-settings'): void,
+    (e: 'shutdown'): void,
+    (e: 'close-startmenu'): void
+}>()
+
 onMounted(() => {
     fillProfile();
 })
@@ -45,7 +52,6 @@ const fillProfile = async () => {
         console.error(e);
     }
 }
-
 </script>
 
 <style scoped>
@@ -68,14 +74,14 @@ const fillProfile = async () => {
                 <div class="divider"></div>
 
                 <StartSettings 
-                    @close-startmenu="$emit('close-startmenu')"
+                    @close-startmenu="emit('close-startmenu')"
                 />
 
                 <div class="divider"></div>
 
                 <div style="padding-top: 9px;">
                     <button class="start-menu-button" style="border-radius: 4px; width: 100%; height: 28px;"
-                    @click="$emit('shutdown')"
+                    @click="emit('shutdown')"
                     >
                         <i class="bi-power" style="display: flex; font-size: 18px; margin-right: 5px;"></i>
                         Apagar
@@ -86,7 +92,7 @@ const fillProfile = async () => {
         <div style="display: flex; flex-direction: column; height: 100%; background-color: #00000040; flex: 1; border-radius: 9px;">
             <div style="flex: 1;"></div>
             <button class="see-all-apps-btn"
-                @click=""
+                @click="emit('view-app-finder')"
             >
                 Ver todas las aplicaciones
             </button>
