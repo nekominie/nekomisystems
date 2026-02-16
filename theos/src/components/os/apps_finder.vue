@@ -19,7 +19,13 @@ const runApp = (id: string) => {
 <template>
     <div class="app-finder">
         <div style="height: 100%; display: flex; flex-direction: column;">
-            <div class="main-title">Todas las aplicaciones</div>
+            <div class="" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 18px;">                   
+                <div class="main-title">Todas las aplicaciones</div>
+                <div class="d-flex flex-row">
+                    <i class="bi bi-search" style="margin-right: 10px;"></i>
+                    <input class="search"/>
+                </div>
+            </div>
 
             <div class="main-container">
                 <div>
@@ -65,6 +71,8 @@ const runApp = (id: string) => {
     flex-direction: column;
     /*min-width: 90vw;*/
     min-height: 80vh;
+    max-height: 90vh;
+    max-width: 90vw;
     aspect-ratio: 1/1;
     position: absolute;
     top: 50%;
@@ -72,33 +80,40 @@ const runApp = (id: string) => {
     transform: translate(-50%, -52%);
     background-color: #00000066;
     backdrop-filter: blur(38px);
-    border-radius: 36px;
+    border-radius: 15px;
     z-index: 999999999;
     color: rgba(255, 255, 255, 0.708);
 }
 
+.search{
+    border-radius: 5px;
+    border: 0;
+    background-color: rgba(0, 0, 0, 0.259);
+    color: white;
+    padding: 10px;
+}
+
 .main-title{
-    font-size: 35px;
+    font-size: 25px;
     font-weight: 600;
-    margin-bottom: 29px;
 }
 
 .main-container{
     border-radius: 10px;
     background-color: #00000030;
     flex: 1;
-    padding: 32px;
+    padding: 14px;
 }
 
 .subtitle{
-    font-size: 26px;
+    font-size: 21px;
     font-weight: 400;
-    margin-bottom: 20px;
 }
 
 .app-name{
     /*white-space: nowrap;*/
     text-align: center;
+    font-size: 11px;
 }
 
 .icons-container{
@@ -112,16 +127,17 @@ const runApp = (id: string) => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin: 15px;
+    justify-content: flex-start;
+
+    height: 105px;
+    max-width: 60px;
+
+    padding: 10px;
+    margin: 6px 1px;
+    border-radius: 10px;
     cursor: pointer;
     font-size: 14px;
-    max-height: 5rem;
-    aspect-ratio: 1/1;
     color: rgba(255, 255, 255, 0.708);
-    padding: 14px;
-    margin: 10px;
-    border-radius: 10px;
-    justify-content: flex-end;
 }
 
 .app-element:hover{
@@ -130,11 +146,14 @@ const runApp = (id: string) => {
 
 .app-element svg, .app-element img{
     margin-bottom: 10px;
+    width: 63% !important;
+    aspect-ratio: 1/1 !important;
+    height: unset !important;
 }
 
 .app-finder > div:first-child{
     flex: 1;
-    padding: 30px;
+    padding: 17px;
 }
 
 .app-finder-fade-enter-from,
