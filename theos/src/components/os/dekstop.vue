@@ -4,8 +4,10 @@ import { computed  } from 'vue'
 import Window from './window.vue'
 import { MasterAppRegistry as AppsIndex } from '../data/master_apps_registry.ts'
 import { processInstructions } from './process_manager.ts'
+import { useContextMenu } from './context_menu/context_menu.ts'
 
-const { state } = processInstructions()
+const { openMenu } = useContextMenu()
+const { state, launchApp } = processInstructions()
 
 const transitionName = computed(() => state.lastAction)
 
@@ -14,6 +16,13 @@ const openedApps = computed(() => {
 })
 
 const { minimizeWindow, maximizeWindow, bringToFront, closeApp } = processInstructions();
+
+const handleContextMenu = (e: MouseEvent) => {
+    openMenu(e, [
+        { label: 'Personalizar', icon: 'bi-brush-fill', action: () => launchApp('settings') }
+    ])
+}
+
 </script>
 
 <style scoped>
@@ -21,7 +30,7 @@ const { minimizeWindow, maximizeWindow, bringToFront, closeApp } = processInstru
 </style>
 
 <template>
-    <div class="desktop">
+    <div class="desktop" @contextmenu.prevent="handleContextMenu">
         <TransitionGroup :name="transitionName">
             <Window
                 v-for="app in openedApps"

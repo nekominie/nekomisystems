@@ -2,6 +2,7 @@
 
 import type { InstalledAppConfig } from '../data/types'
 import { computed, ref } from 'vue'
+import IconManager from './iconmanager.vue';
 
 const props = defineProps<{
     appData: InstalledAppConfig,
@@ -96,9 +97,7 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
     window.addEventListener('mouseup', onEnd);
     window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onEnd);
-}
-
-    
+}  
 
 const windowStyles = computed(() => {
     const taskbarHeight = '48px';
@@ -258,7 +257,7 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
         
         <div class="window-header"@mousedown="startDrag" @touchstart="startDrag" @dblclick="$emit('maximize', appData.id)">
             <div class="window-header-titles">
-                <i :class="appData.icon"></i>
+                <IconManager :id="appData.id" class="taskbar-icon-element" />
                 <div>{{ appData.name }}</div>
             </div>
 
@@ -280,7 +279,15 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
             </div>
 
             <component :is="component" v-if="component" />
-            <div v-else>El componente no se encuentra</div>
+            <div v-else style="display: flex; justify-content: center; align-items: center; height: 100%; color: #afafafe0;">
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <i class="bi-emoji-dizzy" style="font-size: 4rem;"></i>
+                    <div style="font-weight: 600; font-size: 22px; display: flex; flex-direction: column;">
+                        No fue posible cargar la aplicación
+                        <div style="display: flex; justify-content: center; font-weight: 500; font-size: 16px; color: #ffffff3d;">Error: null component</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>

@@ -198,3 +198,8 @@ iframe{
   z-index: 9999;
   background: transparent;
 }
+
+.iconmanager-icon{
+    max-width: 16px;
+    margin-right: 6px;
+}

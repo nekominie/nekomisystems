@@ -3,9 +3,27 @@
 import { CoreApps } from '../data/coreapps'
 import { processInstructions } from './process_manager'
 import { InstalledApps } from '../data/installedapps';
+import { useContextMenu } from './context_menu/context_menu.ts'
 import IconManager from './iconmanager.vue'
 
-const { launchApp } = processInstructions();
+const { openMenu } = useContextMenu()
+
+const contextMenuApps = (e: MouseEvent, app: any) => {
+    openMenu(e, [
+        { 
+            label: app.isPinned ? 'Desanclar de la barra de tareas' : 'Anclar en la barra de tareas', 
+            icon: app.isPinned ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => togglePinApp(app.id) 
+        },
+        { separator: true},
+        {
+            label: 'Abrir',
+            action: () => launchApp(app.id)
+        }
+    ])
+}
+
+const { launchApp, togglePinApp } = processInstructions();
 
 const emit = defineEmits(['close-app-finder'])
 
@@ -30,20 +48,24 @@ const runApp = (id: string) => {
             <div class="main-container">
                 <div>
                     <div class="subtitle">Aplicaciones</div>
+                    
                     <div class="icons-container">
                         <div
                             v-for="app in InstalledApps" 
                             :key="app.id"
                             @click="runApp(app.id)"
-                            class="app-element"
+                            class="app-container"
+                            @contextmenu.prevent="contextMenuApps($event, app)"
                         >
-                            <IconManager :id="app.id" class="taskbar-icon-element" />
-                            <div class="app-name">{{ app.name }}</div>
+                            <div class="app-element">
+                                <IconManager :id="app.id" class="taskbar-icon-element" />
+                                <div class="app-name">{{ app.name }}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <hr style="margin: 48px 0;">
+                <hr style="margin: 20px 0;">
 
                 <div>
                     <div class="subtitle">Aplicaciones de Sistema</div>
@@ -52,10 +74,13 @@ const runApp = (id: string) => {
                             v-for="app in CoreApps" 
                             :key="app.id"
                             @click="runApp(app.id)"
-                            class="app-element"
+                            class="app-container"
+                            @contextmenu.prevent="contextMenuApps($event, app)"
                         >
-                            <IconManager :id="app.id" class="taskbar-icon-element" />
-                            <div class="app-name">{{ app.name }}</div>                    
+                            <div class="app-element">
+                                <IconManager :id="app.id" class="taskbar-icon-element" />
+                                <div class="app-name">{{ app.name }}</div>               
+                            </div>     
                         </div>
                     </div>
                 </div>
@@ -90,7 +115,7 @@ const runApp = (id: string) => {
     border: 0;
     background-color: rgba(0, 0, 0, 0.259);
     color: white;
-    padding: 10px;
+    padding: 6px;
 }
 
 .main-title{
@@ -108,12 +133,15 @@ const runApp = (id: string) => {
 .subtitle{
     font-size: 21px;
     font-weight: 400;
+    margin-bottom: 11px;
 }
 
 .app-name{
     /*white-space: nowrap;*/
     text-align: center;
     font-size: 11px;
+    overflow-wrap: break-word;
+    hyphens: auto;
 }
 
 .icons-container{
@@ -127,17 +155,18 @@ const runApp = (id: string) => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-
-    height: 105px;
-    max-width: 60px;
-
-    padding: 10px;
-    margin: 6px 1px;
+    
+    padding: 7px;
     border-radius: 10px;
-    cursor: pointer;
     font-size: 14px;
+    cursor: pointer;
     color: rgba(255, 255, 255, 0.708);
+}
+
+.app-container{
+    width: 70px;
+    margin: 0 5px;
+
 }
 
 .app-element:hover{

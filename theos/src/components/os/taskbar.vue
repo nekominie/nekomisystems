@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 
 const runningApps = computed(() => {
-    return props.pinnedApps.filter(app => app.isOpen);
+    return props.pinnedApps.filter(app => app.isOpen || app.isPinned);
 });
 
 const emit = defineEmits<{
@@ -62,10 +62,6 @@ onUnmounted(() => {
     clearInterval(timer)
 })
 
-const isImage = (iconString: string) => {
-    return /\.(jpg|jpeg|png|webp|avif|svg)$/.test(iconString) || iconString.startsWith('/');
-}
-
 const viewAppFinder = () => {
     toggleStartMenu();
     showingAppFinder.value = !showingAppFinder.value
@@ -110,15 +106,8 @@ const viewAppFinder = () => {
                 <div class="app" v-for="app in runningApps" :key="app.id" @click="emit('taskbar-icon-clicked', app.id)">
                     <div class="taskbar-btn app-icon" 
                     :class="{ 'running-app': app.isOpen, 'focused-app': app.isFocused }">  
-
-                    <img
-                        v-if="isImage(app.icon)"
-                        :src="app.icon"
-                        class="taskbar-icon-element"
-                    >
                     
-                    <IconManager
-                        v-else
+                    <IconManager                        
                         :id="app.id"
                         class="taskbar-icon-element"
                     />

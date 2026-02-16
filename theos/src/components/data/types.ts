@@ -22,13 +22,15 @@ export interface InstalledAppConfig {
       width: number;
       height: number;
     };
-  }
+  },
+  isPinned: boolean
 }
 
 export interface IconConfig {
   id: string;
   paths?: string[];
   svg?: string;
+  saved_path?: string;
 }
 
 export interface UserProfile{

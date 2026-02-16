@@ -2,16 +2,19 @@
 
 import { ref, onMounted } from 'vue'
 import { processInstructions } from './os/process_manager'
+import { useContextMenu } from './os/context_menu/context_menu.ts'
+
+const { contextMenuState } = useContextMenu();
 
 const { state, launchApp, bringToFront, closeApp } = processInstructions();
 
 import Taskbar from './os/taskbar.vue'
 import Desktop from './os/dekstop.vue'
+import ContextMenu from './os/context_menu/context_menu.vue'
 
 const topZ = ref(100);
 
 const desktopComponent = ref<InstanceType<typeof Desktop> | null>(null);
-
 </script>
 
 <style scoped>
@@ -42,6 +45,8 @@ const desktopComponent = ref<InstanceType<typeof Desktop> | null>(null);
             @taskbar-icon-clicked="launchApp"
             @shutdown="$emit('shutdown')"
         />
+
+        <ContextMenu />
     </div>
 </template>
 

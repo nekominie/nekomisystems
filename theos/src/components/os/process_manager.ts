@@ -102,5 +102,12 @@ export const processInstructions = () => {
         }
     }
 
-    return { state, launchApp, bringToFront, closeApp, minimizeWindow: minimizeWindow, maximizeWindow }
+    const togglePinApp = (appId: string) => {
+        const app = state.installedApps.find(a => a.id === appId)
+        if (app) {
+            app.isPinned = !app.isPinned
+        }
+    }
+
+    return { state, launchApp, bringToFront, closeApp, minimizeWindow: minimizeWindow, maximizeWindow, togglePinApp }
 }
