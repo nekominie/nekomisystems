@@ -1,10 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
+
 import StartSettings from './start_settings.vue'
+import IconManager from './iconmanager.vue'
+
 import type { UserProfile } from '../data/types'
+import type { InstalledAppConfig } from '../data/types';
+
+import { InstalledApps } from '../data/installedapps'
+import { processInstructions } from './process_manager'
+
+const { launchApp, togglePinAppStart } = processInstructions();
 
 const previewUrl = ref('')
 const userName = ref('')
+
+const props = defineProps<{ 
+    pinnedApps: InstalledAppConfig[]
+}>()
 
 const emit = defineEmits<{
     (e: 'view-app-finder'): void,
@@ -90,7 +103,13 @@ const fillProfile = async () => {
             </div>
         </div>
         <div style="display: flex; flex-direction: column; height: 100%; background-color: #00000040; flex: 1; border-radius: 9px;">
-            <div style="flex: 1;"></div>
+            <div style="flex: 1; padding: 9px;">
+                
+                <div v-for="app in pinnedApps" :key="app.id" class="pinned-app-container" @click="launchApp(app.id)">
+                    <IconManager :id="app.id" class="app-icon" />
+                    <div class="app-name">{{ app.name }}</div>
+                </div>
+            </div>
             <button class="see-all-apps-btn"
                 @click="emit('view-app-finder')"
             >

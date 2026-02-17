@@ -24,6 +24,7 @@ export interface InstalledAppConfig {
     };
   },
   isPinned: boolean,
+  isPinnedStart: boolean,
   previewImg?: string
 }
 

@@ -25,6 +25,7 @@ export const processInstructions = () => {
             const app = state.installedApps.find(a => a.id === saved.id)
             if(app){
                 app.isPinned = saved.isPinned
+                app.isPinnedStart = saved.isPinnedStart
             }
         })
     })
@@ -36,7 +37,20 @@ export const processInstructions = () => {
 
             await db.appSettings.put({ 
                 id: app.id, 
+                isPinnedStart: app.isPinnedStart,
                 isPinned: app.isPinned })
+        }
+    }
+
+    const togglePinAppStart = async (id: string) => {
+        const app = state.installedApps.find(a => a.id === id)
+        if(app){
+            app.isPinnedStart = !app.isPinnedStart
+
+            await db.appSettings.put({ 
+                id: app.id,
+                isPinned: app.isPinned,
+                isPinnedStart: app.isPinnedStart })
         }
     }
 
@@ -48,6 +62,7 @@ export const processInstructions = () => {
         if(!app) return
 
         if(!app.isOpen){
+
             state.lastAction = 'window-spawn'
 
             const screenWidth = window.innerWidth
@@ -66,7 +81,9 @@ export const processInstructions = () => {
             app.isMinimized = false
         }
 
-        updatePreviewImage(app.id)
+        setTimeout(() => {
+            updatePreviewImage(app.id)
+        }, 100);
 
         bringToFront(appId)
     }
@@ -142,24 +159,20 @@ export const processInstructions = () => {
     }
 
     const updatePreviewImage = async (appId: string) => {
-        // Buscamos el elemento en el DOM
-        // Asegúrate de que en Window.vue el div principal tenga id="window-nombreid"
         const el = document.getElementById(`window-content-${appId}`);
         
         if (el) {
             try {
                 const canvas = await html2canvas(el, {
-                    backgroundColor: null, // Mantiene transparencias si las hay
-                    scale: 0.3,           // Capturamos a mitad de resolución para ahorrar memoria
+                    backgroundColor: null,
+                    scale: 0.3,
                     logging: false,
-                    useCORS: true         // Importante por si tienes imágenes externas
+                    useCORS: true
                 });
                 
                 const app = state.installedApps.find(a => a.id === appId);
                 if (app) {
-                    // Guardamos como imagen comprimida (calidad 0.5)
                     app.previewImg = canvas.toDataURL('image/webp', 0.3);
-                    console.log("Capturada preview:", app.previewImg);  
                 }
 
             } catch (err) {
@@ -168,5 +181,14 @@ export const processInstructions = () => {
         }
     };
 
-    return { state, launchApp, bringToFront, closeApp, minimizeWindow: minimizeWindow, maximizeWindow, togglePinApp }
+    return { 
+        state, 
+        launchApp, 
+        bringToFront, 
+        closeApp, 
+        minimizeWindow: minimizeWindow, 
+        maximizeWindow, 
+        togglePinApp, 
+        togglePinAppStart 
+    }
 }

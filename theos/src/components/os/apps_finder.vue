@@ -7,23 +7,27 @@ import { useContextMenu } from './context_menu/context_menu.ts'
 import IconManager from './iconmanager.vue'
 
 const { openMenu } = useContextMenu()
+const { launchApp, togglePinApp, togglePinAppStart } = processInstructions();
 
 const contextMenuApps = (e: MouseEvent, app: any) => {
     openMenu(e, [
-        { 
-            label: app.isPinned ? 'Desanclar de la barra de tareas' : 'Anclar en la barra de tareas', 
-            icon: app.isPinned ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
-            action: () => togglePinApp(app.id) 
-        },
-        { separator: true},
         {
             label: 'Abrir',
             action: () => launchApp(app.id)
+        },
+        { separator: true},
+        { 
+            label: app.isPinned ? 'Desanclar de la barra de tareas' : 'Anclar en la barra de tareas',
+            icon: app.isPinned ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => togglePinApp(app.id) 
+        },
+        { 
+            label: app.isPinnedStart ? 'Desanclar del menu de inicio' : 'Anclar en el menu de inicio',
+            icon: app.isPinnedStart ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => togglePinAppStart(app.id) 
         }
     ])
 }
-
-const { launchApp, togglePinApp } = processInstructions();
 
 const emit = defineEmits(['close-app-finder'])
 
@@ -106,7 +110,7 @@ const runApp = (id: string) => {
     background-color: #00000066;
     backdrop-filter: blur(38px);
     border-radius: 15px;
-    z-index: 999999999;
+    z-index: 1000;
     color: rgba(255, 255, 255, 0.708);
 }
 

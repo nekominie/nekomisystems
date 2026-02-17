@@ -18,7 +18,9 @@ export const CoreApps: InstalledAppConfig[] = [
         tempSettings: {
             position: { x: 0, y: 0, },
             size: { width: 0, height: 0 }
-        }
+        },
+        isPinned: false,
+        isPinnedStart: false
     },
     {
         id: 'settings',
@@ -37,7 +39,9 @@ export const CoreApps: InstalledAppConfig[] = [
         tempSettings: {
             position: { x: 0, y: 0, },
             size: { width: 0, height: 0 }
-        }
+        },
+        isPinned: false,
+        isPinnedStart: false
     },
 ]
     

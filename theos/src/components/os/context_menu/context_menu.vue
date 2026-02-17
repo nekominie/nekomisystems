@@ -39,7 +39,7 @@ window.addEventListener('click', closeMenu);
 
 .context-menu {
     position: fixed;
-    z-index: 999999999;
+    z-index: 1001;
 
     color: #d7d7d7;
     background-color: #0000007a;

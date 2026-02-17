@@ -1,23 +1,33 @@
 <script setup lang="ts">
 
 import { onMounted, onUnmounted, ref, computed } from 'vue'
-import type { InstalledAppConfig } from '../data/types';
+import type { InstalledAppConfig } from '../data/types'
 
-import Startmenu from './startmenu.vue';
-import IconManager from './iconmanager.vue';
-import AppFinder from './apps_finder.vue';
-import { state } from './process_manager';
+import Startmenu from './startmenu.vue'
+import IconManager from './iconmanager.vue'
+import AppFinder from './apps_finder.vue'
+import { state } from './process_manager'
+import { useContextMenu } from './context_menu/context_menu.ts'
+import { processInstructions } from './process_manager'
+
+const { openMenu } = useContextMenu()
+const { launchApp } = processInstructions();
 
 const props = defineProps<{ 
-    pinnedApps: InstalledAppConfig[]
+    installedApps: InstalledAppConfig[]
 }>()
 
 const runningApps = computed(() => {
-    return props.pinnedApps.filter(app => app.isOpen || app.isPinned);
+    return props.installedApps.filter(app => app.isOpen || app.isPinned);
 });
+
+const startApps = computed(() => {
+    return props.installedApps.filter(app => app.isPinnedStart);
+})
 
 const emit = defineEmits<{
     (e: 'taskbar-icon-clicked', id: string): void,
+    (e: 'taskbar-closed-app', id: string): void,
     (e: 'shutdown'): void
 }>()
 
@@ -30,20 +40,51 @@ const hoveredAppId = ref<string | null>(null);
 let showTimeout: number | null = null;
 let hideTimeout: number | null = null;
 
+const contextMenuApps = (e: MouseEvent) => {
+    openMenu(e, [
+        { 
+            label: 'Supervisor de tareas',
+            icon: 'bi-list-task', 
+            action: () => launchApp('task_supervisor') 
+        },
+    ])
+}
+
+const previewPositionStyle = ref({ left: '0px' })
+
+const activeAppForPreview = computed(() => 
+    props.installedApps.find(app => app.id === hoveredAppId.value && app.isOpen)
+)
+
 const handleMouseEnter = (id: string) => {
     if (hideTimeout) {
         clearTimeout(hideTimeout);
         hideTimeout = null;
     }
 
+    const updatePosition = () => {
+        const iconElement = document.getElementById(`taskbar-app-${id}`);
+        if (iconElement) {
+            const rect = iconElement.getBoundingClientRect();
+            previewPositionStyle.value = {
+                left: `${rect.left + rect.width / 2}px`
+            };
+        }
+    };
+
     if (hoveredAppId.value !== null) {
-        hoveredAppId.value = id;
-        return;
+
+        if(showTimeout) clearTimeout(showTimeout)
+
+        updatePosition()
+        hoveredAppId.value = id
+        return
     }
-    
+
     showTimeout = window.setTimeout(() => {
+        updatePosition()
         hoveredAppId.value = id;
-    }, 500);
+    }, 500)
 }
 
 const handleMouseLeave = () => {
@@ -101,13 +142,19 @@ const viewAppFinder = () => {
 }
 
 const handleIconClick = (id: string) => {
-    // IMPORTANTE: Al hacer clic, cancelamos cualquier preview pendiente
     if (showTimeout) clearTimeout(showTimeout)
     hoveredAppId.value = null
-    
     emit('taskbar-icon-clicked', id)
 }
-    
+
+const taskbarAppClosed = (id: string) => {
+    if (hoveredAppId.value === id) {
+        hoveredAppId.value = null
+    }
+
+    emit('taskbar-closed-app', id)
+}
+
 </script>
 
 <style scoped>
@@ -118,6 +165,7 @@ const handleIconClick = (id: string) => {
     <Transition name="start-menu-fade">
         <Startmenu 
             v-show="showingStartMenu"
+            :pinned-apps="startApps"
             @shutdown="$emit('shutdown')"
             @close-startmenu="toggleStartMenu"
             @view-app-finder="viewAppFinder"
@@ -131,7 +179,35 @@ const handleIconClick = (id: string) => {
         />
     </Transition>
 
-    <div class="taskbar">
+    <Transition name="preview-fade">
+        <div
+            v-if="hoveredAppId && activeAppForPreview"
+            class="window-preview"
+            @mouseenter="handleMouseEnter(hoveredAppId)"
+            @mouseleave="handleMouseLeave"
+            :style="previewPositionStyle"                           
+        >
+            <div class="preview-title">
+                <div>
+                    <IconManager :id="activeAppForPreview.id"/>
+                    <div>{{ activeAppForPreview.name }}</div>
+                </div>
+                <div>
+                    <i class="close-icon bi-x-lg" @click="taskbarAppClosed(activeAppForPreview.id)"></i>
+                </div>
+            </div>
+
+            <!--<div class="preview-image-father">-->
+                <div class="preview-image"
+                    @click="handleIconClick(activeAppForPreview.id)"
+                >
+                    <img :src="activeAppForPreview.previewImg" v-if="activeAppForPreview.previewImg" />
+                </div>
+            <!--</div>-->
+        </div>
+    </Transition>    
+
+    <div class="taskbar" @contextmenu.prevent="contextMenuApps($event)">
         <div class="taskbar-elements">
             <div class="start-container">
                 <div class="orb taskbar-btn"
@@ -144,30 +220,7 @@ const handleIconClick = (id: string) => {
             </div>
 
             <div class="apps-container" >
-                <div class="app" v-for="app in runningApps" :key="app.id" @click="handleIconClick(app.id)">
-                    
-                    <Transition name="preview-fade">
-                        <div
-                            v-if="hoveredAppId === app.id && app.isOpen"
-                            class="window-preview"
-                            @mouseenter="handleMouseEnter(app.id)"
-                            @mouseleave="handleMouseLeave"                   
-                        >
-                            <div class="preview-title">
-                                <div>
-                                    <IconManager :id="app.id"/>
-                                    <div>{{ app.name }}</div>
-                                </div>
-                                <div>
-                                    <i class="bi bi-x-lg"></i>
-                                </div>
-                            </div>
-                            <div class="preview-image">
-                                <img :src="app.previewImg" v-if="app.previewImg" />
-                            </div>
-                        </div>
-                    </Transition>
-
+                <div :id="`taskbar-app-${app.id}`" class="app" v-for="app in runningApps" :key="app.id" @click="handleIconClick(app.id)">                    
                     <div 
                         class="taskbar-btn app-icon" 
                         :class="{ 'running-app': app.isOpen, 'focused-app': app.isFocused }"

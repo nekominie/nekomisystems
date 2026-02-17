@@ -1,12 +1,9 @@
-// src/os/db.ts
 import Dexie, { type Table } from 'dexie';
 
 export interface AppState {
   id: string;
   isPinned: boolean;
-  // Solo guardamos lo que queremos que sea persistente
-  // No guardamos 'isOpen' ni 'isFocused' porque queremos que 
-  // el SO arranque "limpio" pero con tus apps ancladas.
+  isPinnedStart: boolean;
 }
 
 export class TheOSDatabase extends Dexie {
