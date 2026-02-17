@@ -1,6 +1,8 @@
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 
 import type { InstalledAppConfig } from '../data/types.ts'
+
+import { db } from '../../database/db.ts'
 
 import { InstalledApps } from '../data/installedapps'
 import { CoreApps } from '../data/coreapps.ts'
@@ -14,6 +16,29 @@ export const state = reactive({
 const installedApps = ref(InstalledApps)
 
 export const processInstructions = () => {
+
+    onMounted(async () => {
+        const savedSettings = await db.appSettings.toArray()
+
+        savedSettings.forEach(saved => {
+            const app = state.installedApps.find(a => a.id === saved.id)
+            if(app){
+                app.isPinned = saved.isPinned
+            }
+        })
+    })
+
+    const togglePinApp = async (id: string) => {
+        const app = state.installedApps.find(a => a.id === id)
+        if(app){
+            app.isPinned = !app.isPinned
+
+            await db.appSettings.put({ 
+                id: app.id, 
+                isPinned: app.isPinned })
+        }
+    }
+
     const launchApp = (appId: string) => {
 
         state.lastAction = 'window-minimize'
@@ -99,13 +124,6 @@ export const processInstructions = () => {
             }
 
             app.isMaximized = false;
-        }
-    }
-
-    const togglePinApp = (appId: string) => {
-        const app = state.installedApps.find(a => a.id === appId)
-        if (app) {
-            app.isPinned = !app.isPinned
         }
     }
 

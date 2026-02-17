@@ -17,7 +17,9 @@ window.addEventListener('click', closeMenu);
         @click="closeMenu"
       >
         <div v-for="(opt, i) in contextMenuState.options" :key="i">
-          <hr v-if="opt.separator" />
+
+          <div style="margin: 8px 0; height: 1px; background-color: #ffffff38;" v-if="opt.separator"></div>
+          
           <div
             v-else 
             class="menu-item" 
