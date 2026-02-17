@@ -3,6 +3,7 @@ import { reactive, ref, onMounted } from 'vue'
 import type { InstalledAppConfig } from '../data/types.ts'
 
 import { db } from '../../database/db.ts'
+import html2canvas from 'html2canvas';
 
 import { InstalledApps } from '../data/installedapps'
 import { CoreApps } from '../data/coreapps.ts'
@@ -81,6 +82,13 @@ export const processInstructions = () => {
 
         if(!app) return
 
+        const currentFocused = state.installedApps.find(app => app.isFocused)
+        if(currentFocused && currentFocused.id !== app.id){
+            updatePreviewImage(currentFocused.id)
+        }
+
+        console.log('brought to front!')
+
         state.installedApps.forEach(a => a.isFocused = false)
         app.isFocused = true
 
@@ -126,6 +134,33 @@ export const processInstructions = () => {
             app.isMaximized = false;
         }
     }
+
+    const updatePreviewImage = async (appId: string) => {
+        // Buscamos el elemento en el DOM
+        // Asegúrate de que en Window.vue el div principal tenga id="window-nombreid"
+        const el = document.getElementById(`window-content-${appId}`);
+        
+        if (el) {
+            try {
+                const canvas = await html2canvas(el, {
+                    backgroundColor: null, // Mantiene transparencias si las hay
+                    scale: 0.5,           // Capturamos a mitad de resolución para ahorrar memoria
+                    logging: false,
+                    useCORS: true         // Importante por si tienes imágenes externas
+                });
+                
+                const app = state.installedApps.find(a => a.id === appId);
+                if (app) {
+                    // Guardamos como imagen comprimida (calidad 0.5)
+                    app.previewImg = canvas.toDataURL('image/webp', 0.5);
+                    console.log("Capturada preview:", app.previewImg);  
+                }
+
+            } catch (err) {
+                console.error("Error capturando preview:", err);
+            }
+        }
+    };
 
     return { state, launchApp, bringToFront, closeApp, minimizeWindow: minimizeWindow, maximizeWindow, togglePinApp }
 }

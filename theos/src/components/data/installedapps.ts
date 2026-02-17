@@ -18,7 +18,8 @@ export const InstalledApps: InstalledAppConfig[] = [
             tempSettings: {
                 position: { x: 0, y: 0, },
                 size: { width: 0, height: 0 }
-            }
+            },
+            isPinned: false
         },
         {
             id: 'calculator',
@@ -40,7 +41,8 @@ export const InstalledApps: InstalledAppConfig[] = [
             tempSettings: {
                 position: { x: 0, y: 0, },
                 size: { width: 0, height: 0 }
-            }
+            },
+            isPinned: false
         },
         {
             id: 'explorer',
@@ -62,7 +64,8 @@ export const InstalledApps: InstalledAppConfig[] = [
             tempSettings: {
                 position: { x: 0, y: 0, },
                 size: { width: 0, height: 0 }
-            }
+            },
+            isPinned: false
         },
         {
             id: 'music',
@@ -84,7 +87,8 @@ export const InstalledApps: InstalledAppConfig[] = [
             tempSettings: {
                 position: { x: 0, y: 0, },
                 size: { width: 0, height: 0 }
-            }
+            },
+            isPinned: false
         },
         {
             id: 'spotify',
@@ -108,7 +112,8 @@ export const InstalledApps: InstalledAppConfig[] = [
                 size: { width: 0, height: 0 }
             },
             minSize: { width: 550, height: 400 },
-            maxSize: { width: 0, height: 352 }
+            maxSize: { width: 0, height: 352 },
+            isPinned: false
         },
         {
             id: 'bibootaxgame',
@@ -132,7 +137,8 @@ export const InstalledApps: InstalledAppConfig[] = [
                 size: { width: 0, height: 0 }
             },
             minSize: { width: 1000, height: 750 },
-            maxSize: { width: 0, height: 352 }
+            maxSize: { width: 0, height: 352 },
+            isPinned: false
         },
         {
             id: 'doomgame',
@@ -156,7 +162,8 @@ export const InstalledApps: InstalledAppConfig[] = [
                 size: { width: 0, height: 0 }
             },
             minSize: { width: 640, height: 426 },
-            maxSize: { width: 0, height: 352 }
+            maxSize: { width: 0, height: 352 },
+            isPinned: false
         }
 ]
     

@@ -2,9 +2,12 @@
 
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import type { InstalledAppConfig } from '../data/types';
+
+
 import Startmenu from './startmenu.vue';
 import IconManager from './iconmanager.vue';
 import AppFinder from './apps_finder.vue';
+import { state } from './process_manager';
 
 const props = defineProps<{ 
     pinnedApps: InstalledAppConfig[]
@@ -23,6 +26,16 @@ const currentTime = ref('')
 const currentDate = ref('')
 const showingStartMenu = ref(false)
 const showingAppFinder = ref(false)
+const hoveredAppId = ref<string | null>(null);
+
+
+const handleMouseEnter = (id: string) => {
+    hoveredAppId.value = id;
+}
+
+const handleMouseLeave = () => {
+    hoveredAppId.value = null;
+}
 
 const toggleStartMenu = () => {
     showingStartMenu.value = !showingStartMenu.value
@@ -104,13 +117,32 @@ const viewAppFinder = () => {
 
             <div class="apps-container" >
                 <div class="app" v-for="app in runningApps" :key="app.id" @click="emit('taskbar-icon-clicked', app.id)">
-                    <div class="taskbar-btn app-icon" 
-                    :class="{ 'running-app': app.isOpen, 'focused-app': app.isFocused }">  
                     
-                    <IconManager                        
-                        :id="app.id"
-                        class="taskbar-icon-element"
-                    />
+                    <Transition name="preview-fade">
+                        <div
+                            v-if="hoveredAppId === app.id"
+                            class="window-preview"                      
+                        >
+                            <div class="preview-title">
+                                <IconManager :id="app.id"/>
+                                <div class="preview-title">{{ app.name }}</div>
+                            </div>
+                            <div class="preview-image">
+                                <img :src="app.previewImg" v-if="app.previewImg" />
+                            </div>
+                        </div>
+                    </Transition>
+
+                    <div 
+                        class="taskbar-btn app-icon" 
+                        :class="{ 'running-app': app.isOpen, 'focused-app': app.isFocused }"
+                        @mouseenter="handleMouseEnter(app.id)"
+                        @mouseleave="handleMouseLeave"
+                    >
+                        <IconManager                        
+                            :id="app.id"
+                            class="taskbar-icon-element"
+                        />
                     </div>
                 </div>
             </div>

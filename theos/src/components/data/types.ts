@@ -23,7 +23,8 @@ export interface InstalledAppConfig {
       height: number;
     };
   },
-  isPinned: boolean
+  isPinned: boolean,
+  previewImg?: string
 }
 
 export interface IconConfig {

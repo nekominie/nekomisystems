@@ -270,7 +270,7 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
             </div>
         </div>
 
-        <div class="window-content">
+        <div :id="'window-content-' + appData.id" class="window-content">
 
             <div
                 class="cursor-shield"
