@@ -3,7 +3,6 @@
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import type { InstalledAppConfig } from '../data/types';
 
-
 import Startmenu from './startmenu.vue';
 import IconManager from './iconmanager.vue';
 import AppFinder from './apps_finder.vue';
@@ -28,13 +27,34 @@ const showingStartMenu = ref(false)
 const showingAppFinder = ref(false)
 const hoveredAppId = ref<string | null>(null);
 
+let showTimeout: number | null = null;
+let hideTimeout: number | null = null;
 
 const handleMouseEnter = (id: string) => {
-    hoveredAppId.value = id;
+    if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+    }
+
+    if (hoveredAppId.value !== null) {
+        hoveredAppId.value = id;
+        return;
+    }
+    
+    showTimeout = window.setTimeout(() => {
+        hoveredAppId.value = id;
+    }, 500);
 }
 
 const handleMouseLeave = () => {
-    hoveredAppId.value = null;
+    if (showTimeout) {
+        clearTimeout(showTimeout);
+        showTimeout = null;
+    }
+
+    hideTimeout = window.setTimeout(() => {
+        hoveredAppId.value = null;
+    }, 150);
 }
 
 const toggleStartMenu = () => {
@@ -79,6 +99,14 @@ const viewAppFinder = () => {
     toggleStartMenu();
     showingAppFinder.value = !showingAppFinder.value
 }
+
+const handleIconClick = (id: string) => {
+    // IMPORTANTE: Al hacer clic, cancelamos cualquier preview pendiente
+    if (showTimeout) clearTimeout(showTimeout)
+    hoveredAppId.value = null
+    
+    emit('taskbar-icon-clicked', id)
+}
     
 </script>
 
@@ -116,16 +144,23 @@ const viewAppFinder = () => {
             </div>
 
             <div class="apps-container" >
-                <div class="app" v-for="app in runningApps" :key="app.id" @click="emit('taskbar-icon-clicked', app.id)">
+                <div class="app" v-for="app in runningApps" :key="app.id" @click="handleIconClick(app.id)">
                     
                     <Transition name="preview-fade">
                         <div
-                            v-if="hoveredAppId === app.id"
-                            class="window-preview"                      
+                            v-if="hoveredAppId === app.id && app.isOpen"
+                            class="window-preview"
+                            @mouseenter="handleMouseEnter(app.id)"
+                            @mouseleave="handleMouseLeave"                   
                         >
                             <div class="preview-title">
-                                <IconManager :id="app.id"/>
-                                <div class="preview-title">{{ app.name }}</div>
+                                <div>
+                                    <IconManager :id="app.id"/>
+                                    <div>{{ app.name }}</div>
+                                </div>
+                                <div>
+                                    <i class="bi bi-x-lg"></i>
+                                </div>
                             </div>
                             <div class="preview-image">
                                 <img :src="app.previewImg" v-if="app.previewImg" />

@@ -59,11 +59,14 @@ export const processInstructions = () => {
             }
                 
             app.isOpen = true
+
         }
         else{
             state.lastAction = 'window-minimize'
             app.isMinimized = false
         }
+
+        updatePreviewImage(app.id)
 
         bringToFront(appId)
     }
@@ -106,6 +109,7 @@ export const processInstructions = () => {
     const minimizeWindow = (appId: string) => {
         const app = state.installedApps.find(a => a.id === appId)
         if (app) {
+            updatePreviewImage(app.id)
             state.lastAction = 'window-minimize'
             app.isMinimized = true
             app.isFocused = false
@@ -133,6 +137,8 @@ export const processInstructions = () => {
 
             app.isMaximized = false;
         }
+
+        updatePreviewImage(app.id)
     }
 
     const updatePreviewImage = async (appId: string) => {
@@ -144,7 +150,7 @@ export const processInstructions = () => {
             try {
                 const canvas = await html2canvas(el, {
                     backgroundColor: null, // Mantiene transparencias si las hay
-                    scale: 0.5,           // Capturamos a mitad de resolución para ahorrar memoria
+                    scale: 0.3,           // Capturamos a mitad de resolución para ahorrar memoria
                     logging: false,
                     useCORS: true         // Importante por si tienes imágenes externas
                 });
@@ -152,7 +158,7 @@ export const processInstructions = () => {
                 const app = state.installedApps.find(a => a.id === appId);
                 if (app) {
                     // Guardamos como imagen comprimida (calidad 0.5)
-                    app.previewImg = canvas.toDataURL('image/webp', 0.5);
+                    app.previewImg = canvas.toDataURL('image/webp', 0.3);
                     console.log("Capturada preview:", app.previewImg);  
                 }
 
