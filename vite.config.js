@@ -15,7 +15,7 @@ export default defineConfig({
                 main: resolve(__dirname, 'index.html'),
                 mikurig: resolve(__dirname, 'mikurig/index.html'),
                 bibootaxgame: resolve(__dirname, 'bibootaxgame/index.html'),
-                theos: resolve(__dirname, 'theos/index.html'),
+                frost_os: resolve(__dirname, 'frost-os/index.html'),
                 doomgame: resolve(__dirname, 'doomgame/index.html'),
             }
         }
