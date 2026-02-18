@@ -1,10 +1,7 @@
 <script setup lang="ts">
 
-import { ref, onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { processInstructions } from './os/process_manager'
-import { useContextMenu } from './os/context_menu/context_menu.ts'
-
-const { contextMenuState } = useContextMenu()
 
 const { state, launchApp, bringToFront, closeApp } = processInstructions()
 
@@ -12,9 +9,18 @@ import Taskbar from './os/taskbar.vue'
 import Desktop from './os/dekstop.vue'
 import ContextMenu from './os/context_menu/context_menu.vue'
 
-const topZ = ref(100)
+onMounted(() => {
+    const preventDefaulContextMenu = (e: MouseEvent) => {
+        e.preventDefault()
+    }
 
-const desktopComponent = ref<InstanceType<typeof Desktop> | null>(null)
+    window.addEventListener('contextmenu', preventDefaulContextMenu)
+
+    onUnmounted(() => {
+        window.removeEventListener('contextmenu', preventDefaulContextMenu)
+    })
+})
+
 </script>
 
 <style scoped>
@@ -33,8 +39,7 @@ const desktopComponent = ref<InstanceType<typeof Desktop> | null>(null)
 
 <template>
     <div class="display main-font" style="height: 100%; width: 100%;">
-
-        <Desktop ref="desktopComponent"
+        <Desktop
             :installed-apps="state.installedApps"
             @focus-app="bringToFront"      
             @closeApp="closeApp"
@@ -46,7 +51,6 @@ const desktopComponent = ref<InstanceType<typeof Desktop> | null>(null)
             @taskbar-closed-app="closeApp"
             @shutdown="$emit('shutdown')"
         />
-
         <ContextMenu />
     </div>
 </template>

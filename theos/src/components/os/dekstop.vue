@@ -30,7 +30,7 @@ const handleContextMenu = (e: MouseEvent) => {
 </style>
 
 <template>
-    <div class="desktop" @contextmenu.prevent="handleContextMenu">
+    <div class="desktop" @contextmenu.self="handleContextMenu">
         <TransitionGroup :name="transitionName">
             <Window
                 v-for="app in openedApps"

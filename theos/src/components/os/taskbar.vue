@@ -207,8 +207,8 @@ const taskbarAppClosed = (id: string) => {
         </div>
     </Transition>    
 
-    <div class="taskbar" @contextmenu.prevent="contextMenuApps($event)">
-        <div class="taskbar-elements">
+    <div class="taskbar">
+        <div class="taskbar-elements" @contextmenu.self="contextMenuApps($event)">
             <div class="start-container">
                 <div class="orb taskbar-btn"
                 @click="toggleStartMenu"
@@ -219,7 +219,7 @@ const taskbarAppClosed = (id: string) => {
                 </div>
             </div>
 
-            <div class="apps-container" >
+            <div class="apps-container" @contextmenu.self="contextMenuApps($event)">
                 <div :id="`taskbar-app-${app.id}`" class="app" v-for="app in runningApps" :key="app.id" @click="handleIconClick(app.id)">                    
                     <div 
                         class="taskbar-btn app-icon" 

@@ -100,7 +100,7 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
 }  
 
 const windowStyles = computed(() => {
-    const taskbarHeight = '48px';
+    const taskbarHeight = '49.5px';
 
     if (props.appData.isMaximized) {
         return {
@@ -243,8 +243,8 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
         }"        
 
         :style="windowStyles"
-        @mousedown="$emit('focus', appData.id)"
-        @touchstart="$emit('focus', appData.id)"
+        @mousedown.capture="$emit('focus', appData.id)"
+        @touchstart.capture="$emit('focus', appData.id)"
     >
         <div class="resizer n" @mousedown.stop="startResize('n', $event)"></div>
         <div class="resizer s" @mousedown.stop="startResize('s', $event)"></div>

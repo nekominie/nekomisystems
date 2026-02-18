@@ -58,10 +58,9 @@ const runApp = (id: string) => {
                             v-for="app in InstalledApps" 
                             :key="app.id"
                             @click="runApp(app.id)"
-                            class="app-container"
-                            @contextmenu.prevent="contextMenuApps($event, app)"
+                            class="app-container"                            
                         >
-                            <div class="app-element">
+                            <div class="app-element" @contextmenu="contextMenuApps($event, app)">
                                 <IconManager :id="app.id" class="taskbar-icon-element" />
                                 <div class="app-name">{{ app.name }}</div>
                             </div>

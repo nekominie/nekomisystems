@@ -13,7 +13,11 @@ window.addEventListener('click', closeMenu);
       <div 
         v-if="contextMenuState.isOpen" 
         class="context-menu main-font"
-        :style="{ top: contextMenuState.y + 'px', left: contextMenuState.x + 'px' }"
+        :style="{ 
+          top: contextMenuState.y + 'px', 
+          left: contextMenuState.x + 'px',
+          visibility: contextMenuState.x === 0 ? 'hidden' : 'visible'
+        }"
         @click="closeMenu"
       >
         <div v-for="(opt, i) in contextMenuState.options" :key="i">
@@ -75,11 +79,11 @@ window.addEventListener('click', closeMenu);
 
 /* Durante la animación */
 .context-menu-animate-enter-active {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); /* Curva rápida y suave */
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .context-menu-animate-leave-active {
-  transition: all 0.15s ease-in;
+  transition: opacity 0.15s ease-in, transform 0.15s ease-in;
 }
 
 /* Estado final (Visible) */

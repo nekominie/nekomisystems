@@ -1,4 +1,4 @@
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, nextTick } from 'vue'
 
 import type { InstalledAppConfig } from '../data/types.ts'
 
@@ -54,17 +54,13 @@ export const processInstructions = () => {
         }
     }
 
-    const launchApp = (appId: string) => {
-
-        state.lastAction = 'window-minimize'
-
+    const launchApp = async (appId: string) => {
         const app = state.installedApps.find(app => app.id === appId)
         if(!app) return
 
         if(!app.isOpen){
-
+            //Abrir desde cero
             state.lastAction = 'window-spawn'
-
             const screenWidth = window.innerWidth
             const screenHeight = window.innerHeight
 
@@ -75,17 +71,30 @@ export const processInstructions = () => {
                 
             app.isOpen = true
 
+            setTimeout(() => {
+                updatePreviewImage(app.id)                
+            }, 100);
+
+            bringToFront(appId)
+        }
+        else if(app.isFocused && !app.isMinimized){
+            //Minimizar
+            updatePreviewImage(app.id)        
+
+            state.lastAction = 'window-minimize'
+            await nextTick()            
+
+            app.isMinimized = true
+            app.isFocused = false
         }
         else{
+            //desminimizar
             state.lastAction = 'window-minimize'
+            await nextTick()
             app.isMinimized = false
+
+            bringToFront(appId)
         }
-
-        setTimeout(() => {
-            updatePreviewImage(app.id)
-        }, 100);
-
-        bringToFront(appId)
     }
 
     const closeApp = (id: string) => {
@@ -98,36 +107,32 @@ export const processInstructions = () => {
     }
 
     const bringToFront = (appId: string) => {
-        const app = state.installedApps.find(a => a.id === appId)
+        const app = state.installedApps.find(a => a.id === appId);
+        if (!app) return;
 
-        if(!app) return
+        const currentFocused = state.installedApps.find(a => a.isFocused);
+        if (currentFocused && currentFocused.id !== app.id) 
+            updatePreviewImage(app.id)        
 
-        const currentFocused = state.installedApps.find(app => app.isFocused)
-        if(currentFocused && currentFocused.id !== app.id){
-            updatePreviewImage(currentFocused.id)
-        }
+        if (app.isFocused && !app.isMinimized && app.zIndex === state.topZ) return;
 
-        console.log('brought to front!')
+        state.installedApps.forEach(a => a.isFocused = false);
+        
+        state.topZ++; 
+        app.zIndex = state.topZ;
+        app.isFocused = true;
+        app.isMinimized = false;
+        app.isOpen = true;
+    };
 
-        state.installedApps.forEach(a => a.isFocused = false)
-        app.isFocused = true
-
-        const maxZ = Math.max(...installedApps.value.map(a => a.zIndex))
-            
-        if (app.zIndex < maxZ || app.zIndex === 0) {
-            state.topZ++
-            app.zIndex = state.topZ
-        }
-            
-        app.isMinimized = false
-        app.isOpen = true
-    }
-
-    const minimizeWindow = (appId: string) => {
+    const minimizeWindow = async (appId: string) => {
         const app = state.installedApps.find(a => a.id === appId)
         if (app) {
             updatePreviewImage(app.id)
+
             state.lastAction = 'window-minimize'
+            await nextTick()
+
             app.isMinimized = true
             app.isFocused = false
         }
@@ -136,6 +141,8 @@ export const processInstructions = () => {
     const maximizeWindow = (id: string) => {
         const app = state.installedApps.find(a => a.id === id);
         if (!app) return;
+
+        updatePreviewImage(app.id)
 
         if (!app.isMaximized) {
             app.tempSettings = {
@@ -154,8 +161,6 @@ export const processInstructions = () => {
 
             app.isMaximized = false;
         }
-
-        updatePreviewImage(app.id)
     }
 
     const updatePreviewImage = async (appId: string) => {
@@ -173,6 +178,7 @@ export const processInstructions = () => {
                 const app = state.installedApps.find(a => a.id === appId);
                 if (app) {
                     app.previewImg = canvas.toDataURL('image/webp', 0.3);
+                    console.log(app.previewImg);
                 }
 
             } catch (err) {
