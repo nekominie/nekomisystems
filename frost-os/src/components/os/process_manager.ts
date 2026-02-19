@@ -25,7 +25,8 @@ export const processInstructions = () => {
             const app = state.installedApps.find(a => a.id === saved.id)
             if(app){
                 app.isPinned = saved.isPinned
-                app.isPinnedStart = saved.isPinnedStart
+                app.isPinnedStart = saved.isPinnedStart,
+                app.isPinnedDesktop = saved.isPinnedDesktop
             }
         })
     })
@@ -38,7 +39,9 @@ export const processInstructions = () => {
             await db.appSettings.put({ 
                 id: app.id, 
                 isPinnedStart: app.isPinnedStart,
-                isPinned: app.isPinned })
+                isPinned: app.isPinned,
+                isPinnedDesktop: app.isPinnedDesktop 
+            })
         }
     }
 
@@ -50,7 +53,33 @@ export const processInstructions = () => {
             await db.appSettings.put({ 
                 id: app.id,
                 isPinned: app.isPinned,
-                isPinnedStart: app.isPinnedStart })
+                isPinnedStart: app.isPinnedStart,
+                isPinnedDesktop: app.isPinnedDesktop 
+            })
+        }
+    }
+
+    const togglePinAppDesktop = async (id: string) => {
+        const app = state.installedApps.find(a => a.id === id)
+        if(app){
+            app.isPinnedDesktop = !app.isPinnedDesktop
+
+            await db.appSettings.put({
+                id: app.id,
+                isPinned: app.isPinned,
+                isPinnedDesktop: app.isPinnedDesktop,
+                isPinnedStart: app.isPinnedStart
+            })
+
+            await db.desktopIcons.put({ 
+                id: app.id, 
+                col: app.position.x, 
+                row: app.position.y 
+            })
+
+            if (!app.isPinnedDesktop) {
+                await db.desktopIcons.delete(app.id)
+            }
         }
     }
 
@@ -195,6 +224,7 @@ export const processInstructions = () => {
         minimizeWindow: minimizeWindow, 
         maximizeWindow, 
         togglePinApp, 
-        togglePinAppStart 
+        togglePinAppStart,
+        togglePinAppDesktop
     }
 }

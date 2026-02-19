@@ -20,7 +20,8 @@ export const CoreApps: InstalledAppConfig[] = [
             size: { width: 0, height: 0 }
         },
         isPinned: false,
-        isPinnedStart: false
+        isPinnedStart: false,
+        isPinnedDesktop: false
     },
     {
         id: 'settings',
@@ -41,7 +42,8 @@ export const CoreApps: InstalledAppConfig[] = [
             size: { width: 0, height: 0 }
         },
         isPinned: false,
-        isPinnedStart: false
+        isPinnedStart: false,
+        isPinnedDesktop: false
     },
 ]
     

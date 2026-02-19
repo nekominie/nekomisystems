@@ -51,26 +51,3 @@
   transform-origin: bottom center; 
   pointer-events: none;
 }
-
-/* --- ANIMACIÓN DE MINIMIZAR (Hacia el fondo/centro) --- */
-
-/*.window-minimize-leave-to {
-  opacity: 0;
-  transform: translateY(100vh) scale(0.1);
-  filter: blur(20px);
-}
-
-.window-minimize-leave-active {
-  transition: all 0.3s cubic-bezier(0.7, 0, 0.84, 0);
-  transform-origin: bottom center;
-}
-
-.window-minimize-enter-from {
-  opacity: 0;
-  transform: translateY(100vh) scale(0.1);
-}
-
-.window-minimize-enter-active {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  transform-origin: bottom center;
-}*/

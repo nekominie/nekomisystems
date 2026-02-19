@@ -2,6 +2,7 @@
 
 import { computed  } from 'vue'
 import Window from './window.vue'
+import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
 import { MasterAppRegistry as AppsIndex } from '../data/master_apps_registry.ts'
 import { processInstructions } from './process_manager.ts'
 import { useContextMenu } from './context_menu/context_menu.ts'
@@ -14,6 +15,8 @@ const transitionName = computed(() => state.lastAction)
 const openedApps = computed(() => {
   return state.installedApps.filter(app => app.isOpen)
 })
+
+const desktopApps = computed(() => state.installedApps.filter(app => app.isPinnedDesktop))
 
 const { minimizeWindow, maximizeWindow, bringToFront, closeApp } = processInstructions();
 
@@ -31,6 +34,12 @@ const handleContextMenu = (e: MouseEvent) => {
 
 <template>
     <div class="desktop" @contextmenu.self="handleContextMenu">
+
+        <DesktopIconsLayer 
+            :pinnedApps="desktopApps" 
+            @open="(id) => { launchApp(id) }" 
+        />
+
         <TransitionGroup :name="transitionName">
             <Window
                 v-for="app in openedApps"

@@ -25,7 +25,8 @@ export interface InstalledAppConfig {
   },
   isPinned: boolean,
   isPinnedStart: boolean,
-  previewImg?: string
+  previewImg?: string,
+  isPinnedDesktop: boolean
 }
 
 export interface IconConfig {
@@ -39,4 +40,15 @@ export interface UserProfile{
   name: string;
   avatar: Blob;
   setupDate: Date;
+}
+
+export interface DesktopIconState{
+  appId: string;
+  col: number;
+  row: number;
+}
+
+export interface DesktopState{
+  icons: Record<string, DesktopIconState>
+  selected: Set<string>
 }

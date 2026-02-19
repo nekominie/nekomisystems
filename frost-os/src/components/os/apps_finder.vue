@@ -7,7 +7,7 @@ import { useContextMenu } from './context_menu/context_menu.ts'
 import IconManager from './iconmanager.vue'
 
 const { openMenu } = useContextMenu()
-const { launchApp, togglePinApp, togglePinAppStart } = processInstructions();
+const { launchApp, togglePinApp, togglePinAppStart, togglePinAppDesktop } = processInstructions();
 
 const contextMenuApps = (e: MouseEvent, app: any) => {
     openMenu(e, [
@@ -25,7 +25,13 @@ const contextMenuApps = (e: MouseEvent, app: any) => {
             label: app.isPinnedStart ? 'Desanclar del menu de inicio' : 'Anclar en el menu de inicio',
             icon: app.isPinnedStart ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
             action: () => togglePinAppStart(app.id) 
+        },
+        { 
+            label: app.isPinnedDesktop ? 'Eliminar acceso directo' : 'Crear acceso directo',
+            icon: app.isPinnedDesktop ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => togglePinAppDesktop(app.id) 
         }
+
     ])
 }
 
