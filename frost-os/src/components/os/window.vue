@@ -264,9 +264,18 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
             <div></div>
 
             <div class="window-header-btns">
-                <button class="minimize-btn" @click.stop="emit('minimize', appData.id)"><i class="bi bi-dash-lg"></i></button>
-                <button class="maximize-btn" @click.stop="emit('maximize', appData.id)"><i class="bi bi-arrows-fullscreen"></i></button>
-                <button class="close-btn" @click.stop="emit('close', appData.id)"><i class="bi bi-x-lg"></i></button>
+                <button class="minimize-btn" @click.stop="emit('minimize', appData.id)">
+                    <i class="bi bi-dash-lg"></i>
+                </button>
+
+                <button class="maximize-btn" @click.stop="emit('maximize', appData.id)">
+                    <i
+                        :class="{ 'bi-fullscreen-exit': appData.isMaximized, 'bi-fullscreen': !appData.isMaximized }"></i>
+                </button>
+
+                <button class="close-btn" @click.stop="emit('close', appData.id)">
+                    <i class="bi bi-x-lg"></i>
+                </button>
             </div>
         </div>
 

@@ -87,22 +87,22 @@ iframe{
     flex-direction: row;
 }
 
+.window-header-btns i{
+    display: flex;
+}
+
 .window-header-btns button{
-    margin: 0px 6px;
+    padding: 0px 12px;
+    display: flex;
+    align-items: center;
 }
 
-.minimize-btn{
+.minimize-btn, .maximize-btn{
     cursor: pointer;
     color: white;
     border: none;
     background-color: rgba(0, 0, 0, 0);
-}
-
-.maximize-btn{
-    cursor: pointer;
-    color: white;
-    border: none;
-    background-color: rgba(0, 0, 0, 0);
+    height: 100%;
 }
 
 .close-btn{
@@ -117,6 +117,8 @@ iframe{
     align-items: center;
     width: 17px;
     height: 17px;
+    padding: unset !important;
+    margin-left: 6px;
 }
 
 .close-btn i{
@@ -127,8 +129,9 @@ iframe{
     background-color: rgb(255, 0, 0);
 }
 
-.minimize-btn:hover{
-    background-color: #c0c0c0;
+.minimize-btn:hover, .maximize-btn:hover{
+    background-color: #ffffff18;
+    border-radius: 3px;
 }
 
 .window-header-titles{
