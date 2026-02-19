@@ -33,13 +33,13 @@ const handleContextMenu = (e: MouseEvent) => {
 </style>
 
 <template>
-    <div class="desktop" @contextmenu.self="handleContextMenu">
+    <div class="desktop" @contextmenu="handleContextMenu">
 
         <DesktopIconsLayer 
             :pinnedApps="desktopApps" 
-            @open="(id) => { launchApp(id) }" 
+            @open="(id) => { launchApp(id) }"
         />
-
+        
         <TransitionGroup :name="transitionName">
             <Window
                 v-for="app in openedApps"

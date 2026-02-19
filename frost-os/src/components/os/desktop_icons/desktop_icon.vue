@@ -43,6 +43,11 @@ defineProps<{
   overflow: hidden;
 }
 
+.desktop-icon:hover{
+  background: rgb(0 0 0 / 18%);
+  backdrop-filter: blur(2px);
+}
+
 .desktop-icon.selected{
   /*background: rgba(0, 120, 215, 0.25);
   outline: 1px solid rgba(0, 120, 215, 0.55);*/

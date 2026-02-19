@@ -165,6 +165,7 @@ export function useDesktopIcons(options: {
 
   // --- Icon pointer handlers ---
   function onIconPointerDown(e: PointerEvent, id: string) {
+    if(e.button !== 0) return
     // que no dispare marquee del fondo:
     e.stopPropagation()
 
@@ -206,6 +207,8 @@ export function useDesktopIcons(options: {
 
   // --- Desktop (background) marquee selection ---
   function onDesktopPointerDown(e: PointerEvent) {
+     if (e.button !== 0) return
+     
     // solo fondo
     const el = containerEl.value
     if (!el) return

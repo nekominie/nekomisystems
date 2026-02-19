@@ -3,6 +3,23 @@ import { ref, watch, computed, onMounted, reactive, nextTick } from 'vue'
 import DesktopIcon from './desktop_icon.vue'
 import { useDesktopIcons } from './desktop_icons_manager.ts'
 
+import { useContextMenu } from '../context_menu/context_menu.ts'
+import { processInstructions } from '../process_manager.ts'
+
+const { openMenu } = useContextMenu()
+const { launchApp, togglePinAppDesktop } = processInstructions();
+
+const contextMenuApps = (e: MouseEvent, app: any) => {
+    openMenu(e, [
+        { 
+            label: 'Abrir', icon: '', action: () => launchApp(app.id) 
+        },
+        {
+            label: 'Eliminar acceso directo', icon: 'bi-trash', action: () => togglePinAppDesktop(app.id)
+        }
+    ])
+}
+
 type InstalledApp = {
   id: string
   name: string
@@ -138,6 +155,7 @@ const onDblClick = (id: string) => emit('open', id)
       @pointermove="icons.onIconPointerMove"
       @pointerup="(e) => { icons.onIconPointerUp(e); rebuildIconRects() }"
       @dblclick="() => onDblClick(app.id)"
+      @contextmenu.stop.prevent="(e) => contextMenuApps(e, app)"
     >
       <DesktopIcon
         :id="app.id"
