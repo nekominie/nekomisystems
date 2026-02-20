@@ -48,7 +48,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="rootEl" class="tray-root">
+    <div
+        v-if="trayApps.length > 0"
+        ref="rootEl" 
+        class="tray-root"
+    >
     <!-- Overflow panel -->
     <Transition name="tray-pop">
       <div v-if="isOpen && hasOverflow" class="tray-popover">
