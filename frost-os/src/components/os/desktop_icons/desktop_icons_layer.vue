@@ -1,30 +1,25 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, reactive, nextTick } from 'vue'
+import { inject, ref, watch, onMounted, reactive, nextTick } from 'vue'
 import DesktopIcon from './desktop_icon.vue'
 import { useDesktopIcons } from './desktop_icons_manager.ts'
-
+import { App } from '../../data/app'
 import { useContextMenu } from '../context_menu/context_menu.ts'
-import { processInstructions } from '../process_manager.ts'
+import { OS_KEY } from '../../api/os_api'
+
+const os = inject(OS_KEY)
+if(!os) throw new Error('OS API not found')
 
 const { openMenu } = useContextMenu()
-const { launchApp, togglePinAppDesktop } = processInstructions();
 
-const contextMenuApps = (e: MouseEvent, app: any) => {
+const contextMenuApps = (e: MouseEvent, app: App) => {
     openMenu(e, [
         { 
-            label: 'Abrir', icon: '', action: () => launchApp(app.id) 
+            label: 'Abrir', icon: '', action: () => os.launchApp(app.manifest.id) 
         },
         {
-            label: 'Eliminar acceso directo', icon: 'bi-trash', action: () => togglePinAppDesktop(app.id)
+            label: 'Eliminar acceso directo', icon: 'bi-trash', action: () => os.togglePinAppDesktop(app.manifest.id)
         }
     ])
-}
-
-type InstalledApp = {
-  id: string
-  name: string
-  icon: string
-  isPinnedDesktop?: boolean
 }
 
 const icons = useDesktopIcons({
@@ -43,22 +38,18 @@ onMounted(async () => {
 })
 
 const props = defineProps<{
-  pinnedApps: InstalledApp[]
-}>()
-
-const emit = defineEmits<{
-  (e: 'open', appId: string): void
+  pinnedApps: App[]
 }>()
 
 const containerEl = icons.containerEl
 
 watch(
-  [() => ready.value, () => props.pinnedApps.map(a => a.id).join('|')],
+  [() => ready.value, () => props.pinnedApps.map(a => a.manifest.id).join('|')],
   async ([isReady]) => {
     if (!isReady) return
     await nextTick()
 
-    const ids = props.pinnedApps.map(a => a.id)
+    const ids = props.pinnedApps.map(a => a.manifest.id)
 
     icons.syncLayoutWithPinned(ids)
 
@@ -77,9 +68,8 @@ watch(
   { immediate: true }
 )
 
-
 window.addEventListener('resize', () => {
-  const ids = props.pinnedApps.map(a => a.id)
+  const ids = props.pinnedApps.map(a => a.manifest.id)
   icons.syncLayoutWithPinned(ids)
   icons.saveToDb().catch(console.error)
 })
@@ -90,10 +80,10 @@ const iconRects = reactive<Record<string, { x: number; y: number; w: number; h: 
 function rebuildIconRects() {
   // rect basado en celda (rápido y suficiente)
   for (const app of props.pinnedApps) {
-    const cell = icons.layout[app.id]
+    const cell = icons.layout[app.manifest.id]
     if (!cell) continue
     const pos = icons.cellToPx(cell)
-    iconRects[app.id] = { x: pos.x, y: pos.y, w: 80, h: 96 } // aprox: icon width + label
+    iconRects[app.manifest.id] = { x: pos.x, y: pos.y, w: 80, h: 96 } // aprox: icon width + label
   }
 }
 
@@ -122,7 +112,7 @@ const styleFor = (id: string) => {
   }
 }
 
-const onDblClick = (id: string) => emit('open', id)
+const onDblClick = (id: string) => os.launchApp(id)
 </script>
 
 <template>
@@ -148,20 +138,20 @@ const onDblClick = (id: string) => emit('open', id)
 
     <div
       v-for="app in props.pinnedApps"
-      :key="app.id"
+      :key="app.manifest.id"
       class="icon-wrap"
-      :style="styleFor(app.id)"
-      @pointerdown="(e) => { icons.onIconPointerDown(e, app.id) }"
+      :style="styleFor(app.manifest.id)"
+      @pointerdown="(e) => { icons.onIconPointerDown(e, app.manifest.id) }"
       @pointermove="icons.onIconPointerMove"
       @pointerup="(e) => { icons.onIconPointerUp(e); rebuildIconRects() }"
-      @dblclick="() => onDblClick(app.id)"
+      @dblclick="() => onDblClick(app.manifest.id)"
       @contextmenu.stop.prevent="(e) => contextMenuApps(e, app)"
     >
       <DesktopIcon
-        :id="app.id"
-        :name="app.name"
-        :icon="app.icon"
-        :selected="icons.selected.has(app.id)"
+        :id="app.manifest.id"
+        :name="app.manifest.name"
+        :icon="app.manifest.icon"
+        :selected="icons.selected.has(app.manifest.id)"
       />
     </div>
   </div>

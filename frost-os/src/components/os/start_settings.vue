@@ -1,16 +1,11 @@
 <script lang="ts" setup>
+
 import { CoreApps } from '../data/coreapps'
 import IconManager from './iconmanager.vue'
-import { processInstructions } from './process_manager'
 
-const { launchApp } = processInstructions();
-
-const emit = defineEmits(['close-startmenu'])
-
-const launchStartApp = (id: string) => {
-    emit('close-startmenu')
-    launchApp(id)
-}
+const emit = defineEmits<{
+    (e: 'launch-app', id: string): void,
+}>()
 
 </script>
 
@@ -20,7 +15,7 @@ const launchStartApp = (id: string) => {
             v-for="app in CoreApps" 
             :key="app.id" 
             class="start-app"
-            @click="launchStartApp(app.id)"
+            @click="emit('launch-app', app.id)"
         >
 
             <IconManager

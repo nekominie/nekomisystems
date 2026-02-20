@@ -1,33 +1,38 @@
 <script setup lang="ts">
 
-import { onMounted, onUnmounted, ref, computed } from 'vue'
-import type { InstalledAppConfig } from '../data/types.ts'
-
+import { inject, onMounted, onUnmounted, ref, computed } from 'vue'
 import Startmenu from './startmenu.vue'
+import Tray from './taskbar_tray/taskbar_tray.vue'
 import IconManager from './iconmanager.vue'
 import AppFinder from './apps_finder.vue'
-import { state } from './process_manager.ts'
 import { useContextMenu } from './context_menu/context_menu.ts'
-import { processInstructions } from './process_manager.ts'
+import { OS_KEY } from '../api/os_api'
+
+const os = inject(OS_KEY)
+if(!os) throw new Error('OS API not found')
 
 const { openMenu } = useContextMenu()
-const { launchApp } = processInstructions();
 
-const props = defineProps<{ 
-    installedApps: InstalledAppConfig[]
-}>()
-
-const runningApps = computed(() => {
-    return props.installedApps.filter(app => app.isOpen || app.isPinned);
-});
-
-const startApps = computed(() => {
-    return props.installedApps.filter(app => app.isPinnedStart);
+const taskBarApps = computed(() => {
+    return os.state.apps.filter(app => app.runtime.isWindowOpen || app.user.isPinned)
 })
 
+const pinnedStartApps = computed(() => {
+    return os.state.apps.filter(app => app.user.isPinnedStart)
+})
+
+const activeAppForPreview = computed(() => 
+    os.state.apps.find(app => app.manifest.id === hoveredAppId.value && app.runtime.isWindowOpen)
+)
+
+const trayApps = computed(() => os.state.apps.filter(app => 
+    app.runtime.isRunning && 
+    app.runtime.isInTray
+))
+
+console.log(trayApps)
+
 const emit = defineEmits<{
-    (e: 'taskbar-icon-clicked', id: string): void,
-    (e: 'taskbar-closed-app', id: string): void,
     (e: 'shutdown'): void
 }>()
 
@@ -35,31 +40,27 @@ const currentTime = ref('')
 const currentDate = ref('')
 const showingStartMenu = ref(false)
 const showingAppFinder = ref(false)
-const hoveredAppId = ref<string | null>(null);
+const hoveredAppId = ref<string | null>(null)
 
-let showTimeout: number | null = null;
-let hideTimeout: number | null = null;
+let showTimeout: number | null = null
+let hideTimeout: number | null = null
 
 const contextMenuApps = (e: MouseEvent) => {
     openMenu(e, [
         { 
             label: 'Supervisor de tareas',
             icon: 'bi-list-task', 
-            action: () => launchApp('task_supervisor') 
+            action: () => os.launchApp('task_supervisor') 
         },
     ])
 }
 
 const previewPositionStyle = ref({ left: '0px' })
 
-const activeAppForPreview = computed(() => 
-    props.installedApps.find(app => app.id === hoveredAppId.value && app.isOpen)
-)
-
 const handleMouseEnter = (id: string) => {
     if (hideTimeout) {
-        clearTimeout(hideTimeout);
-        hideTimeout = null;
+        clearTimeout(hideTimeout)
+        hideTimeout = null
     }
 
     const updatePosition = () => {
@@ -68,9 +69,9 @@ const handleMouseEnter = (id: string) => {
             const rect = iconElement.getBoundingClientRect();
             previewPositionStyle.value = {
                 left: `${rect.left + rect.width / 2}px`
-            };
+            }
         }
-    };
+    }
 
     if (hoveredAppId.value !== null) {
 
@@ -89,16 +90,17 @@ const handleMouseEnter = (id: string) => {
 
 const handleMouseLeave = () => {
     if (showTimeout) {
-        clearTimeout(showTimeout);
+        clearTimeout(showTimeout)
         showTimeout = null;
     }
 
     hideTimeout = window.setTimeout(() => {
         hoveredAppId.value = null;
-    }, 150);
+    }, 150)
 }
 
 const toggleStartMenu = () => {
+    console.log(showingStartMenu.value)
     showingStartMenu.value = !showingStartMenu.value
 }
 
@@ -115,25 +117,21 @@ let timer: number
 onMounted(() => {
     updateTime()
     timer = window.setInterval(updateTime, 1000)
-
-    window.addEventListener('mousedown', (e) => {
-        const isClickInsideMenu = (e.target as HTMLElement).closest('.start-menu');
-        const isClickInsideAppFinder = (e.target as HTMLElement).closest('.app-finder');
-        
-        const isClickOnOrb = (e.target as HTMLElement).closest('.orb');
-
-        if (!isClickInsideMenu && !isClickOnOrb) {
-            showingStartMenu.value = false;
-        }
-
-        if (!isClickInsideAppFinder) {
-            showingAppFinder.value = false;
-        }
-    })
+    window.addEventListener('mousedown', onGlobalMouseDown)
 })
+
+const onGlobalMouseDown = (e: MouseEvent) => {
+    const isClickInsideMenu = (e.target as HTMLElement).closest('.start-menu')
+    const isClickInsideAppFinder = (e.target as HTMLElement).closest('.app-finder')
+    const isClickOnOrb = (e.target as HTMLElement).closest('.orb')
+
+    if (!isClickInsideMenu && !isClickOnOrb) showingStartMenu.value = false
+    if (!isClickInsideAppFinder) showingAppFinder.value = false
+}
 
 onUnmounted(() => {
     clearInterval(timer)
+    window.removeEventListener('mousedown', onGlobalMouseDown)
 })
 
 const viewAppFinder = () => {
@@ -144,7 +142,7 @@ const viewAppFinder = () => {
 const handleIconClick = (id: string) => {
     if (showTimeout) clearTimeout(showTimeout)
     hoveredAppId.value = null
-    emit('taskbar-icon-clicked', id)
+    os.launchApp(id)
 }
 
 const taskbarAppClosed = (id: string) => {
@@ -152,7 +150,7 @@ const taskbarAppClosed = (id: string) => {
         hoveredAppId.value = null
     }
 
-    emit('taskbar-closed-app', id)
+    os.closeApp(id)
 }
 
 </script>
@@ -165,7 +163,7 @@ const taskbarAppClosed = (id: string) => {
     <Transition name="start-menu-fade">
         <Startmenu 
             v-show="showingStartMenu"
-            :pinned-apps="startApps"
+            :pinned-apps="pinnedStartApps"
             @shutdown="$emit('shutdown')"
             @close-startmenu="toggleStartMenu"
             @view-app-finder="viewAppFinder"
@@ -189,19 +187,19 @@ const taskbarAppClosed = (id: string) => {
         >
             <div class="preview-title">
                 <div>
-                    <IconManager :id="activeAppForPreview.id"/>
-                    <div>{{ activeAppForPreview.name }}</div>
+                    <IconManager :id="activeAppForPreview.manifest.id"/>
+                    <div>{{ activeAppForPreview.manifest.name }}</div>
                 </div>
                 <div>
-                    <i class="close-icon bi-x-lg" @click="taskbarAppClosed(activeAppForPreview.id)"></i>
+                    <i class="close-icon bi-x-lg" @click="taskbarAppClosed(activeAppForPreview.manifest.id)"></i>
                 </div>
             </div>
 
             <!--<div class="preview-image-father">-->
                 <div class="preview-image"
-                    @click="handleIconClick(activeAppForPreview.id)"
+                    @click="handleIconClick(activeAppForPreview.manifest.id)"
                 >
-                    <img :src="activeAppForPreview.previewImg" v-if="activeAppForPreview.previewImg" />
+                    <img :src="activeAppForPreview.runtime.previewImg" v-if="activeAppForPreview.runtime.previewImg" />
                 </div>
             <!--</div>-->
         </div>
@@ -220,24 +218,43 @@ const taskbarAppClosed = (id: string) => {
             </div>
 
             <div class="apps-container" @contextmenu.self="contextMenuApps($event)">
-                <div :id="`taskbar-app-${app.id}`" class="app" v-for="app in runningApps" :key="app.id" @click="handleIconClick(app.id)">                    
+                <div 
+                    :id="`taskbar-app-${app.manifest.id}`" 
+                    class="app" 
+                    v-for="app in taskBarApps" 
+                    :key="app.manifest.id" 
+                    @click="handleIconClick(app.manifest.id)"
+                >
                     <div 
                         class="taskbar-btn app-icon" 
-                        :class="{ 'running-app': app.isOpen, 'focused-app': app.isFocused }"
-                        @mouseenter="handleMouseEnter(app.id)"
+                        :class="{ 
+                            'running-app': app.runtime.isWindowOpen, 
+                            'focused-app': app.runtime.isFocused 
+                        }"
+                        @mouseenter="handleMouseEnter(app.manifest.id)"
                         @mouseleave="handleMouseLeave"
                     >
                         <IconManager                        
-                            :id="app.id"
+                            :id="app.manifest.id"
                             class="taskbar-icon-element"
                         />
                     </div>
                 </div>
             </div>
             
-            <div class="info-container taskbar-btn">
-                <div>{{ currentTime }}</div>
-                <div>{{ currentDate }}</div>
+            <div class="info-container">
+                <Tray
+                    :tray-apps="trayApps"
+                />
+
+                <Tray
+                    :tray-apps="pinnedStartApps"
+                />
+
+                <div class="taskbar-btn time-container">
+                    <div>{{ currentTime }}</div>
+                    <div>{{ currentDate }}</div>
+                </div>
             </div>
         </div>
     </div>

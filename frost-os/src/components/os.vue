@@ -1,25 +1,20 @@
 <script setup lang="ts">
 
-import { onMounted, onUnmounted } from 'vue'
+import { provide, onMounted, onUnmounted } from 'vue'
 import { processInstructions } from './os/process_manager'
-
-const { state, launchApp, bringToFront, closeApp } = processInstructions()
+import { OS_KEY } from './api/os_api'
 
 import Taskbar from './os/taskbar.vue'
 import Desktop from './os/dekstop.vue'
 import ContextMenu from './os/context_menu/context_menu.vue'
 
-onMounted(() => {
-    const preventDefaulContextMenu = (e: MouseEvent) => {
-        e.preventDefault()
-    }
+const os = processInstructions()
+provide(OS_KEY, os)
 
-    window.addEventListener('contextmenu', preventDefaulContextMenu)
+const preventDefaulContextMenu = (e: MouseEvent) => e.preventDefault()
 
-    onUnmounted(() => {
-        window.removeEventListener('contextmenu', preventDefaulContextMenu)
-    })
-})
+onMounted(() => window.addEventListener('contextmenu', preventDefaulContextMenu))
+onUnmounted(() => window.removeEventListener('contextmenu', preventDefaulContextMenu))
 
 </script>
 
@@ -39,18 +34,12 @@ onMounted(() => {
 
 <template>
     <div class="display main-font" style="height: 100%; width: 100%;">
-        <Desktop
-            :installed-apps="state.installedApps"
-            @focus-app="bringToFront"      
-            @closeApp="closeApp"
-        />
+        <Desktop/>
 
-        <Taskbar 
-            :installedApps="state.installedApps"
-            @taskbar-icon-clicked="launchApp"
-            @taskbar-closed-app="closeApp"
+        <Taskbar
             @shutdown="$emit('shutdown')"
         />
+
         <ContextMenu />
     </div>
 </template>

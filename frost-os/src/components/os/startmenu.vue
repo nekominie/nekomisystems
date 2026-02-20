@@ -1,22 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
-
+import { onMounted, ref, inject } from 'vue'
 import StartSettings from './start_settings.vue'
 import IconManager from './iconmanager.vue'
-
 import type { UserProfile } from '../data/types'
-import type { InstalledAppConfig } from '../data/types';
+import type { App } from '../data/app'
+import { OS_KEY } from '../api/os_api'
 
-import { InstalledApps } from '../data/installedapps'
-import { processInstructions } from './process_manager'
-
-const { launchApp, togglePinAppStart } = processInstructions();
+const os = inject(OS_KEY)
+if(!os) throw new Error('OS API not found')
 
 const previewUrl = ref('')
 const userName = ref('')
 
 const props = defineProps<{ 
-    pinnedApps: InstalledAppConfig[]
+    pinnedApps: App[]
 }>()
 
 const emit = defineEmits<{
@@ -65,6 +62,12 @@ const fillProfile = async () => {
         console.error(e);
     }
 }
+
+const launchApp = (id: string) => {
+    os.launchApp(id)
+    emit('close-startmenu')
+}
+
 </script>
 
 <style scoped>
@@ -87,7 +90,7 @@ const fillProfile = async () => {
                 <div class="divider"></div>
 
                 <StartSettings 
-                    @close-startmenu="emit('close-startmenu')"
+                    @launch-app="launchApp($event)"
                 />
 
                 <div class="divider"></div>
@@ -105,9 +108,9 @@ const fillProfile = async () => {
         <div style="display: flex; flex-direction: column; height: 100%; background-color: #00000040; flex: 1; border-radius: 9px; box-shadow: inset 0 0 15px -8px #000000;">
             <div style="flex: 1; padding: 9px;">
 
-                <div v-for="app in pinnedApps" :key="app.id" class="pinned-app-container" @click="launchApp(app.id)">
-                    <IconManager :id="app.id" class="app-icon" />
-                    <div class="app-name">{{ app.name }}</div>
+                <div v-for="app in pinnedApps" :key="app.manifest.id" class="pinned-app-container" @click="launchApp(app.manifest.id)">
+                    <IconManager :id="app.manifest.id" class="app-icon" />
+                    <div class="app-name">{{ app.manifest.name }}</div>
                 </div>
             </div>
             <button class="see-all-apps-btn"

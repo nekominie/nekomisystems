@@ -1,28 +1,34 @@
 <script setup lang="ts">
 
-import { computed  } from 'vue'
+import { computed, inject  } from 'vue'
+import { MasterAppRegistry } from '../data/master_apps_registry.ts'
+import { useContextMenu } from './context_menu/context_menu.ts'
+import { OS_KEY } from '../api/os_api'
 import Window from './window.vue'
 import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
-import { MasterAppRegistry as AppsIndex } from '../data/master_apps_registry.ts'
-import { processInstructions } from './process_manager.ts'
-import { useContextMenu } from './context_menu/context_menu.ts'
 
-const { openMenu } = useContextMenu()
-const { state, launchApp } = processInstructions()
+const os = inject(OS_KEY)
+if(!os) throw new Error('OS API not found')
 
-const transitionName = computed(() => state.lastAction)
+const { 
+    openMenu 
+} = useContextMenu()
 
-const openedApps = computed(() => {
-  return state.installedApps.filter(app => app.isOpen)
-})
+const transitionName = computed(() => 
+    os.state.lastAction
+)
 
-const desktopApps = computed(() => state.installedApps.filter(app => app.isPinnedDesktop))
+const windowOpenApps = computed(() => 
+    os.state.apps.filter(app => app.runtime.isWindowOpen)
+)
 
-const { minimizeWindow, maximizeWindow, bringToFront, closeApp } = processInstructions();
+const pinnedDesktopApps = computed(() => 
+    os.state.apps.filter(app => app.user.isPinnedDesktop)
+)
 
 const handleContextMenu = (e: MouseEvent) => {
     openMenu(e, [
-        { label: 'Personalizar', icon: 'bi-brush-fill', action: () => launchApp('settings') }
+        { label: 'Personalizar', icon: 'bi-brush-fill', action: () => os.launchApp('settings') }
     ])
 }
 
@@ -36,21 +42,20 @@ const handleContextMenu = (e: MouseEvent) => {
     <div class="desktop" @contextmenu="handleContextMenu">
 
         <DesktopIconsLayer 
-            :pinnedApps="desktopApps" 
-            @open="(id) => { launchApp(id) }"
+            :pinnedApps="pinnedDesktopApps" 
         />
         
         <TransitionGroup :name="transitionName">
             <Window
-                v-for="app in openedApps"
-                v-show="!app.isMinimized"
-                :key="app.id"
-                :app-data="app"
-                :component="AppsIndex[app.id]"
-                @close="$emit('close-app', $event)"
-                @minimize="minimizeWindow"
-                @maximize="maximizeWindow"
-                @focus="$emit('focus-app', $event)"
+                v-for="app in windowOpenApps"
+                v-show="!app.runtime.isMinimized"
+                :key="app.manifest.id"
+                :app="app"
+                :component="MasterAppRegistry[app.manifest.id]"
+                @close="os.closeApp"
+                @focus="os.bringToFront"
+                @minimize="os.minimizeWindow"
+                @maximize="os.maximizeWindow"
             />
         </TransitionGroup>
     </div>

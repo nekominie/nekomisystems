@@ -1,199 +1,232 @@
-import { reactive, ref, onMounted, nextTick } from 'vue'
+import { reactive, nextTick } from 'vue'
 
-import type { InstalledAppConfig } from '../data/types.ts'
+import type { App, Manifest, UserSettings } from '../data/app'
+import { createApp } from '../data/create_app'
+import { InstalledApps } from '../data/installedapps'
+import { CoreApps } from '../data/coreapps'
 
 import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
-import { InstalledApps } from '../data/installedapps.ts'
-import { CoreApps } from '../data/coreapps.ts'
-
 export const state = reactive({
-    installedApps: [...CoreApps, ...InstalledApps] as InstalledAppConfig[],
+    apps: [] as App[],
     topZ: 100,
     lastAction: 'window-spawn'
 })
 
-const installedApps = ref(InstalledApps)
+let initialized = false
+
+async function init() {
+    if (initialized) return
+    initialized = true
+
+    const manifests: Manifest[] = [...CoreApps, ...InstalledApps]
+    const userMap = await loadUserSettingsMap()
+
+    state.apps = manifests.map(m => 
+        createApp(m, userMap.get(m.id))
+    )
+
+    for (const app of state.apps) {
+        if (app.manifest.preferences?.startInTray) {
+            app.runtime.isRunning = true
+            app.runtime.isInTray = true
+            app.runtime.isWindowOpen = false
+        }
+    }
+
+    async function loadUserSettingsMap() {
+        const rows = await db.appSettings.toArray()
+        const map = new Map<string, Partial<UserSettings>>()
+
+        for (const r of rows) {
+            map.set(r.id, {
+            isPinned: r.isPinned,
+            isPinnedStart: r.isPinnedStart,
+            isPinnedDesktop: r.isPinnedDesktop,
+            // overrides: ... si luego lo agregas
+            })
+        }
+        return map
+    }    
+}
 
 export const processInstructions = () => {
 
-    onMounted(async () => {
-        const savedSettings = await db.appSettings.toArray()
-
-        savedSettings.forEach(saved => {
-            const app = state.installedApps.find(a => a.id === saved.id)
-            if(app){
-                app.isPinned = saved.isPinned
-                app.isPinnedStart = saved.isPinnedStart,
-                app.isPinnedDesktop = saved.isPinnedDesktop
-            }
-        })
-    })
+    init().catch(err => console.error(err))
 
     const togglePinApp = async (id: string) => {
-        const app = state.installedApps.find(a => a.id === id)
+        const app = state.apps.find(a => a.manifest.id === id)
         if(app){
-            app.isPinned = !app.isPinned
+            app.user.isPinned = !app.user.isPinned
 
             await db.appSettings.put({ 
-                id: app.id, 
-                isPinnedStart: app.isPinnedStart,
-                isPinned: app.isPinned,
-                isPinnedDesktop: app.isPinnedDesktop 
+                id: id, 
+                isPinnedStart: app.user.isPinnedStart,
+                isPinned: app.user.isPinned,
+                isPinnedDesktop: app.user.isPinnedDesktop 
             })
         }
     }
 
     const togglePinAppStart = async (id: string) => {
-        const app = state.installedApps.find(a => a.id === id)
+        const app = state.apps.find(a => a.manifest.id === id)
         if(app){
-            app.isPinnedStart = !app.isPinnedStart
+            app.user.isPinnedStart = !app.user.isPinnedStart
 
             await db.appSettings.put({ 
-                id: app.id,
-                isPinned: app.isPinned,
-                isPinnedStart: app.isPinnedStart,
-                isPinnedDesktop: app.isPinnedDesktop 
+                id: id,
+                isPinned: app.user.isPinned,
+                isPinnedStart: app.user.isPinnedStart,
+                isPinnedDesktop: app.user.isPinnedDesktop 
             })
         }
     }
 
     const togglePinAppDesktop = async (id: string) => {
-        const app = state.installedApps.find(a => a.id === id)
+        const app = state.apps.find(a => a.manifest.id === id)
         if(app){
-            app.isPinnedDesktop = !app.isPinnedDesktop
+            app.user.isPinnedDesktop = !app.user.isPinnedDesktop
 
             await db.appSettings.put({
-                id: app.id,
-                isPinned: app.isPinned,
-                isPinnedDesktop: app.isPinnedDesktop,
-                isPinnedStart: app.isPinnedStart
+                id: id,
+                isPinned: app.user.isPinned,
+                isPinnedDesktop: app.user.isPinnedDesktop,
+                isPinnedStart: app.user.isPinnedStart
             })
 
             await db.desktopIcons.put({ 
-                id: app.id, 
-                col: app.position.x, 
-                row: app.position.y 
+                id: id, 
+                col: app.runtime.position.x, 
+                row: app.runtime.position.y 
             })
 
-            if (!app.isPinnedDesktop) {
-                await db.desktopIcons.delete(app.id)
+            if (!app.user.isPinnedDesktop) {
+                await db.desktopIcons.delete(id)
             }
         }
     }
 
-    const launchApp = async (appId: string) => {
-        const app = state.installedApps.find(app => app.id === appId)
+    const launchApp = async (id: string) => {
+        const app = state.apps.find(app => app.manifest.id === id)
         if(!app) return
 
-        if(!app.isOpen){
+        if(!app.runtime.isRunning){
             //Abrir desde cero
             state.lastAction = 'window-spawn'
+
+            app.runtime.isRunning = true
+
+            const w = app.manifest.window?.defaultSize ?? { width: 600, height: 400 }
+            app.runtime.size = { ...w }
+
             const screenWidth = window.innerWidth
             const screenHeight = window.innerHeight
 
-            app.position = {
-                x: (screenWidth - app.size.width) / 2,
-                y: (screenHeight - app.size.height) / 2
+            app.runtime.position = {
+                x: (screenWidth - app.runtime.size.width) / 2,
+                y: (screenHeight - app.runtime.size.height) / 2
             }
                 
-            app.isOpen = true
+            app.runtime.isWindowOpen = true
+            app.runtime.isMinimized = false
 
             setTimeout(() => {
-                updatePreviewImage(app.id)                
+                updatePreviewImage(id)                
             }, 100);
 
-            bringToFront(appId)
+            bringToFront(id)
+            return
         }
-        else if(app.isFocused && !app.isMinimized){
+
+        if(app.runtime.isFocused && !app.runtime.isMinimized){
             //Minimizar
-            updatePreviewImage(app.id)        
+            updatePreviewImage(id)        
 
             state.lastAction = 'window-minimize'
             await nextTick()            
 
-            app.isMinimized = true
-            app.isFocused = false
+            app.runtime.isMinimized = true
+            app.runtime.isFocused = false
+            return
         }
-        else{
-            //desminimizar
-            state.lastAction = 'window-minimize'
-            await nextTick()
-            app.isMinimized = false
 
-            bringToFront(appId)
-        }
+        //desminimizar/restaurar
+        state.lastAction = 'window-minimize'
+        await nextTick()
+        app.runtime.isMinimized = false
+        bringToFront(id)
     }
 
     const closeApp = (id: string) => {
-        const app = state.installedApps.find(app => app.id === id)
+        const app = state.apps.find(app => app.manifest.id === id)
 
         if(app){
             state.lastAction = 'window-spawn'
-            app.isOpen = false
+            app.runtime.isWindowOpen = false
+            app.runtime.isRunning = false
         }
     }
 
-    const bringToFront = (appId: string) => {
-        const app = state.installedApps.find(a => a.id === appId);
+    const bringToFront = (id: string) => {
+        const app = state.apps.find(a => a.manifest.id === id);
         if (!app) return;
 
-        const currentFocused = state.installedApps.find(a => a.isFocused);
-        if (currentFocused && currentFocused.id !== app.id) 
-            updatePreviewImage(app.id)        
+        const currentFocused = state.apps.find(a => a.runtime.isFocused);
+        if (currentFocused && currentFocused.manifest.id !== id) 
+            updatePreviewImage(id)        
 
-        if (app.isFocused && !app.isMinimized && app.zIndex === state.topZ) return;
+        if (app.runtime.isFocused && !app.runtime.isMinimized && app.runtime.zIndex === state.topZ) return;
 
-        state.installedApps.forEach(a => a.isFocused = false);
+        state.apps.forEach(a => a.runtime.isFocused = false);
         
         state.topZ++; 
-        app.zIndex = state.topZ;
-        app.isFocused = true;
-        app.isMinimized = false;
-        app.isOpen = true;
+        app.runtime.zIndex = state.topZ;
+        app.runtime.isFocused = true;
+        app.runtime.isMinimized = false;
+        app.runtime.isWindowOpen = true;
     };
 
-    const minimizeWindow = async (appId: string) => {
-        const app = state.installedApps.find(a => a.id === appId)
+    const minimizeWindow = async (id: string) => {
+        const app = state.apps.find(a => a.manifest.id === id)
         if (app) {
-            updatePreviewImage(app.id)
+            updatePreviewImage(id)
 
             state.lastAction = 'window-minimize'
             await nextTick()
 
-            app.isMinimized = true
-            app.isFocused = false
+            app.runtime.isMinimized = true
+            app.runtime.isFocused = false
         }
     }
 
     const maximizeWindow = (id: string) => {
-        const app = state.installedApps.find(a => a.id === id);
+        const app = state.apps.find(a => a.manifest.id === id);
         if (!app) return;
 
-        updatePreviewImage(app.id)
+        updatePreviewImage(id)
 
-        if (!app.isMaximized) {
-            app.tempSettings = {
-                position: { ...app.position },
-                size: { ...app.size }
+        if (!app.runtime.isMaximized) {
+            app.runtime.tempSettings = {
+                position: { ...app.runtime.position },
+                size: { ...app.runtime.size }
             };
 
-            app.position = { x: 0, y: 0 };
-            app.isMaximized = true;
+            app.runtime.position = { x: 0, y: 0 };
+            app.runtime.isMaximized = true;
         }
         else{
-            if (app.tempSettings) {
-                app.position = { ...app.tempSettings.position };
-                app.size = { ...app.tempSettings.size };
+            if (app.runtime.tempSettings) {
+                app.runtime.position = { ...app.runtime.tempSettings.position };
+                app.runtime.size = { ...app.runtime.tempSettings.size };
             }
 
-            app.isMaximized = false;
+            app.runtime.isMaximized = false;
         }
     }
 
-    const updatePreviewImage = async (appId: string) => {
-        const el = document.getElementById(`window-content-${appId}`);
+    const updatePreviewImage = async (id: string) => {
+        const el = document.getElementById(`window-content-${id}`);
         
         if (el) {
             try {
@@ -204,10 +237,10 @@ export const processInstructions = () => {
                     useCORS: true
                 });
                 
-                const app = state.installedApps.find(a => a.id === appId);
+                const app = state.apps.find(a => a.manifest.id === id);
                 if (app) {
-                    app.previewImg = canvas.toDataURL('image/webp', 0.3);
-                    console.log(app.previewImg);
+                    app.runtime.previewImg = canvas.toDataURL('image/webp', 0.3);
+                    console.log(app.runtime.previewImg);
                 }
 
             } catch (err) {

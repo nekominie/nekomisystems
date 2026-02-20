@@ -1,45 +1,62 @@
 <script lang="ts" setup>
 
-import { CoreApps } from '../data/coreapps.ts'
-import { processInstructions } from './process_manager.ts'
-import { InstalledApps } from '../data/installedapps.ts';
-import { useContextMenu } from './context_menu/context_menu.ts'
+import { inject, computed } from 'vue'
+import { OS_KEY } from '../api/os_api'
+import { CoreApps } from '../data/coreapps'
+import { InstalledApps } from '../data/installedapps'
+import { useContextMenu } from './context_menu/context_menu'
+import {App} from '../data/app'
 import IconManager from './iconmanager.vue'
 
-const { openMenu } = useContextMenu()
-const { launchApp, togglePinApp, togglePinAppStart, togglePinAppDesktop } = processInstructions();
+const os = inject(OS_KEY)
+if(!os) throw new Error('OS API not found')
 
-const contextMenuApps = (e: MouseEvent, app: any) => {
+const { openMenu } = useContextMenu()
+
+const contextMenuApps = (e: MouseEvent, app: App) => {
     openMenu(e, [
         {
             label: 'Abrir',
-            action: () => launchApp(app.id)
+            action: () => os.launchApp(app.manifest.id)
         },
         { separator: true},
         { 
-            label: app.isPinned ? 'Desanclar de la barra de tareas' : 'Anclar en la barra de tareas',
-            icon: app.isPinned ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
-            action: () => togglePinApp(app.id) 
+            label: app.user.isPinned ? 'Desanclar de la barra de tareas' : 'Anclar en la barra de tareas',
+            icon: app.user.isPinned ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => os.togglePinApp(app.manifest.id) 
         },
         { 
-            label: app.isPinnedStart ? 'Desanclar del menu de inicio' : 'Anclar en el menu de inicio',
-            icon: app.isPinnedStart ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
-            action: () => togglePinAppStart(app.id) 
+            label: app.user.isPinnedStart ? 'Desanclar del menu de inicio' : 'Anclar en el menu de inicio',
+            icon: app.user.isPinnedStart ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => os.togglePinAppStart(app.manifest.id) 
         },
         { 
-            label: app.isPinnedDesktop ? 'Eliminar acceso directo' : 'Crear acceso directo',
-            icon: app.isPinnedDesktop ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
-            action: () => togglePinAppDesktop(app.id) 
+            label: app.user.isPinnedDesktop ? 'Eliminar acceso directo' : 'Crear acceso directo',
+            icon: app.user.isPinnedDesktop ? 'bi-pin-angle-fill' : 'bi-pin-fill', 
+            action: () => os.togglePinAppDesktop(app.manifest.id) 
         }
 
     ])
 }
 
+const allApps = computed(() => os.state.apps)
+
+const coreAppIds = new Set(CoreApps.map(a => a.id))
+const installedAppIds = new Set(InstalledApps.map(a => a.id))
+
+const visibleInstalledApps = computed(() =>
+  allApps.value.filter(a => installedAppIds.has(a.manifest.id))
+)
+
+const visibleCoreApps = computed(() =>
+  allApps.value.filter(a => coreAppIds.has(a.manifest.id))
+)
+
 const emit = defineEmits(['close-app-finder'])
 
 const runApp = (id: string) => {
     emit('close-app-finder')
-    launchApp(id)
+    os.launchApp(id)
 }
 
 </script>
@@ -61,14 +78,14 @@ const runApp = (id: string) => {
                     
                     <div class="icons-container">
                         <div
-                            v-for="app in InstalledApps" 
-                            :key="app.id"
-                            @click="runApp(app.id)"
+                            v-for="app in visibleInstalledApps" 
+                            :key="app.manifest.id"
+                            @click="runApp(app.manifest.id)"
                             class="app-container"                            
                         >
                             <div class="app-element" @contextmenu="contextMenuApps($event, app)">
-                                <IconManager :id="app.id" class="taskbar-icon-element" />
-                                <div class="app-name">{{ app.name }}</div>
+                                <IconManager :id="app.manifest.id" class="taskbar-icon-element" />
+                                <div class="app-name">{{ app.manifest.name }}</div>
                             </div>
                         </div>
                     </div>
@@ -80,15 +97,15 @@ const runApp = (id: string) => {
                     <div class="subtitle">Aplicaciones de Sistema</div>
                     <div class="icons-container">
                         <div
-                            v-for="app in CoreApps" 
-                            :key="app.id"
-                            @click="runApp(app.id)"
+                            v-for="app in visibleCoreApps" 
+                            :key="app.manifest.id"
+                            @click="runApp(app.manifest.id)"
                             class="app-container"
                             @contextmenu.prevent="contextMenuApps($event, app)"
                         >
                             <div class="app-element">
-                                <IconManager :id="app.id" class="taskbar-icon-element" />
-                                <div class="app-name">{{ app.name }}</div>               
+                                <IconManager :id="app.manifest.id" class="taskbar-icon-element" />
+                                <div class="app-name">{{ app.manifest.name }}</div>               
                             </div>     
                         </div>
                     </div>
