@@ -34,6 +34,15 @@ export const InstalledApps: Manifest[] = [
             name: 'Discord',
             preferences: {
                 startInTray: true
+            },
+            menus:{
+                taskbar: [
+                    { type: 'item', id: 'open', label: 'Abrir' },
+                    { type: 'item', id: 'new-window', label: 'Nueva Ventana' },
+                ],
+                tray:[
+                    { type: 'item', id: 'toggle-mute', label: 'Silenciar' }
+                ]
             }
         }
 ]

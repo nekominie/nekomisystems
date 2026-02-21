@@ -1,4 +1,7 @@
-import { reactive, nextTick } from 'vue';
+import { reactive, nextTick } from 'vue'
+import { AppActionHandlers } from '../../data/app_actions_registry'
+import type { App, Manifest } from '../../data/app'
+import type { AppMenuContext, MenuResolveCtx, MenuItemDescriptor } from '../../data/types'
 
 interface MenuOption {
     label?: string;
@@ -53,4 +56,37 @@ export const useContextMenu = () => {
     };
 
     return { openMenu, closeMenu, contextMenuState };
-};
+}
+
+export function buildAppContextMenu(app: App, context: AppMenuContext, os: any) {
+  const defs = app.manifest.menus?.[context] ?? defaultMenuForContext(context)
+
+  const ctx: MenuResolveCtx = { app, context, os }
+
+  const items = defs
+    .filter(d => d.type !== 'item' || !d.when || d.when(ctx))
+    .sort((a,b) => (a.order ?? 999) - (b.order ?? 999))
+    .map(d => {
+      if (d.type === 'separator') return { separator: true }
+
+      const handler = AppActionHandlers[app.manifest.id]?.[d.id]
+      return {
+        label: d.label,
+        icon: d.icon,
+        action: () => handler?.(ctx)
+      }
+    })
+
+  return items
+}
+
+function defaultMenuForContext(context: AppMenuContext): MenuItemDescriptor[] {
+  if (context === 'taskbar') {
+    return [
+      { type: 'item', id: 'open', label: 'Abrir' },
+      { type: 'separator' },
+      { type: 'item', id: 'close', label: 'Cerrar' },
+    ]
+  }
+  return [{ type: 'item', id: 'open', label: 'Abrir' }]
+}

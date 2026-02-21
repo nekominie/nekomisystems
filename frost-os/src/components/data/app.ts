@@ -1,3 +1,5 @@
+import { MenuItemDescriptor, AppMenuContext } from '../data/types'
+
 export interface App{
     manifest: Manifest,
     runtime: Runtime,
@@ -27,6 +29,8 @@ export interface Manifest{
         closeToTray?: boolean;
         startInTray?: boolean;
     }
+
+    menus?: Partial<Record<AppMenuContext, MenuItemDescriptor[]>>
 }
 
 export interface Runtime{

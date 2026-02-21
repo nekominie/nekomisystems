@@ -8,6 +8,10 @@ const props = defineProps<{
   maxMain?: number
 }>()
 
+const emit = defineEmits<{
+  (e: 'right-click', payload: { e:MouseEvent; id: string }): void
+}>()
+
 const maxMain = computed(() => props.maxMain ?? 3)
 
 const isOpen = ref(false)
@@ -34,6 +38,12 @@ const onGlobalMouseDown = (e: MouseEvent) => {
 const onGlobalKeyDown = (e: KeyboardEvent) => {
   if (!isOpen.value) return
   if (e.key === 'Escape') close()
+}
+
+const trayRightClick = (e: MouseEvent, id: string) => {
+    if(e.button === 2){
+        emit('right-click', { e, id })
+    }
 }
 
 onMounted(() => {
@@ -76,6 +86,7 @@ onUnmounted(() => {
         :key="app.manifest.id"
         class="app-icon"
         :title="app.manifest.name"
+        @contextmenu.prevent.stop="trayRightClick($event, app.manifest.id)"
       >
         <IconManager :id="app.manifest.id" />
       </div>

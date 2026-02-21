@@ -7,6 +7,8 @@ import IconManager from './iconmanager.vue'
 import AppFinder from './apps_finder.vue'
 import { useContextMenu } from './context_menu/context_menu.ts'
 import { OS_KEY } from '../api/os_api'
+import { buildAppContextMenu } from './context_menu/context_menu.ts'
+import type { App } from '../data/app'
 
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
@@ -30,8 +32,6 @@ const trayApps = computed(() => os.state.apps.filter(app =>
     app.runtime.isInTray
 ))
 
-console.log(trayApps)
-
 const emit = defineEmits<{
     (e: 'shutdown'): void
 }>()
@@ -53,6 +53,10 @@ const contextMenuApps = (e: MouseEvent) => {
             action: () => os.launchApp('task_supervisor') 
         },
     ])
+}
+
+const onIconRightCLick = (e: MouseEvent, app: App) => {
+    openMenu(e, buildAppContextMenu(app, 'taskbar', os))
 }
 
 const previewPositionStyle = ref({ left: '0px' })
@@ -153,6 +157,13 @@ const taskbarAppClosed = (id: string) => {
     os.closeApp(id)
 }
 
+const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
+    const app = os.state.apps.find(app => app.manifest.id === id)
+    if (!app) return
+
+    openMenu(e, buildAppContextMenu(app, 'tray', os))
+}
+
 </script>
 
 <style scoped>
@@ -224,6 +235,7 @@ const taskbarAppClosed = (id: string) => {
                     v-for="app in taskBarApps" 
                     :key="app.manifest.id" 
                     @click="handleIconClick(app.manifest.id)"
+                    @contextmenu.stop.prevent="onIconRightCLick($event, app)"
                 >
                     <div 
                         class="taskbar-btn app-icon" 
@@ -245,6 +257,7 @@ const taskbarAppClosed = (id: string) => {
             <div class="info-container">
                 <Tray
                     :tray-apps="trayApps"
+                    @right-click="({ e, id }) => onRightClickTrayIcon(e, id)"
                 />
 
                 <Tray

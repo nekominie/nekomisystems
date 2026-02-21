@@ -14,7 +14,7 @@ export const DEFAULT_MANIFEST: Partial<Manifest> = {
   window: {
     defaultSize: { width: 600, height: 400 },
     startMaximized: false,
-  },
+  }
 }
 
 export const DEFAULT_RUNTIME: Runtime = {
