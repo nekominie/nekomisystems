@@ -4,20 +4,15 @@ export const CoreSnippets: Manifest[] = [
     {
         id: 'volume_slider',
         name: 'volume_slider',
-        capabilities: {
-            tray: {
-                canUse: true
-            }
+        snippet: {
+            kind: "flyout",
+            mount: "boot"
         },
-        menus:{
-            tray:[
-                { type: 'item', id: 'toggle-mute', label: 'Silenciar' }
-            ]
-        },
+        menus:{},
         preferences: {
             startInTray: true
         },
         transition: 'core-out'
     },
-]
+];
     

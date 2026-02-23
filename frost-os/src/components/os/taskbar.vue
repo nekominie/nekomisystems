@@ -172,20 +172,26 @@ const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
     
     console.log('onLeftClickTrayIcon', id)
 
-    const repo = isSnippet == true ? os.state.snippets : os.state.apps
+    const repo = 
+        isSnippet == true ? 
+        os.state.snippets :
+        os.state.apps
 
     const app = repo.find(app => app.manifest.id === id)
     if (!app) return
 
     const actionId = app.manifest.capabilities?.tray?.defaultAction ?? 'open'
 
-    const handler = isSnippet ? SnippetActionHandlers[app.manifest.id]?.[actionId] : AppActionHandlers[app.manifest.id]?.[actionId]
+    const handler = 
+        isSnippet ? 
+        SnippetActionHandlers[app.manifest.id]?.[actionId] : 
+        AppActionHandlers[app.manifest.id]?.[actionId]
 
     if(handler){
         handler({ app, context: 'tray', os })
     }
     else{
-        isSnippet == true ? os.openSnippet(id) : os.launchApp(id)
+        isSnippet == true ? os.showSnippet(id) : os.launchApp(id)
     }
 }
 

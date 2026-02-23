@@ -45,10 +45,14 @@ async function init() {
     }
 
     for(const snippet of state.snippets){
-        if(snippet.manifest.preferences?.startInTray){
+        if(snippet.manifest.snippet?.mount === "boot"){
             snippet.runtime.isRunning = true
-            snippet.runtime.isInTray = true
-            snippet.runtime.isWindowOpen = false
+            snippet.runtime.isMounted = true
+            snippet.runtime.isVisible = false
+
+            if(snippet.manifest.preferences?.startInTray){
+                snippet.runtime.isInTray = true
+            }
         }
     }
 
@@ -266,25 +270,32 @@ export const processInstructions = () => {
         }
     };
 
-    const openSnippet = (id: string) => {
-        const snippet = state.snippets.find(a => a.manifest.id === id)
-        if (snippet) {
-            snippet.runtime.isWindowOpen = true
-        }
-    }
-
-    const requestCloseSnippet = (id: string) => {
+    const showSnippet = async (id: string) => {
         const s = state.snippets.find(a => a.manifest.id === id)
         if(!s) return
+        
+        s.runtime.isMounted = true
+        s.runtime.isVisible = false
 
-        s.runtime.isWindowOpen = false
+        await nextTick()
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                s.runtime.isVisible = true  
+            })
+        })
     }
 
-    const finalizeCloseSnippet = (id: string) => {
-        const idx = state.snippets.findIndex(a => a.manifest.id === id)
-        if(idx === -1) return
+    const hideSnippet = (id: string) => {
+        const s = state.snippets.find(a => a.manifest.id === id)
+        if(!s) return
+        s.runtime.isVisible = false
+    }
 
-        state.snippets.splice(idx, 1)
+    const unmountSnippet = (id: string) => {
+        const s = state.snippets.find(a => a.manifest.id === id)
+        if(!s) return
+        s.runtime.isMounted = false
     }
 
     return { 
@@ -297,8 +308,8 @@ export const processInstructions = () => {
         togglePinApp, 
         togglePinAppStart,
         togglePinAppDesktop,
-        openSnippet,
-        requestCloseSnippet,
-        finalizeCloseSnippet
+        showSnippet,
+        hideSnippet,
+        unmountSnippet
     }
 }

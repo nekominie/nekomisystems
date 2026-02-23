@@ -1,5 +1,7 @@
 import { MenuItemDescriptor, AppMenuContext } from '../data/types'
 
+type SnippetKind = "flyout" | "widget"
+
 export interface App{
     manifest: Manifest,
     runtime: Runtime,
@@ -10,6 +12,11 @@ export interface Manifest{
     id: string;
     name: string;
     icon?: string;
+
+    snippet?:{
+        kind: SnippetKind;
+        mount: "boot" | "onDemand" | "user";
+    }
 
     window?:{
         defaultSize: { width: number; height: number; }
@@ -40,6 +47,8 @@ export interface Manifest{
 
 export interface Runtime{
     isRunning: boolean;
+    isMounted?: boolean,
+    isVisible?: boolean,
 
     isWindowOpen: boolean;
     isMinimized: boolean;

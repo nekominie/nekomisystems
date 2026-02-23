@@ -10,7 +10,9 @@ const props = defineProps<{
 </script>
 
 <template>
-    <component :is="component" v-if="component" />
+    <div class="snippet-root">
+        <component :is="component" v-if="component" />
+    </div>
 </template>
 
 <style scoped>

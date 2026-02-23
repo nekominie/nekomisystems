@@ -28,7 +28,6 @@ const trigger = computed(() => store.state.trigger);
 
 <style scoped>
 .master-container{
-    position: absolute;
     bottom: 60px;
     right: 10px;
     display: flex;
