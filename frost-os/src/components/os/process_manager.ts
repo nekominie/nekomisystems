@@ -3,13 +3,15 @@ import { reactive, nextTick } from 'vue'
 import type { App, Manifest, UserSettings } from '../data/app'
 import { createApp } from '../data/create_app'
 import { InstalledApps } from '../data/installedapps'
-import { CoreApps } from '../data/coreapps'
+import { CoreApps } from '../data/core_apps.ts'
+import { CoreSnippets } from '../data/core_snippets.ts'
 
 import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
 export const state = reactive({
     apps: [] as App[],
+    snippets: [] as App[],
     topZ: 100,
     lastAction: 'window-spawn'
 })
@@ -21,7 +23,14 @@ async function init() {
     initialized = true
 
     const manifests: Manifest[] = [...CoreApps, ...InstalledApps]
+    const snippets: Manifest[] = CoreSnippets
+
     const userMap = await loadUserSettingsMap()
+    const snippetsMap = await loadUserSettingsMap()
+
+    state.snippets = snippets.map(m => 
+        createApp(m, snippetsMap.get(m.id))
+    )
 
     state.apps = manifests.map(m => 
         createApp(m, userMap.get(m.id))
@@ -32,6 +41,14 @@ async function init() {
             app.runtime.isRunning = true
             app.runtime.isInTray = true
             app.runtime.isWindowOpen = false
+        }
+    }
+
+    for(const snippet of state.snippets){
+        if(snippet.manifest.preferences?.startInTray){
+            snippet.runtime.isRunning = true
+            snippet.runtime.isInTray = true
+            snippet.runtime.isWindowOpen = false
         }
     }
 
@@ -249,6 +266,27 @@ export const processInstructions = () => {
         }
     };
 
+    const openSnippet = (id: string) => {
+        const snippet = state.snippets.find(a => a.manifest.id === id)
+        if (snippet) {
+            snippet.runtime.isWindowOpen = true
+        }
+    }
+
+    const requestCloseSnippet = (id: string) => {
+        const s = state.snippets.find(a => a.manifest.id === id)
+        if(!s) return
+
+        s.runtime.isWindowOpen = false
+    }
+
+    const finalizeCloseSnippet = (id: string) => {
+        const idx = state.snippets.findIndex(a => a.manifest.id === id)
+        if(idx === -1) return
+
+        state.snippets.splice(idx, 1)
+    }
+
     return { 
         state, 
         launchApp, 
@@ -258,6 +296,9 @@ export const processInstructions = () => {
         maximizeWindow, 
         togglePinApp, 
         togglePinAppStart,
-        togglePinAppDesktop
+        togglePinAppDesktop,
+        openSnippet,
+        requestCloseSnippet,
+        finalizeCloseSnippet
     }
 }

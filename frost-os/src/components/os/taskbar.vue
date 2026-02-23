@@ -9,6 +9,8 @@ import { useContextMenu } from './context_menu/context_menu.ts'
 import { OS_KEY } from '../api/os_api'
 import { buildAppContextMenu } from './context_menu/context_menu.ts'
 import type { App } from '../data/app'
+import { AppActionHandlers } from '../data/app_actions_registry.ts'
+import { SnippetActionHandlers } from '../data/snippet_actions_registry.ts'
 
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
@@ -22,6 +24,8 @@ const taskBarApps = computed(() => {
 const pinnedStartApps = computed(() => {
     return os.state.apps.filter(app => app.user.isPinnedStart)
 })
+
+const traySnippets = computed(() => os.state.snippets.filter(snippet => snippet.runtime.isInTray))
 
 const activeAppForPreview = computed(() => 
     os.state.apps.find(app => app.manifest.id === hoveredAppId.value && app.runtime.isWindowOpen)
@@ -164,6 +168,27 @@ const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
     openMenu(e, buildAppContextMenu(app, 'tray', os))
 }
 
+const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
+    
+    console.log('onLeftClickTrayIcon', id)
+
+    const repo = isSnippet == true ? os.state.snippets : os.state.apps
+
+    const app = repo.find(app => app.manifest.id === id)
+    if (!app) return
+
+    const actionId = app.manifest.capabilities?.tray?.defaultAction ?? 'open'
+
+    const handler = isSnippet ? SnippetActionHandlers[app.manifest.id]?.[actionId] : AppActionHandlers[app.manifest.id]?.[actionId]
+
+    if(handler){
+        handler({ app, context: 'tray', os })
+    }
+    else{
+        isSnippet == true ? os.openSnippet(id) : os.launchApp(id)
+    }
+}
+
 </script>
 
 <style scoped>
@@ -171,6 +196,7 @@ const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
 </style>
 
 <template>
+    <!--START MENU-->
     <Transition name="start-menu-fade">
         <Startmenu 
             v-show="showingStartMenu"
@@ -181,6 +207,7 @@ const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
         />
     </Transition>
 
+    <!--APP FINDER-->
     <Transition name="app-finder-fade">
         <AppFinder 
             v-show="showingAppFinder"
@@ -188,6 +215,7 @@ const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
         />
     </Transition>
 
+    <!--PREVIEW-->
     <Transition name="preview-fade">
         <div
             v-if="hoveredAppId && activeAppForPreview"
@@ -257,11 +285,14 @@ const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
             <div class="info-container">
                 <Tray
                     :tray-apps="trayApps"
+                    @left-click="({ e, id }) => onLeftClickTrayIcon(e, id, false)"
                     @right-click="({ e, id }) => onRightClickTrayIcon(e, id)"
                 />
 
                 <Tray
-                    :tray-apps="pinnedStartApps"
+                    :tray-apps="traySnippets"
+                    @left-click="({ e, id }) => onLeftClickTrayIcon(e, id, true)"
+                    @right-click="({ e, id }) => onRightClickTrayIcon(e, id)"
                 />
 
                 <div class="taskbar-btn time-container">

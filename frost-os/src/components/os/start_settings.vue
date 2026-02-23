@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 
-import { CoreApps } from '../data/coreapps'
+import { CoreApps } from '../data/core_apps'
 import IconManager from './iconmanager.vue'
 
 const emit = defineEmits<{

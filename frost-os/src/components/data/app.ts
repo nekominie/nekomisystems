@@ -19,7 +19,10 @@ export interface Manifest{
     }
 
     capabilities?: {
-        tray?: boolean;
+        tray?: {
+            canUse?: boolean,
+            defaultAction?: string
+        }
         background?: boolean;
         notifications?: boolean;
     }
@@ -30,7 +33,9 @@ export interface Manifest{
         startInTray?: boolean;
     }
 
-    menus?: Partial<Record<AppMenuContext, MenuItemDescriptor[]>>
+    transition?: string;
+
+    menus?: Partial<Record<AppMenuContext, MenuItemDescriptor[]>>;
 }
 
 export interface Runtime{
@@ -46,7 +51,7 @@ export interface Runtime{
     tempSettings?: {
         position: { x:number; y:number; };    
         size: { width: number; height: number; };
-    },
+    };
 
     isInTray: boolean;
     trayBadge?: number | boolean;

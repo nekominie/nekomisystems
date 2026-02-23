@@ -5,7 +5,7 @@ export type ActionHandler = (ctx: MenuResolveCtx) => void | Promise<void>
 
 export const AppActionHandlers: Record<string, Record<string, ActionHandler>> = {
   discord: {
-    'toggle-mute': discordActions.toggleMute
+    'toggle-mute': discordActions.toggleMute,
   },
 
   notepad: {

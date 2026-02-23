@@ -2,7 +2,10 @@ import type { Manifest, Runtime, UserSettings, App } from './app'
 
 export const DEFAULT_MANIFEST: Partial<Manifest> = {
   capabilities: {
-    tray: false,
+    tray: {
+      canUse: false,
+      defaultAction: 'open',
+    },
     background: false,
     notifications: false,
   },

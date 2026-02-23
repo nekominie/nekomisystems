@@ -35,6 +35,12 @@ export const InstalledApps: Manifest[] = [
             preferences: {
                 startInTray: true
             },
+            capabilities: {
+                tray:{ 
+                    canUse: true,
+                    defaultAction: 'open'
+                }
+            },
             menus:{
                 taskbar: [
                     { type: 'item', id: 'open', label: 'Abrir' },

@@ -2,7 +2,7 @@
 
 import { inject, computed } from 'vue'
 import { OS_KEY } from '../api/os_api'
-import { CoreApps } from '../data/coreapps'
+import { CoreApps } from '../data/core_apps'
 import { InstalledApps } from '../data/installedapps'
 import { useContextMenu } from './context_menu/context_menu'
 import {App} from '../data/app'

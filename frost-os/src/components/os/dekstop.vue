@@ -2,9 +2,11 @@
 
 import { computed, inject  } from 'vue'
 import { MasterAppRegistry } from '../data/master_apps_registry.ts'
+import { MasterSnippetsRegistry } from '../data/master_snippets_registry.ts'
 import { useContextMenu } from './context_menu/context_menu.ts'
 import { OS_KEY } from '../api/os_api'
 import Window from './window.vue'
+import Snippet from './snippet.vue'
 import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
 
 const os = inject(OS_KEY)
@@ -26,6 +28,10 @@ const pinnedDesktopApps = computed(() =>
     os.state.apps.filter(app => app.user.isPinnedDesktop)
 )
 
+const openSnippets = computed(() => 
+    os.state.snippets.filter(snippet => snippet.runtime.isWindowOpen)
+)
+
 const handleContextMenu = (e: MouseEvent) => {
     openMenu(e, [
         { label: 'Personalizar', icon: 'bi-brush-fill', action: () => os.launchApp('settings') }
@@ -44,6 +50,20 @@ const handleContextMenu = (e: MouseEvent) => {
         <DesktopIconsLayer 
             :pinnedApps="pinnedDesktopApps" 
         />
+
+        <Transition
+            v-for="snippet in openSnippets"
+            :key="snippet.manifest.id"
+            :name="snippet.manifest.transition ?? 'snippet-fade'"
+            @after-leave="os.finalizeCloseSnippet(snippet.manifest.id)"
+        >
+            <Snippet
+                v-show="snippet.runtime.isWindowOpen"                
+                :snippet="snippet"
+                :component="MasterSnippetsRegistry[snippet.manifest.id]"
+                @request-close="os.requestCloseSnippet(snippet.manifest.id)"
+            />
+        </Transition>
         
         <TransitionGroup :name="transitionName">
             <Window
@@ -58,5 +78,7 @@ const handleContextMenu = (e: MouseEvent) => {
                 @maximize="os.maximizeWindow"
             />
         </TransitionGroup>
+
+        
     </div>
 </template>
