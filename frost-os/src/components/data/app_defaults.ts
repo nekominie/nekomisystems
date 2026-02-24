@@ -16,6 +16,7 @@ export const DEFAULT_MANIFEST: Partial<Manifest> = {
   },
   window: {
     defaultSize: { width: 600, height: 400 },
+    minSize: { width: 600, height: 400 },
     startMaximized: false,
   }
 }
