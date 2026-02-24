@@ -6,13 +6,12 @@ import { OS_KEY } from '../../../api/os_api'
 const os = inject(OS_KEY)!
 if (!os) throw new Error('OS API not found')
 
-// 🔧 workaround TS (slots quedan en any)
 const TableLiteAny = TableLite as any
 
 type ProcessRow = {
   id: string
   name: string
-  type: 'app' | 'snippet'
+  type: 'application' | 'snippet'
   state: string
   window: string
   tray: string
@@ -53,7 +52,7 @@ const rowsAll = computed<ProcessRow[]>(() => {
   const apps: ProcessRow[] = os.state.apps.map((a: any) => ({
     id: a.manifest.id,
     name: a.manifest.name,
-    type: 'app',
+    type: 'application',
     state: a.runtime.isRunning ? (a.runtime.isMinimized ? 'Running (Minimized)' : 'Running') : 'Stopped',
     window: a.runtime.isWindowOpen ? 'Yes' : 'No',
     tray: a.runtime.isInTray ? 'Yes' : 'No',
@@ -94,10 +93,10 @@ function formatUptime(sec: number) {
 
 function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
   if (act === 'Focus') {
-    if (row.type === 'app') os.bringToFront(row.id)
+    if (row.type === 'application') os.bringToFront(row.id)
     else os.showSnippet(row.id)
   } else if (act === 'End') {
-    if (row.type === 'app') os.closeApp(row.id)
+    if (row.type === 'application') os.closeApp(row.id)
     else os.hideSnippet(row.id)
   } else if (act === 'Toggle Tray') {
     // if (row.type === 'app') os.toggleTray?.(row.id)
@@ -121,8 +120,30 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
         :columns="table.columns"
         :rows="rows"
         :total="rows.length"
+        :page-size="9999"
+        :is-hide-paging="true"
+        :key="rows.length + '-' + quickFilter"
+        :page="1"
       >
         <!-- Slots nombrados por field -->
+        <template #state="{ value }">
+          <span
+            :class="{ 
+              running: value.state === 'Running' || value.state === 'Running (Minimized)',
+              stopped: value.state === 'Stopped'            
+            }"
+          >
+            {{  value.state }}
+          </span>
+        </template>
+
+        <template #name="{ value }">
+          <div class="proc-cell">
+            <div style="color: white;">{{ value.name }}</div>
+            <div style="font-size: 14px;">{{ value.id }}</div>
+          </div>
+        </template>
+
         <template #cpuMs5s="{ value }">
           <span class="stat-badge cpu">{{ Math.round(value.cpuMs5s) }}</span>
         </template>
@@ -159,12 +180,13 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
   width: 100%;
   display: flex;
   flex-direction: column;
+  background-color: rgb(112 112 112 / 76%) !important;
+  backdrop-filter: blur(68px) !important;
 }
 
 .tm-toolbar{
   padding: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0);
 }
 
 .search-container{
@@ -192,10 +214,18 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 .tm-grid{
   flex: 1;
   min-height: 0;
-  width: 100%;
   height: 100%;
   overflow: auto;
-  padding: 10px;
+}
+
+.running{
+  color: rgba(114, 255, 114, 0.74);
+  font-weight: 600;
+}
+
+.stopped{
+  color: rgba(255, 124, 124, 0.863);
+  font-weight: 600;
 }
 
 /* TableLite internal classes */
@@ -206,7 +236,7 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 }
 
 :deep(.vtl-thead th){
-  background: rgba(255, 255, 255, 0.10) !important;
+  background: rgba(0, 0, 0, 0.295) !important;
   border: none !important;
   color: rgba(255,255,255,0.9) !important;
   font-size: 11px;
@@ -215,13 +245,20 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
   padding: 12px !important;
 }
 
+:deep(.vtl-card){
+  background-color: rgba(0, 0, 0, 0.171);
+  /*height: 100%;*/
+}
+
 :deep(.vtl-tbody tr){
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.05);
   transition: background 0.15s ease;
+  color: rgba(255, 255, 255, 0.726);
 }
 
 :deep(.vtl-tbody tr:hover){
-  background: rgba(255, 255, 255, 0.09) !important;
+  background: rgba(0, 0, 0, 0.336) !important;
+  color: white !important;
 }
 
 :deep(.vtl-tbody td){
@@ -250,15 +287,15 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 
 .tm-btn{
   padding: 4px 10px;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.06);
-  color: white;
+  color: rgba(255, 255, 255, 0.685);
   cursor: pointer;
   font-size: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  /*gap: 6px;*/
 }
 
 .tm-btn:hover{

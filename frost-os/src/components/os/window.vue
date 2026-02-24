@@ -239,7 +239,8 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
             'maximized' : app.runtime.isMaximized,
             'dragging' : isDragging,
             'resizing' : isResizing,
-            'no-transitions' : isResizing || isDragging
+            'no-transitions' : isResizing || isDragging,
+            'default-frame-bg': !component
         }"        
 
         :style="windowStyles"
@@ -279,22 +280,31 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
             </div>
         </div>
 
-        <div :id="'window-content-' + app.manifest.id" class="window-content">
-
+        <component 
+            :id="'window-content-' + app.manifest.id"
+            class="window-content"
+            style="background: white;"
+            :is="component" 
+            v-if="component" 
+        > 
             <div
                 class="cursor-shield"
                 v-if="isDragging || isResizing"                
             >
             </div>
-
-            <component :is="component" v-if="component" />
-            <div v-else style="display: flex; justify-content: center; align-items: center; height: 100%; color: #afafafe0;">
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                    <i class="bi-emoji-dizzy" style="font-size: 4rem;"></i>
-                    <div style="font-weight: 600; font-size: 22px; display: flex; flex-direction: column;">
-                        No fue posible cargar la aplicación
-                        <div style="display: flex; justify-content: center; font-weight: 500; font-size: 16px; color: #ffffff3d;">Error: null component</div>
-                    </div>
+        </component>
+        <div v-else 
+            style="display: flex; justify-content: center; align-items: center; height: 100%; color: #afafafe0;"
+            :id="'window-content-' + app.manifest.id"
+            class="window-content" 
+        >
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <i class="bi-emoji-dizzy" style="font-size: 4rem;"></i>
+                
+                <div style="font-weight: 600; font-size: 22px; display: flex; flex-direction: column;">
+                    No fue posible cargar la aplicación
+                    
+                    <div style="display: flex; justify-content: center; font-weight: 500; font-size: 16px; color: #ffffff3d;">Error: null component</div>
                 </div>
             </div>
         </div>

@@ -1,7 +1,5 @@
 .window-frame{
-    background-color: #464646a3;
     border-radius: 10px;
-    backdrop-filter: blur(56px);
     box-shadow: 0px 5px 5px 0px #0000006b;
     position: absolute;
     display: flex;
@@ -194,4 +192,9 @@ iframe{
 .iconmanager-icon{
     max-width: 16px;
     margin-right: 6px;
+}
+
+.default-frame-bg{
+    background-color: #464646a3;
+    backdrop-filter: blur(56px);
 }
