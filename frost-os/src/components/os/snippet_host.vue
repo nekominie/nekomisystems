@@ -20,6 +20,7 @@ const emit = defineEmits<{
     @after-leave="emit('after-leave')"
   >
     <div
+      :id="`snippet-root-${props.snippet.manifest.id}`"
       v-if="props.snippet.runtime.isVisible"
       :ref="props.setEl"
       class="snippet-host"

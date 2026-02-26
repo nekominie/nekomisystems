@@ -18,6 +18,8 @@ export const DEFAULT_MANIFEST: Partial<Manifest> = {
     defaultSize: { width: 600, height: 400 },
     minSize: { width: 600, height: 400 },
     startMaximized: false,
+    frameBg: 'white',
+    frameBlur: 'blur(0px)',
   }
 }
 

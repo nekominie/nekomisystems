@@ -149,7 +149,14 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
         </template>
 
         <template #memScore="{ value }">
-          <span class="stat-badge mem">{{ Math.round(value.memScore) }}</span>
+          <span class="stat-badge mem">
+            {{
+              new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 2
+              }).format(value.memScore / 10)
+            }} MB
+          </span>
         </template>
 
         <template #uptimeSec="{ value }">
@@ -273,8 +280,8 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
   align-items: center;
   justify-content: center;
   padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
+  border-radius: 6px;
+  /**font-size: 16px;*/
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.06);
 }

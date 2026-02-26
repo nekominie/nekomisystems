@@ -66,6 +66,8 @@ const onIconRightCLick = (e: MouseEvent, app: App) => {
 const previewPositionStyle = ref({ left: '0px' })
 
 const handleMouseEnter = (id: string) => {
+    os.updatePreviewImage(id)
+
     if (hideTimeout) {
         clearTimeout(hideTimeout)
         hideTimeout = null
@@ -87,6 +89,7 @@ const handleMouseEnter = (id: string) => {
 
         updatePosition()
         hoveredAppId.value = id
+
         return
     }
 

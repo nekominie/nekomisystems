@@ -20,9 +20,11 @@ export interface Manifest{
 
     window?:{
         defaultSize: { width: number; height: number; }
-        minSize?: { width: number; height: number };  
-        maxSize?: { width: number; height: number };  
-        startMaximized?: boolean;
+        minSize?: { width: number; height: number }
+        maxSize?: { width: number; height: number }
+        startMaximized?: boolean
+        frameBg?: string,
+        frameBlur?: string
     }
 
     capabilities?: {
@@ -66,7 +68,18 @@ export interface Runtime{
     trayBadge?: number | boolean;
     trayStatus?: 'normal' | 'active' | 'warning' | 'error'
 
-    previewImg? : string
+    previewImg? : string,
+
+    stats?: RuntimeStats
+}
+
+export interface RuntimeStats{
+    startedAt: number
+    cpuMsWindow: number
+    cpuMsLast5s: number
+    cpuWindowStartedAt: number
+    memScore: number
+    lastMemSampleAt: number
 }
 
 export interface UserSettings{

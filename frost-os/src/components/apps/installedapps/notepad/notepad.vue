@@ -1,6 +1,15 @@
 <script setup lang="ts">
-    import { ref } from 'vue'
+    import { ref, inject } from 'vue'
+    import { OS_KEY } from '../../../api/os_api'
+
+    const os = inject(OS_KEY)!
+    if (!os) throw new Error('OS API not found')
+
     const text = ref('')
+
+    /*await os.measure('notepad', async () => {
+    })*/
+
 </script>
 
 <template>

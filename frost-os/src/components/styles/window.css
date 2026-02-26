@@ -5,6 +5,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: transparent;
+    isolation: isolate;
 
     transition:
         width 0.1s cubic-bezier(0.4, 0, 0.2, 1),
@@ -18,6 +20,23 @@
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
+}
+
+.window-frame::before{
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+
+    /*background-color: var(--frame-bg, #464646a3);
+    backdrop-filter: var(--frame-blur, blur(56px));*/
+
+    border-radius: inherit;
+}
+
+.window-header, .window-content, .resizer{
+    position: relative;
+    z-index: 1;
 }
 
 @media screen and (max-width: 1000px){
@@ -177,6 +196,8 @@ iframe{
   width: 100%;
   height: 100%;
   overflow: hidden;
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
 }
 
 .cursor-shield {
@@ -192,9 +213,4 @@ iframe{
 .iconmanager-icon{
     max-width: 16px;
     margin-right: 6px;
-}
-
-.default-frame-bg{
-    background-color: #464646a3;
-    backdrop-filter: blur(56px);
 }

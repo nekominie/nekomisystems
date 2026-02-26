@@ -1,10 +1,11 @@
 import { reactive, nextTick } from 'vue'
 
-import type { App, Manifest, UserSettings } from '../data/app'
+import type { App, Manifest, UserSettings, RuntimeStats } from '../data/app'
 import { createApp } from '../data/create_app'
 import { InstalledApps } from '../data/installedapps'
 import { CoreApps } from '../data/core_apps.ts'
 import { CoreSnippets } from '../data/core_snippets.ts'
+import { startStatsSampler, measureCpu, recordCpu } from './process_stats'
 
 import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
@@ -36,11 +37,14 @@ async function init() {
         createApp(m, userMap.get(m.id))
     )
 
+    startStatsSampler(state)
+
     for (const app of state.apps) {
         if (app.manifest.preferences?.startInTray) {
             app.runtime.isRunning = true
             app.runtime.isInTray = true
             app.runtime.isWindowOpen = false
+            app.runtime.stats = initStats()
         }
     }
 
@@ -49,6 +53,7 @@ async function init() {
             snippet.runtime.isRunning = true
             snippet.runtime.isMounted = true
             snippet.runtime.isVisible = false
+            snippet.runtime.stats = initStats()
 
             if(snippet.manifest.preferences?.startInTray){
                 snippet.runtime.isInTray = true
@@ -69,7 +74,7 @@ async function init() {
             })
         }
         return map
-    }    
+    }
 }
 
 export const processInstructions = () => {
@@ -152,17 +157,21 @@ export const processInstructions = () => {
             app.runtime.isWindowOpen = true
             app.runtime.isMinimized = false
 
-            setTimeout(() => {
+            /*setTimeout(() => {
                 updatePreviewImage(id)                
-            }, 100);
+            }, 100);*/
 
             bringToFront(id)
+
+            ensureStats(app)
+            app.runtime.stats!.startedAt = Date.now()
+
             return
         }
 
         if(app.runtime.isFocused && !app.runtime.isMinimized){
             //Minimizar
-            updatePreviewImage(id)        
+            //updatePreviewImage(id)        
 
             state.lastAction = 'window-minimize'
             await nextTick()            
@@ -193,9 +202,9 @@ export const processInstructions = () => {
         const app = state.apps.find(a => a.manifest.id === id);
         if (!app) return;
 
-        const currentFocused = state.apps.find(a => a.runtime.isFocused);
+        /*const currentFocused = state.apps.find(a => a.runtime.isFocused);
         if (currentFocused && currentFocused.manifest.id !== id) 
-            updatePreviewImage(id)        
+            updatePreviewImage(id)*/   
 
         if (app.runtime.isFocused && !app.runtime.isMinimized && app.runtime.zIndex === state.topZ) return;
 
@@ -211,7 +220,7 @@ export const processInstructions = () => {
     const minimizeWindow = async (id: string) => {
         const app = state.apps.find(a => a.manifest.id === id)
         if (app) {
-            updatePreviewImage(id)
+            //updatePreviewImage(id)
 
             state.lastAction = 'window-minimize'
             await nextTick()
@@ -225,7 +234,7 @@ export const processInstructions = () => {
         const app = state.apps.find(a => a.manifest.id === id);
         if (!app) return;
 
-        updatePreviewImage(id)
+        //updatePreviewImage(id)
 
         if (!app.runtime.isMaximized) {
             app.runtime.tempSettings = {
@@ -251,18 +260,19 @@ export const processInstructions = () => {
         
         if (el) {
             try {
+                const app = state.apps.find(a => a.manifest.id === id);
+                if (!app) return
+
+                if(app.runtime.isMinimized) return
+
                 const canvas = await html2canvas(el, {
                     backgroundColor: null,
                     scale: 0.3,
                     logging: false,
                     useCORS: true
-                });
+                })
                 
-                const app = state.apps.find(a => a.manifest.id === id);
-                if (app) {
-                    app.runtime.previewImg = canvas.toDataURL('image/webp', 0.3);
-                    console.log(app.runtime.previewImg);
-                }
+                app.runtime.previewImg = canvas.toDataURL('image/webp', 0.1)               
 
             } catch (err) {
                 console.error("Error capturando preview:", err);
@@ -273,6 +283,10 @@ export const processInstructions = () => {
     const showSnippet = async (id: string) => {
         const s = state.snippets.find(a => a.manifest.id === id)
         if(!s) return
+
+        s.runtime.isRunning = true
+        ensureStats(s)
+        if (!s.runtime.stats!.startedAt) s.runtime.stats!.startedAt = Date.now()
         
         s.runtime.isMounted = true
         s.runtime.isVisible = false
@@ -280,9 +294,7 @@ export const processInstructions = () => {
         await nextTick()
 
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                s.runtime.isVisible = true  
-            })
+            s.runtime.isVisible = true
         })
     }
 
@@ -298,6 +310,15 @@ export const processInstructions = () => {
         s.runtime.isMounted = false
     }
 
+    const measure = <T>(id: string, fn: () => T | Promise<T>) => {
+        const app = state.apps.find(a => a.manifest.id === id)
+            ?? state.snippets.find(s => s.manifest.id === id)
+        if (!app) return Promise.resolve(fn() as any)
+
+        ensureStats(app)
+        return measureCpu(app, fn)
+    }
+
     return { 
         state, 
         launchApp, 
@@ -310,6 +331,26 @@ export const processInstructions = () => {
         togglePinAppDesktop,
         showSnippet,
         hideSnippet,
-        unmountSnippet
+        unmountSnippet,
+        measure,
+        updatePreviewImage
     }
+}
+
+function ensureStats(proc: App) {
+    if (!proc.runtime.stats) {
+        proc.runtime.stats = initStats()
+    }
+}    
+
+function initStats(): RuntimeStats {
+        const now = Date.now()
+        return {
+            startedAt: now,
+            cpuMsWindow: 0,
+            cpuMsLast5s: 0,
+            cpuWindowStartedAt: now,
+            memScore: 0,
+            lastMemSampleAt: 0,
+        }
 }
