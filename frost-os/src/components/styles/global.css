@@ -1,0 +1,71 @@
+:root{
+    --frst-bg-light: rgba(0, 0, 0, 0.233);
+    --frst-bg-normal: rgba(0, 0, 0, 0.247);
+    --frst-bg-dark: black;
+    --frst-bg-pitch-black: black;
+
+    --frst-fg-light: white;
+    --frst-fg-normal: white;
+    --frst-fg-dark: white;
+    --frst-fg-pitch-black: white;
+
+    --frst-btn-main: rgba(0, 0, 0, 0.425);
+
+    --frst-font-normal: rgba(255, 255, 255, 0.829);
+    --frst-font-light: rgba(255, 255, 255, 0.637);
+
+}
+
+.frst-bg-light{
+    background-color: var(--frst-bg-light);
+    backdrop-filter: blur(16px);
+}
+.frst-bg-normal{
+    background-color: var(--frst-bg-normal);
+    backdrop-filter: blur(250px);
+}
+.frst-bg-dark{
+    background-color: var(--frst-bg-dark);
+    backdrop-filter: blur(250px);
+}
+.frst-bg-pitch-black{
+    background-color: var(--frst-bg-pitch-black);
+    backdrop-filter: blur(250px);
+}
+
+.frst-btn-main{
+    background-color: var(--frst-btn-main) !important;
+    color: var(--frst-font-main) !important;
+}
+
+
+/* Firefox */
+* {
+  scrollbar-width: thin;                 /* auto | thin | none */
+  scrollbar-color: rgba(255,255,255,.25) rgba(0,0,0,.15); /* thumb track */
+}
+
+/* Chrome / Edge / Safari */
+*::-webkit-scrollbar {
+  width: 20px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0,0,0,.15);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.25);
+  border-radius: 999px;
+  border: 2px solid rgba(0,0,0,.15); /* da “espacio” alrededor */
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,.35);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

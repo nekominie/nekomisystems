@@ -2,6 +2,7 @@
 import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import TableLite from 'vue3-table-lite/ts'
 import { OS_KEY } from '../../../api/os_api'
+import IconManager from '../../../os/iconmanager.vue'
 
 const os = inject(OS_KEY)!
 if (!os) throw new Error('OS API not found')
@@ -33,14 +34,16 @@ const quickFilter = ref('')
 
 const table = reactive({
   isLoading: false,
+  sortable: { order: 'memScore', sort: 'desc' },
   columns: [
     { label: 'Process', field: 'name', width: '22%', sortable: true },
+    { label: 'File', field: 'file', width: '18%', sortable: true },
     { label: 'Type', field: 'type', width: '10%', sortable: true },
-    { label: 'Status', field: 'state', width: '18%', sortable: true },
+    { label: 'Status', field: 'state', width: '10%', sortable: true },
     { label: 'Window', field: 'window', width: '10%', sortable: true },
     { label: 'Tray', field: 'tray', width: '8%', sortable: true },
     { label: 'CPU (ms/5s)', field: 'cpuMs5s', width: '10%', sortable: true },
-    { label: 'Memory (score)', field: 'memScore', width: '10%', sortable: true },
+    { label: 'Memory', field: 'memScore', width: '14%', sortable: true },
     { label: 'Uptime', field: 'uptimeSec', width: '7%', sortable: true },
     { label: 'Actions', field: 'actions', width: '15%' },
   ],
@@ -78,10 +81,15 @@ const rowsAll = computed<ProcessRow[]>(() => {
 
 const rows = computed(() => {
   const q = quickFilter.value.trim().toLowerCase()
-  if (!q) return rowsAll.value
-  return rowsAll.value.filter(r =>
-    `${r.name} ${r.type} ${r.state} ${r.window} ${r.tray}`.toLowerCase().includes(q)
-  )
+
+  const filtered = !q
+    ? rowsAll.value
+    : rowsAll.value.filter(r =>
+        `${r.name} ${r.type} ${r.state} ${r.window} ${r.tray}`.toLowerCase().includes(q)
+      )
+
+  // orden por mayor memoria
+  return [...filtered].sort((a, b) => (b.memScore ?? 0) - (a.memScore ?? 0))
 })
 
 function formatUptime(sec: number) {
@@ -105,78 +113,102 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 </script>
 
 <template>
-  <div class="task-manager">
-    <div class="tm-toolbar">
-      <div class="search-container">
-        <i class="bi bi-search"></i>
-        <input v-model="quickFilter" class="tm-search" placeholder="Search..." />
-      </div>
-    </div>
+  <div class="frst-bg-normal d-flex flex-column" style="height: 100%; padding-top: 10px;">
+    <ul class="nav nav-tabs" style="margin: 0 10px !important;" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="activity-tab" data-bs-toggle="tab" data-bs-target="#activity-tab-pane" type="button" role="tab" aria-controls="activity-tab-pane" aria-selected="true"><i class="bi bi-activity"></i>Actividad</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="resources-tab" data-bs-toggle="tab" data-bs-target="#resources-tab-pane" type="button" role="tab" aria-controls="resources-tab-pane" aria-selected="false"><i class="bi bi-clipboard-data-fill"></i>Recursos</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="startup-tab" data-bs-toggle="tab" data-bs-target="#startup-tab-pane" type="button" role="tab" aria-controls="startup-tab-pane" aria-selected="false"><i class="bi bi-power"></i>Apps de inicio</button>
+      </li>
+    </ul>
+    <div class="tab-content" id="myTabContent">
+      <div class="tab-pane fade show active task-manager" id="activity-tab-pane" role="tabpanel" aria-labelledby="activity-tab" tabindex="0">
+        <div class="tm-toolbar">
+          <div class="search-container">
+            <i class="bi bi-search"></i>
+            <input v-model="quickFilter" class="tm-search" placeholder="Search..." />
+          </div>
+        </div>
 
-    <div class="tm-grid">
-      <TableLiteAny
-        :is-slot-mode="true"
-        :is-static-mode="true"
-        :columns="table.columns"
-        :rows="rows"
-        :total="rows.length"
-        :page-size="9999"
-        :is-hide-paging="true"
-        :key="rows.length + '-' + quickFilter"
-        :page="1"
-      >
-        <!-- Slots nombrados por field -->
-        <template #state="{ value }">
-          <span
-            :class="{ 
-              running: value.state === 'Running' || value.state === 'Running (Minimized)',
-              stopped: value.state === 'Stopped'            
-            }"
+        <div class="tm-grid">
+          <TableLiteAny
+            :is-slot-mode="true"
+            :is-static-mode="true"
+            :columns="table.columns"
+            :rows="rows"
+            :total="rows.length"
+            :page-size="9999"
+            :is-hide-paging="true"
+            :key="rows.length + '-' + quickFilter"
+            :page="1"
+            :sortable="table.sortable"
           >
-            {{  value.state }}
-          </span>
-        </template>
+            <!-- Slots nombrados por field -->
+            <template #state="{ value }">
+              <span
+                :class="{ 
+                  running: value.state === 'Running' || value.state === 'Running (Minimized)',
+                  stopped: value.state === 'Stopped'            
+                }"
+              >
+                {{  value.state }}
+              </span>
+            </template>
 
-        <template #name="{ value }">
-          <div class="proc-cell">
-            <div style="color: white;">{{ value.name }}</div>
-            <div style="font-size: 14px;">{{ value.id }}</div>
-          </div>
-        </template>
+            <template #name="{ value }">
+              <div class="proc-cell d-flex align-items-center">
+                <IconManager :id="value.id"></IconManager>
+                <div>
+                  <div style="color: white; font-size: 14px;">{{ value.name }}</div>
+                </div>
+              </div>
+            </template>
 
-        <template #cpuMs5s="{ value }">
-          <span class="stat-badge cpu">{{ Math.round(value.cpuMs5s) }}</span>
-        </template>
+            <template #file="{value}">
+              <div style="font-size: 14px;">{{ value.id }}{{  value.type == "snippet" ? ".flk" : ".snw" }}</div>
+            </template>
 
-        <template #memScore="{ value }">
-          <span class="stat-badge mem">
-            {{
-              new Intl.NumberFormat('en-US', {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 2
-              }).format(value.memScore / 10)
-            }} MB
-          </span>
-        </template>
+            <template #cpuMs5s="{ value }">
+              <span class="stat-badge cpu">{{ Math.round(value.cpuMs5s) }}</span>
+            </template>
 
-        <template #uptimeSec="{ value }">
-          {{ formatUptime(value.uptimeSec) }}
-        </template>
+            <template #memScore="{ value }">
+              <span class="stat-badge mem">
+                {{
+                  new Intl.NumberFormat('en-US', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 2
+                  }).format(value.memScore / 10)
+                }} MB
+              </span>
+            </template>
 
-        <template #actions="{ value }">
-          <div class="tm-actions">
-            <button class="tm-btn focus" @click.stop="handleAction('Focus', value)">
-              <i class="bi bi-eye"></i>
-            </button>
-            <button class="tm-btn end" @click.stop="handleAction('End', value)">
-              End
-            </button>
-            <button class="tm-btn" @click.stop="handleAction('Toggle Tray', value)">
-              Tray
-            </button>
-          </div>
-        </template>
-      </TableLiteAny>
+            <template #uptimeSec="{ value }">
+              {{ formatUptime(value.uptimeSec) }}
+            </template>
+
+            <template #actions="{ value }">
+              <div class="tm-actions">
+                <button class="tm-btn focus" @click.stop="handleAction('Focus', value)">
+                  <i class="bi bi-eye"></i>
+                </button>
+                <button class="tm-btn end" @click.stop="handleAction('End', value)">
+                  End
+                </button>
+                <button class="tm-btn" @click.stop="handleAction('Toggle Tray', value)">
+                  Tray
+                </button>
+              </div>
+            </template>
+          </TableLiteAny>
+        </div>
+      </div>
+      <div class="tab-pane fade" id="resources-tab-pane" role="tabpanel" aria-labelledby="resources-tab" tabindex="0">...</div>
+      <div class="tab-pane fade" id="startup-tab-pane" role="tabpanel" aria-labelledby="startup-tab" tabindex="0">...</div>
     </div>
   </div>
 </template>
@@ -187,8 +219,16 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
   width: 100%;
   display: flex;
   flex-direction: column;
-  background-color: rgb(112 112 112 / 76%) !important;
-  backdrop-filter: blur(68px) !important;
+  /*background-color: rgb(112 112 112 / 76%) !important;
+  backdrop-filter: blur(68px) !important;*/
+}
+
+.iconmanager-icon{
+  max-width: 15px;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  margin-right: 10px;
 }
 
 .tm-toolbar{
@@ -317,5 +357,42 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 .tm-btn.end:hover{
   background: rgba(255, 82, 82, 0.20);
   border-color: rgba(255, 82, 82, 0.45);
+}
+
+.nav-link.active{
+  border:0;
+  /*box-shadow:  
+    0px -3px 10px -3px rgba(0, 0, 0, 0.336), 
+    -8px 0 12px -6px rgba(0, 0, 0, 0.4), 
+    8px 0 12px -6px rgba(0, 0, 0, 0.4);*/
+
+  background-color: var(--frst-bg-light);
+  color: var(--frst-font-normal);
+  box-shadow: unset !important;
+}
+
+.nav-link{
+  color: var(--frst-font-light);
+  background-color: var(--frst-btn-main);
+  margin: 0 2px;
+  box-shadow: inset 0 -9px 14px -13px black;
+}
+
+.nav-tabs{
+  border: 0;
+  z-index: 1;
+  --bs-nav-tabs-border-width: 0;
+}
+
+.tab-content{
+  padding: 10px;
+  background-color: var(--frst-bg-light);
+  flex:1;
+  /*box-shadow: 328px 4px 21px 0px black;*/
+  z-index: 2;
+}
+
+.nav-link i {
+  margin-right: 6px;
 }
 </style>
