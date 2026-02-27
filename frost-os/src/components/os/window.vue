@@ -122,6 +122,42 @@ const windowStyles = computed(() => {
     };
 })
 
+const surfaceVars = computed(() => {
+  const s = props.app.manifest.window?.surface
+  const mode = s?.mode ?? 'os-glass'
+
+  // defaults OS
+  const osFrameBg = s?.os?.frameBg ?? 'rgba(70,70,70,0.45)'
+  const osFrameBlur = s?.os?.frameBlur ?? 'blur(24px)'
+  const osContentBg = s?.os?.contentBg ?? 'transparent'
+
+  // defaults App
+  const appContentBg = s?.app?.contentBg ?? '#0b0d12'
+
+  if (mode === 'os-glass') {
+    return {
+      '--os-frame-bg': osFrameBg,
+      '--os-frame-blur': osFrameBlur,
+      '--content-bg': osContentBg,       // puede ser transparente o glass suave
+    }
+  }
+
+  if (mode === 'app-solid') {
+    return {
+      '--os-frame-bg': 'transparent',
+      '--os-frame-blur': 'none',
+      '--content-bg': appContentBg,      // fallback opaco por si app no pinta
+    }
+  }
+
+  // app-transparent
+  return {
+    '--os-frame-bg': 'transparent',
+    '--os-frame-blur': 'none',
+    '--content-bg': 'transparent',
+  }
+})
+
 const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
 
     const getCoords = (e: MouseEvent | TouchEvent) => {
@@ -243,7 +279,7 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
             'default-frame-bg': !component
         }"        
 
-        :style="windowStyles"
+        :style="[windowStyles, surfaceVars]"
         @mousedown.capture="$emit('focus', app.manifest.id)"
         @touchstart.capture="$emit('focus', app.manifest.id)"
     >

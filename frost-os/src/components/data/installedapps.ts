@@ -49,6 +49,13 @@ export const InstalledApps: Manifest[] = [
                 tray:[
                     { type: 'item', id: 'toggle-mute', label: 'Silenciar' }
                 ]
+            },
+            window: {
+                defaultSize: { width: 980, height: 640 },
+                surface: {
+                    mode: 'app-solid',
+                    app: { contentBg: '#0b0d12' }
+                }
             }
         }
 ]

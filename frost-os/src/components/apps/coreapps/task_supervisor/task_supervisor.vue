@@ -177,7 +177,16 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
             </template>
 
             <template #memScore="{ value }">
-              <span class="stat-badge mem">
+              <span 
+                class="mem-badge"
+                :class="{
+                  normal: value.memScore < 500,
+                  low: value.memScore >= 1000 && value.memScore < 2500,
+                  medium: value.memScore >= 2500 && value.memScore < 6000,
+                  high: value.memScore >= 6000 && value.memScore < 10000,
+                  extreme: value.memScore >= 10000
+                }"
+              >
                 {{
                   new Intl.NumberFormat('en-US', {
                     minimumFractionDigits: 1,
@@ -234,6 +243,7 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 .tm-toolbar{
   padding: 10px;
   background: rgba(0, 0, 0, 0);
+  align-self: flex-start;
 }
 
 .search-container{
@@ -295,6 +305,7 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 :deep(.vtl-card){
   background-color: rgba(0, 0, 0, 0.171);
   /*height: 100%;*/
+  border-radius: 10px;
 }
 
 :deep(.vtl-tbody tr){
@@ -395,4 +406,79 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
 .nav-link i {
   margin-right: 6px;
 }
+
+/* Base glass badge (úsalo junto con .low/.medium/.high/.extreme) */
+.mem-badge{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 15.5px;
+  letter-spacing: 0.2px;
+
+  /* glass */
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  /* depth */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 6px 14px rgba(0,0,0,0.22);
+
+  color: rgba(255,255,255,0.92);
+}
+
+/* Tintes por nivel (mantienen el efecto vidrio) */
+.low{
+  background: linear-gradient(
+    180deg,
+    rgba(46, 204, 113, 0.26),
+    rgba(46, 204, 113, 0.10)
+  );
+  border-color: rgba(46, 204, 113, 0.38);
+  color: rgba(220, 255, 236, 0.95);
+}
+
+.medium{
+  background: linear-gradient(
+    180deg,
+    rgba(241, 196, 15, 0.26),
+    rgba(241, 196, 15, 0.10)
+  );
+  border-color: rgba(241, 196, 15, 0.38);
+  color: rgba(255, 250, 210, 0.95);
+}
+
+.high{
+  background: linear-gradient(
+    180deg,
+    rgba(230, 126, 34, 0.26),
+    rgba(230, 126, 34, 0.10)
+  );
+  border-color: rgba(230, 126, 34, 0.38);
+  color: rgba(255, 236, 220, 0.95);
+}
+
+.extreme{
+  background: linear-gradient(
+    180deg,
+    rgba(231, 76, 60, 0.28),
+    rgba(231, 76, 60, 0.10)
+  );
+  border-color: rgba(231, 76, 60, 0.40);
+  color: rgba(255, 225, 225, 0.96);
+}
+
+/* Opcional: modo "focused" (si quieres que resalte en hover o selección) */
+.mem-badge.is-hot{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    0 10px 26px rgba(0,0,0,0.32);
+  transform: translateY(-0.5px);
+}
+
 </style>

@@ -19,32 +19,42 @@ export interface Manifest{
     }
 
     window?:{
-        defaultSize: { width: number; height: number; }
-        minSize?: { width: number; height: number }
-        maxSize?: { width: number; height: number }
+        defaultSize: { 
+            width: number 
+            height: number 
+        }
+        minSize?: {
+            width: number
+            height: number 
+        }
+        maxSize?: { 
+            width: number 
+            height: number 
+        }
         startMaximized?: boolean
-        frameBg?: string,
+        frameBg?: string
         frameBlur?: string
+        surface?: WindowSurface
     }
 
     capabilities?: {
         tray?: {
-            canUse?: boolean,
+            canUse?: boolean
             defaultAction?: string
         }
-        background?: boolean;
-        notifications?: boolean;
+        background?: boolean
+        notifications?: boolean
     }
 
     preferences?:{
-        minimizeToTray?: boolean;
-        closeToTray?: boolean;
-        startInTray?: boolean;
+        minimizeToTray?: boolean
+        closeToTray?: boolean
+        startInTray?: boolean
     }
 
-    transition?: string;
+    transition?: string
 
-    menus?: Partial<Record<AppMenuContext, MenuItemDescriptor[]>>;
+    menus?: Partial<Record<AppMenuContext, MenuItemDescriptor[]>>
 }
 
 export interface Runtime{
@@ -88,8 +98,28 @@ export interface UserSettings{
     isPinnedDesktop: boolean,
 
     overrides?:{
-        minimizeToTray?: boolean;
-        closeToTray?: boolean;
-        startInTray?: boolean;
+        minimizeToTray?: boolean
+        closeToTray?: boolean
+        startInTray?: boolean
+    }
+}
+
+export type WindowSurfaceMode = 
+    | 'os-glass'      // Frost OS pinta fondo (blur/glass)
+    | 'app-solid'     // App pinta su fondo (opaco)
+    | 'app-transparent'; // App pinta pero transparente (overlay)
+
+export interface WindowSurface{
+    mode: WindowSurfaceMode,
+
+    os?: {
+        frameBg?: string
+        frameBlur?: string
+        contentBg?: string
+    }
+
+    app?: {
+        contentBg?: string
+        textColor?: string
     }
 }
