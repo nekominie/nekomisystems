@@ -29,14 +29,17 @@ type Message = {
 
 const servers: Record<ServerKey, Server> = {
   F: {
-    badge: "FLK",
-    name: "Flaquito Lounge",
-    meta: "12 online • 3 en voice",
+    badge: "WF",
+    name: "►Ϣilḋ ░ Fûҫks◄",
+    meta: "12 online • 2 en voice",
     channels: [
-      { id: "general", label: "general", unread: 3, topic: "Escribe un mensaje, cambia de canal y mira el “unread” moverse 👀" },
-      { id: "dev-log", label: "dev-log", unread: 0, topic: "Notas de cambios, commits y caos controlado." },
-      { id: "memes", label: "memes", unread: 9, topic: "Memes, bugs y energía de viernes." },
-      { id: "bug-tracker", label: "bug-tracker", unread: 0, topic: "Si lo puedes reproducir, lo puedes arreglar 😄" },
+      { id: "🚪┋𝔹𝕚𝕖𝕟𝕧𝕖𝕟𝕚𝕕𝕒", label: "🚪┋𝔹𝕚𝕖𝕟𝕧𝕖𝕟𝕚𝕕𝕒", unread: 3, topic: "" },
+      { id: "patch-notes", label: "patch-notes", unread: 0, topic: "" },
+      { id: "todxs", label: "todxs", unread: 9, topic: "Como cuando when a but pero." },
+      { id: "m-e-m-e-s", label: "m-e-m-e-s", unread: 0, topic: "Si lo puedes reproducir, lo puedes arreglar 😄" },
+        { id: "nsfw", label: "nsfw", unread: 0, topic: "Si lo puedes reproducir, lo puedes arreglar 😄" },
+      { id: "música", label: "música", unread: 0, topic: "Si lo puedes reproducir, lo puedes arreglar 😄" },
+      { id: "mods", label: "mods", unread: 0, topic: "Si lo puedes reproducir, lo puedes arreglar 😄" },
     ],
   },
   G: {
@@ -87,12 +90,14 @@ const emojis = ["🔥", "✨", "😂", "🧠", "🧃", "🧯", "🪟", "🧊", "
 function randInt(n: number) {
   return Math.floor(Math.random() * n);
 }
+
 function hhmm() {
   const d = new Date();
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h}:${m}`;
 }
+
 function showToast(msg: string) {
   toastText.value = msg;
   toastShow.value = true;
@@ -117,7 +122,7 @@ const activeChannelObj = computed(() => {
 const messages = ref<Message[]>([
   {
     id: crypto.randomUUID(),
-    user: "Flaquito",
+    user: "nekominie❤️",
     tag: "mod",
     time: `hoy a las ${hhmm()}`,
     text: "Bienvenido a la mini-mock de Discord 😄\nCambia de canal, escribe mensajes y verás reacciones random.",
@@ -181,7 +186,7 @@ async function sendMessage() {
 
   messages.value.push({
     id: crypto.randomUUID(),
-    user: "David Z.",
+    user: "nekominie❤️",
     tag: "",
     time: `hoy a las ${hhmm()}`,
     text,
@@ -242,6 +247,24 @@ onUnmounted(() => {
   if (simTimer) window.clearInterval(simTimer);
   if (typingTimer) window.clearTimeout(typingTimer);
 });
+
+const users = [
+    "DonBurritos",
+    "Yeyo",
+    "Andrixx",
+    "Anti-Hero",
+    "Artmiza",
+    "DaniiBoi",
+    "deebiruman",
+    "Doble E Matutino",
+    "kiwaminie",
+    "shawarmachine",
+    "ZorroJRRC",
+    "Josh",
+    "Joules_RP5"
+]
+
+
 </script>
 
 <template>
@@ -251,7 +274,7 @@ onUnmounted(() => {
       <aside class="rail">
         <button class="srv" :class="{ active: activeServer === 'F' }" @click="setServer('F')" title="Flaquito Server" type="button">
           <span class="pill"></span>
-          <span class="abbr">FLK</span>
+            <img class="wild-fucks" src="./img/wildfucks-icon.webp" />
           <span class="dot"></span>
         </button>
 
@@ -335,7 +358,7 @@ onUnmounted(() => {
           <div class="me">
             <div class="avatar"></div>
             <div class="meTxt">
-              <div class="u">David Z.</div>
+              <div class="u">nekominie❤️</div>
               <div class="s">vibing • no molestar</div>
             </div>
           </div>
@@ -454,9 +477,9 @@ onUnmounted(() => {
 
         <div class="list">
           <div class="role">Moderadores <span class="muted">2</span></div>
-          <div class="member" @click="showToast('👑 Flaquito')">
+          <div class="member" @click="showToast('👑 nekominie')">
             <div class="mav"></div>
-            <div class="name">Flaquito</div>
+            <div class="name">nekominie❤️</div>
             <div class="status online">online</div>
           </div>
           <div class="member" @click="showToast('🧙 DevWizard')">
@@ -472,10 +495,10 @@ onUnmounted(() => {
             <div class="status online">online</div>
           </div>
 
-          <div class="role">Usuarios <span class="muted">9</span></div>
+          <div class="role">Online <span class="muted">9</span></div>
           <div
             class="member"
-            v-for="n in ['PixelPanda','StackSnacker','CoffeeLoop','CSSGremlin','SplineRider','NullPointer','GradientGoblin','ZIndexWarrior','DockShuffler']"
+            v-for="n in users"
             :key="n"
             @click="showToast(`👋 ${n}`)"
           >
@@ -531,7 +554,7 @@ onUnmounted(() => {
 
 .app{
   height: 100%;
-  display: grid;
+  display: flex;
   grid-template-columns: 76px 260px 1fr 280px;
 }
 
@@ -580,12 +603,15 @@ onUnmounted(() => {
   transition: opacity .12s ease, height .12s ease;
 }
 .srv.active .pill{ opacity: 1; height: 28px; }
+
 .abbr{
   font-weight: 900;
   letter-spacing: .3px;
   font-size: 14px;
   color: rgba(255,255,255,.95);
+  overflow: hidden;
 }
+
 .dot{
   position: absolute;
   bottom: 6px;
@@ -797,6 +823,7 @@ onUnmounted(() => {
   flex-direction:column;
   min-width:0;
   background: var(--bg);
+  flex: 1;
 }
 .chatTop{
   padding: 12px 14px 10px;
@@ -1099,5 +1126,14 @@ onUnmounted(() => {
   .app{ grid-template-columns: 70px 1fr; }
   .channels, .members{ display:none; }
   .topic{ display:none; }
+}
+
+.wild-fucks{
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
 }
 </style>

@@ -51,7 +51,7 @@ export const InstalledApps: Manifest[] = [
                 ]
             },
             window: {
-                defaultSize: { width: 980, height: 640 },
+                defaultSize: { width: 1500, height: 850 },
                 surface: {
                     mode: 'app-solid',
                     app: { contentBg: '#0b0d12' }

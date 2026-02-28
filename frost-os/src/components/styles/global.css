@@ -1,6 +1,6 @@
 :root{
     --frst-bg-light: rgba(0, 0, 0, 0.233);
-    --frst-bg-normal: rgba(0, 0, 0, 0.247);
+    --frst-bg-normal: rgb(156 156 156 / 31%);
     --frst-bg-dark: black;
     --frst-bg-pitch-black: black;
 
