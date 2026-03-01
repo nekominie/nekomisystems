@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { server_list, type Server, type Channel, type Message, type User, type UserStatus, type Activity } from "./server_list.ts";
+import { playSound } from "../../../../shared"
 
 // ---------- constants ----------
 const LOGGED_USER_ID = "me"; // ✅ SIEMPRE nekominie
@@ -144,7 +145,7 @@ const currentMessages = computed<Message[]>(() => {
 const chatIcon = computed(() => {
   if (viewMode.value === "dm") return "💬";
   if (viewMode.value === "friends") return "👥";
-  return "#";
+  return "<i class='bi bi-hash'></i>";
 });
 
 const chatTitle = computed(() => {
@@ -515,6 +516,9 @@ function connectToVoice(channelId: string) {
     muted: false,
     deafened: false,
   };
+
+  playSound("/discord/sounds/join.mp3")
+
   showToast(`🔊 conectado a ${server.value.channels.find(c => c.id === channelId)?.label ?? channelId}`);
 }
 
@@ -523,12 +527,16 @@ function disconnectVoice() {
   const was = voiceConn.value.channelId;
   voiceConn.value = null;
   showToast(`📴 desconectado (${was})`);
+
+  playSound("/discord/sounds/leave.mp3")
 }
 
 function toggleMute() {
   if (!voiceConn.value) return;
   voiceConn.value.muted = !voiceConn.value.muted;
   showToast(voiceConn.value.muted ? "🎙️ mute ON" : "🎙️ mute OFF");
+
+  playSound(voiceConn.value.muted ? "/discord/sounds/mute.mp3" : "/discord/sounds/unmute.mp3")
 }
 
 function toggleDeafen() {
@@ -923,9 +931,7 @@ function onViewerMouseUp() {
         >
           <span class="pill"></span>
           <span class="discordLogo" aria-hidden="true">
-            <svg viewBox="0 0 24 24" role="img">
-              <path d="M20.3 4.9a17.5 17.5 0 0 0-4.4-1.4l-.2.4c-.1.3-.3.7-.4 1.1a16.4 16.4 0 0 0-4.7 0c-.1-.4-.3-.8-.4-1.1l-.2-.4a17.5 17.5 0 0 0-4.4 1.4C2.7 9.2 2.1 13.3 2.4 17.3a17.8 17.8 0 0 0 5.4 2.7l.2-.4c.2-.5.4-.9.5-1.4-.6-.2-1.2-.5-1.8-.8l.4-.3c3.5 1.6 7.3 1.6 10.8 0l.4.3c-.6.3-1.2.6-1.8.8.1.5.3.9.5 1.4l.2.4a17.8 17.8 0 0 0 5.4-2.7c.4-4-.3-8.1-2.3-12.4ZM9.2 14.8c-.9 0-1.6-.9-1.6-2s.7-2 1.6-2 1.6.9 1.6 2-.7 2-1.6 2Zm5.6 0c-.9 0-1.6-.9-1.6-2s.7-2 1.6-2 1.6.9 1.6 2-.7 2-1.6 2Z"/>
-            </svg>
+            <i class="bi bi-discord"></i>
           </span>
         </button>
 
@@ -993,7 +999,7 @@ function onViewerMouseUp() {
                 @click="setChannel(c.id)"
                 type="button"
               >
-                <span class="hash">#</span>
+                <span class="hash"><i class="bi bi-hash"></i></span>
                 <span class="label">{{ c.label }}</span>
                 <span v-if="c.unread" class="pillCount">{{ c.unread }}</span>
                 <span class="chanGear" title="Opciones (mock)">⚙️</span>
@@ -1013,7 +1019,7 @@ function onViewerMouseUp() {
                   @click="connectToVoice(v.id)"
                   title="Conectar (mock)"
                 >
-                  <span class="hash">🔊</span>
+                  <span class="hash"><i class="bi bi-volume-up-fill"></i></span>
                   <span class="label">{{ v.label }}</span>
                   <span v-if="isChannelActiveVoice(v)" class="voicePill">LIVE</span>
                   <span class="chanGear" title="Opciones (mock)">⋯</span>
@@ -1092,6 +1098,30 @@ function onViewerMouseUp() {
           </div>
         </template>
 
+        <!-- Voice connected bar -->
+        <div v-if="viewMode === 'server' && isInVoice && activeVoiceChannel" class="voiceBar">
+
+          <div class="vbLeft">
+            <div style="display: flex; flex-direction: row;">
+              <div class="vbIcon"><i class="bi bi-wifi"></i></div>
+              <div class="vbTxt">
+                <div class="vbChan">Voice Connected</div>
+                <div class="vbMeta">{{ activeVoiceChannel.label }}/{{ server.name }}</div>
+              </div>
+            </div>
+            <div>
+              <button class="vbBtn disconnect-btn" type="button" @click="disconnectVoice" title="Disconnect"><i class="bi bi-telephone-fill"></i></button>            
+            </div>
+          </div>
+
+          <div class="vbBtns">
+            <button class="vbBtn" type="button" title="Video" @click="pingRandom"><i class="bi bi-camera-video-off-fill"></i></button>
+            <button class="vbBtn" type="button" title="Compartir Pantalla" @click="pingRandom"><i class="bi bi-display-fill"></i></button>
+            <button class="vbBtn" type="button" title="Actividades" @click="pinRandom"><i class="bi bi-grid"></i></button>
+            <button class="vbBtn" type="button" title="Soundboard" @click="pinRandom"><i class="bi bi-volume-down"></i></button>
+          </div>
+        </div>        
+
         <!-- User card bottom -->
         <div class="userCard">
           <div class="me" style="cursor:pointer;">
@@ -1117,45 +1147,30 @@ function onViewerMouseUp() {
           </div>
 
           <div class="meBtns">
-            <button class="iconBtn" type="button" title="Ping random" @click="pingRandom">🔔</button>
-            <button class="iconBtn" type="button" title="Pin last" @click="pinRandom">📌</button>
+            <button class="iconBtn" type="button" @click="toggleMute" :class="{ on: voiceConn?.muted }" title="Mute"><i class="bi bi-mic-fill"></i></button>
+            <button class="iconBtn" type="button" @click="toggleDeafen" :class="{ on: voiceConn?.deafened }" title="Deafen"><i class="bi bi-headphones"></i></button>
             <!-- ✅ ahora abre ajustes -->
-            <button class="iconBtn" type="button" title="Settings" @click="openSettings">⚙️</button>
+            <button class="iconBtn" type="button" title="Settings" @click="openSettings"><i class="bi bi-gear-fill"></i></button>
           </div>
         </div>
 
-        <!-- Voice connected bar -->
-        <div v-if="viewMode === 'server' && isInVoice && activeVoiceChannel" class="voiceBar">
-          <div class="vbLeft">
-            <div class="vbIcon">🔊</div>
-            <div class="vbTxt">
-              <div class="vbChan">{{ activeVoiceChannel.label }}</div>
-              <div class="vbMeta">{{ server.name }}</div>
-            </div>
-          </div>
 
-          <div class="vbBtns">
-            <button class="vbBtn" type="button" @click="toggleMute" :class="{ on: voiceConn?.muted }" title="Mute (mock)">🎙️</button>
-            <button class="vbBtn" type="button" @click="toggleDeafen" :class="{ on: voiceConn?.deafened }" title="Deafen (mock)">🎧</button>
-            <button class="vbBtn danger" type="button" @click="disconnectVoice" title="Disconnect (mock)">⏏</button>
-          </div>
-        </div>
       </aside>
 
       <!-- Chat -->
       <main class="chat">
         <div class="chatTop">
           <div class="chanTitle">
-            <div class="hash">{{ chatIcon }}</div>
+            <div class="hash" v-html="chatIcon"></div>
             <div class="t">{{ chatTitle }}</div>
             <div class="topic">{{ chatSubline }}</div>
           </div>
 
           <div class="chatBtns">
-            <button class="iconBtn" type="button" title="Inbox (mock)" @click="showToast('📥 inbox: próximamente™')">📥</button>
-            <button class="iconBtn" type="button" title="Pinned" @click="showToast(`📌 pins: ${(activeChannel?.pinned?.length ?? 0)}`)">📌</button>
-            <button class="iconBtn" type="button" title="Members (mock)" @click="showToast('👥 members: UI only')">👥</button>
-            <button class="iconBtn" type="button" title="Help" @click="showToast('❓ tip: solo UI, cero backend')">?</button>
+            <button class="iconBtn" type="button" title="Inbox" @click="showToast('Inbox')"><i class="bi bi-inbox-fill"></i></button>
+            <button class="iconBtn" type="button" title="Pinned" @click="showToast(`Mensajes Anclados: ${(activeChannel?.pinned?.length ?? 0)}`)"><i class="bi bi-pin-angle-fill"></i></button>
+            <button class="iconBtn" type="button" title="Members" @click="showToast('Miembros')"><i class="bi bi-people-fill"></i></button>
+            <button class="iconBtn" type="button" title="Help" @click="showToast('Ayuda')">?</button>
           </div>
         </div>
 
@@ -1299,7 +1314,7 @@ function onViewerMouseUp() {
             @change="onFilePicked"
           />
 
-          <button class="plus" type="button" title="Adjuntar (mock)" @click="openFilePicker">+</button>
+          <button class="plus" type="button" title="Adjuntar (mock)" @click="openFilePicker"><i class="bi bi-plus-lg"></i></button>
 
           <input
             v-model="msgInput"
@@ -1349,7 +1364,7 @@ function onViewerMouseUp() {
                 {{ u.name }}
                 <div v-if="u.activity" class="miniActivity">
                   <span class="actLine">{{ activityLine(u) }}</span>
-                  <span class="since green" v-if="u.activity?.sinceMins != null">{{ formatSince(u.activity.sinceMins) }}</span>
+                  <span class="since green" style="display:none;" v-if="u.activity?.sinceMins != null">{{ formatSince(u.activity.sinceMins) }}</span>
                 </div>
               </div>
 
@@ -1721,7 +1736,7 @@ function onViewerMouseUp() {
 
 .app{
   height: 100%;
-  display: grid;
+  display: flex;
   grid-template-columns: 76px 260px 1fr 280px;
 }
 
@@ -1759,12 +1774,16 @@ function onViewerMouseUp() {
   background: rgba(88,101,242,.24);
   border-color: rgba(88,101,242,.45);
 }
+
 .discordLogo{
   width: 27px;
   height: 27px;
   display: grid;
   place-items: center;
+  font-size: 25px;
+  color: white;
 }
+
 .discordLogo svg{
   width: 100%;
   height: 100%;
@@ -1819,6 +1838,7 @@ function onViewerMouseUp() {
   flex-direction: column;
   min-width: 0;
   background: var(--bg2);
+  width: 18rem;
 }
 .topbar{
   padding: 12px 12px 10px;
@@ -1911,14 +1931,18 @@ function onViewerMouseUp() {
 .hash{
   width: 18px; height: 18px;
   border-radius: 6px;
-  display: grid; place-items: center;
-  background: rgba(255,255,255,.06);
+  display: flex; 
+  place-items: center;
+  background: transparent;
   border: 1px solid rgba(255,255,255,.08);
   font-weight: 900;
   font-size: 12px;
   color: rgba(255,255,255,.72);
   flex: 0 0 auto;
+  border: 0;
+  font-size: 20px;
 }
+
 .label{
   flex: 1;
   min-width: 0;
@@ -1946,16 +1970,25 @@ function onViewerMouseUp() {
   gap: 10px;
 }
 .me{ display: flex; align-items: center; gap: 10px; min-width: 0; }
+
 .avatar{
   width: 36px; height: 36px;
-  border-radius: 12px;
+  border-radius: 50%/*12px*/;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.06);
   position: relative;
-  overflow: hidden;
+  /*overflow: hidden;*/
   flex: 0 0 auto;
 }
-.avatarImg{ width: 100%; height: 100%; object-fit: cover; display:block; }
+
+.avatarImg{ 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+  display:block;
+  border-radius: 50%;
+}
+
 .avatarFallback{ width: 100%; height: 100%; }
 .statusDot{
   position:absolute;
@@ -1979,21 +2012,28 @@ function onViewerMouseUp() {
 .green{ color: rgba(87,242,135,.95); }
 
 .meBtns{ display:flex; gap:6px; }
+
 .iconBtn{
   width: 34px; height: 34px;
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.06);
-  display: grid; place-items: center;
+  /*border: 1px solid rgba(255,255,255,.08);*/
+  /*background: rgba(255,255,255,.06);*/
+  background: transparent;
+  color: rgba(255, 255, 255, 0.699);
+  border: none;
+  font-size: 18px;
+  display: grid; 
+  place-items: center;
   cursor: pointer;
   transition: background .12s ease, border-color .12s ease;
   user-select: none;
   padding: 0;
 }
+
 .iconBtn:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.12); }
 
 /* chat */
-.chat{ display:flex; flex-direction:column; min-width:0; background: var(--bg); }
+.chat{ display:flex; flex-direction:column; min-width:0; background: var(--bg); flex: 1; }
 .chatTop{
   padding: 12px 14px 10px;
   border-bottom: 1px solid var(--border);
@@ -2013,19 +2053,27 @@ function onViewerMouseUp() {
   margin-left: 6px;
   max-width: 55vw;
 }
-.chatBtns{ display:flex; gap:8px; align-items:center; }
+
+.chatBtns{ 
+  display:flex; 
+  gap:8px; 
+  align-items:center; 
+}
+
 .friendsPane{
   padding: 14px;
   overflow: auto;
   min-height: 0;
   flex: 1;
 }
+
 .friendsHdr{
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
 }
+
 .friendsTitle{ font-size: 16px; font-weight: 950; }
 .friendsMeta{ color: rgba(255,255,255,.55); font-size: 12px; }
 .friendsList{
@@ -2153,14 +2201,21 @@ function onViewerMouseUp() {
 
 .av{
   width: 38px; height: 38px;
-  border-radius: 14px;
+  border-radius: 50%/*14px*/;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.06);
   position: relative;
   overflow:hidden;
   flex: 0 0 auto;
 }
-.avImg{ width: 100%; height: 100%; object-fit: cover; display:block; }
+
+.avImg{ 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+  display:block; 
+}
+
 .avFallback{ width: 100%; height: 100%; }
 
 .body{ min-width:0; }
@@ -2320,10 +2375,15 @@ function onViewerMouseUp() {
 .plus{
   width: 38px; height: 38px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.06);
-  display:grid; place-items:center;
+  /*border: 1px solid rgba(255,255,255,.10);*/
+  /*background: rgba(255,255,255,.06);*/
+  display:grid; 
+  place-items:center;
+  border: none;
+  background-color: transparent;
   cursor:pointer;
+  color:white;
+  font-size: 20px;
 }
 .plus:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.14); }
 .composer input{
@@ -2345,6 +2405,10 @@ function onViewerMouseUp() {
   font-weight: 900;
 }
 .send:hover{ background: rgba(88,101,242,.28); border-color: rgba(88,101,242,.55); }
+
+i.bi{
+  display:flex
+}
 
 /* drop hint overlay */
 .dropHint{
@@ -2369,7 +2433,7 @@ function onViewerMouseUp() {
 .dropTxt{ font-weight: 950; }
 
 /* members */
-.members{ border-left: 1px solid var(--border); display:flex; flex-direction:column; min-width:0; background: var(--bg2); }
+.members{ border-left: 1px solid var(--border); display:flex; flex-direction:column; min-width:0; background: var(--bg2); width: 18rem; }
 .members .title{
   padding: 12px 12px 10px;
   border-bottom: 1px solid var(--border);
@@ -2409,14 +2473,22 @@ function onViewerMouseUp() {
 
 .mav{
   width: 30px; height: 30px;
-  border-radius: 12px;
+  border-radius: 50%/*12px*/;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.06);
   position:relative;
-  overflow:hidden;
+  /*overflow:hidden;*/
   flex:0 0 auto;
 }
-.mavImg{ width:100%; height:100%; object-fit:cover; display:block; }
+
+.mavImg{ 
+  width:100%; 
+  height:100%; 
+  object-fit:cover; 
+  display:block; 
+  border-radius: 50%;
+}
+
 .mavFallback{ width:100%; height:100%; }
 
 .name{
@@ -2543,11 +2615,20 @@ function onViewerMouseUp() {
   background: rgba(35,165,90,.10);
   padding: 10px;
   display:flex;
-  align-items:center;
+  flex-direction: column;
+  align-items: start;
   justify-content: space-between;
   gap: 10px;
 }
-.vbLeft{ display:flex; align-items:center; gap: 10px; min-width:0; }
+
+.vbLeft{ 
+  display:flex; 
+  align-items:center; 
+  gap: 10px; 
+  min-width:0;
+  width: 100%;
+}
+
 .vbIcon{
   width: 34px; height: 34px;
   border-radius: 12px;
@@ -2557,7 +2638,13 @@ function onViewerMouseUp() {
 }
 .vbChan{ font-weight: 900; font-size: 13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .vbMeta{ font-size: 12px; color: rgba(255,255,255,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vbBtns{ display:flex; gap: 6px; }
+
+.vbBtns{ 
+  display:flex; 
+  gap: 6px;
+  width: 100%;
+}
+
 .vbBtn{
   width: 34px; height: 34px;
   border-radius: 10px;
@@ -2565,7 +2652,13 @@ function onViewerMouseUp() {
   background: rgba(255,255,255,.06);
   color: rgba(255,255,255,.85);
   cursor:pointer;
+  flex: 1;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
 .vbBtn:hover{ background: rgba(255,255,255,.10); }
 .vbBtn.on{ border-color: rgba(240,178,50,.35); background: rgba(240,178,50,.18); }
 .vbBtn.danger{ border-color: rgba(242,63,67,.35); background: rgba(242,63,67,.18); }
@@ -3132,4 +3225,16 @@ function onViewerMouseUp() {
   .trayGrid{ grid-template-columns: 1fr; }
   .vNav{ display:none; }
 }
+
+.disconnect-btn{
+  border: 0;
+  background: transparent;
+  color: white;
+  font-size: 20px;
+}
+
+.disconnect-btn i{
+  rotate: 135deg;
+}
+
 </style>
