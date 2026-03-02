@@ -1021,7 +1021,7 @@ function onViewerMouseUp() {
                 >
                   <span class="hash"><i class="bi bi-volume-up-fill"></i></span>
                   <span class="label">{{ v.label }}</span>
-                  <span v-if="isChannelActiveVoice(v)" class="voicePill">LIVE</span>
+                  <span v-if="isChannelActiveVoice(v)" class="voicePill"><i class="bi bi-soundwave"></i></span>
                   <span class="chanGear" title="Opciones (mock)">⋯</span>
                 </div>
 
@@ -1902,7 +1902,7 @@ function onViewerMouseUp() {
 }
 
 .chan{
-  width: 100%;
+  /*width: 100%;*/
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1916,6 +1916,7 @@ function onViewerMouseUp() {
   transition: background .12s ease;
   text-align: left;
 }
+
 .chan:hover{ background: rgba(255,255,255,.06); }
 .chan.active{ background: rgba(255,255,255,.10); color: rgba(255,255,255,.95); }
 .chan.voice.active{ outline: 1px solid rgba(35,165,90,.22); }
@@ -2550,6 +2551,7 @@ i.bi{
 
 /* voice extras */
 .voiceWrap { display: flex; flex-direction: column; gap: 6px; }
+
 .voicePill{
   margin-left: auto;
   font-size: 10px;
@@ -2557,10 +2559,11 @@ i.bi{
   letter-spacing: .6px;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(35,165,90,.30);
-  background: rgba(35,165,90,.14);
+  border: none/*1px solid rgba(35,165,90,.30)*/;
+  background: transparent/*rgba(35,165,90,.14)*/;
   color: rgba(220,255,236,.95);
 }
+
 .voiceMembers{
   display:flex;
   flex-direction: column;
@@ -2627,16 +2630,31 @@ i.bi{
   gap: 10px; 
   min-width:0;
   width: 100%;
+  justify-content: space-between;
 }
 
 .vbIcon{
-  width: 34px; height: 34px;
+  width: 34px; 
+  height: 34px;
   border-radius: 12px;
-  display:grid; place-items:center;
-  border: 1px solid rgba(35,165,90,.25);
-  background: rgba(35,165,90,.12);
+  display: grid; 
+  place-items: center;
+  border: none/*1px solid rgba(35,165,90,.25)*/;
+  background: transparent /*rgba(35,165,90,.12)*/;
+  color: #469947;
+  font-size: 26px;
 }
-.vbChan{ font-weight: 900; font-size: 13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.vbChan{ 
+  font-weight: 900; 
+  font-size: 13px; 
+  white-space:nowrap; 
+  overflow:hidden; 
+  text-overflow:ellipsis; 
+  color: #469947;
+
+}
+
 .vbMeta{ font-size: 12px; color: rgba(255,255,255,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 .vbBtns{ 
