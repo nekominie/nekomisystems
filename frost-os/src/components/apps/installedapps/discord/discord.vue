@@ -1017,12 +1017,18 @@ function onViewerMouseUp() {
                   class="chan voice"
                   :class="{ active: isChannelActiveVoice(v) }"
                   @click="connectToVoice(v.id)"
-                  title="Conectar (mock)"
+                  title="Conectar"
                 >
-                  <span class="hash"><i class="bi bi-volume-up-fill"></i></span>
+                  
+                  <span class="hash">
+                    <i class="bi bi-volume-up-fill"></i>
+                  </span>
+                  
                   <span class="label">{{ v.label }}</span>
+                  
                   <span v-if="isChannelActiveVoice(v)" class="voicePill"><i class="bi bi-soundwave"></i></span>
-                  <span class="chanGear" title="Opciones (mock)">⋯</span>
+                  
+                  <span class="chanGear" title="Opciones">⋯</span>
                 </div>
 
                 <div v-if="voiceMembersFor(v.id).length" class="voiceMembers">
@@ -1059,7 +1065,7 @@ function onViewerMouseUp() {
             </div>
 
             <div class="search">
-              <input v-model="dmSearch" placeholder="Buscar amigo…" />
+              <input v-model="dmSearch" placeholder="Buscar amigo..." />
             </div>
           </div>
 
@@ -1324,7 +1330,7 @@ function onViewerMouseUp() {
             @keydown.enter.prevent="sendComposed"
           />
 
-          <button class="send" type="button" @click="sendComposed">Enviar</button>
+          <button class="send" type="button" @click="sendComposed">Envia</button>
 
           <div v-if="dragUI.over" class="dropHint" aria-hidden="true">
             <div class="dropCard">
@@ -1850,8 +1856,13 @@ function onViewerMouseUp() {
 }
 .serverTitle .name{ font-weight: 900; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .serverTitle .meta{ color: var(--muted2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.search{
+  display: flex;
+}
+
 .search input{
-  width: 100%;
+  flex: 1;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,.08);
   background: var(--panel2);
@@ -1859,7 +1870,10 @@ function onViewerMouseUp() {
   padding: 8px 10px;
   outline: none;
 }
-.search input::placeholder{ color: rgba(255,255,255,.35); }
+
+.search input::placeholder{ 
+  color: rgba(255,255,255,.35); 
+}
 
 .chanList{ padding: 10px 10px 12px; overflow: auto; min-height: 0; flex: 1; }
 .section{ margin-top: 12px; }
@@ -1902,7 +1916,7 @@ function onViewerMouseUp() {
 }
 
 .chan{
-  /*width: 100%;*/
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1915,6 +1929,7 @@ function onViewerMouseUp() {
   user-select: none;
   transition: background .12s ease;
   text-align: left;
+  margin-bottom: 5px;
 }
 
 .chan:hover{ background: rgba(255,255,255,.06); }
@@ -3253,6 +3268,10 @@ i.bi{
 
 .disconnect-btn i{
   rotate: 135deg;
+}
+
+.voiceWrap .chan{
+  width: unset !important;
 }
 
 </style>

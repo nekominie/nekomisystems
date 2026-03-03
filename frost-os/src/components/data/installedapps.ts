@@ -57,6 +57,26 @@ export const InstalledApps: Manifest[] = [
                     app: { contentBg: '#0b0d12' }
                 }
             }
+        },
+        {
+            id: "mspaint",
+            name: "Microsoft Paint",
+            preferences: {
+                startInTray: true
+            },
+            capabilities: {
+                tray:{ 
+                    canUse: true,
+                    defaultAction: 'open'
+                }
+            },
+            window: {
+                defaultSize: { width: 1500, height: 850 },
+                surface: {
+                    mode: 'app-solid',
+                    app: { contentBg: '#0b0d12' }
+                }
+            }
         }
 ]
     

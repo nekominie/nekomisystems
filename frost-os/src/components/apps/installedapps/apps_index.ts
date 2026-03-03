@@ -4,11 +4,13 @@ import Spotify from './spotify/spotify.vue'
 import BibooTaxGame from /*"../../../../../bibootaxgame/src/components/app.vue"*/'./bibootaxgame/bibootaxgame.vue'
 import DoomGame from './doomgame/doomgame.vue'
 import Discord from './discord/discord.vue'
+import MicrosoftPaint from './mspaint/mspaint.vue'
 
 export const InstalledAppsIndex: Record<string, any> = {
     notepad: markRaw(Notepad),
     spotify: markRaw(Spotify),
     bibootaxgame: markRaw(BibooTaxGame),
     doomgame: markRaw(DoomGame),
-    discord: markRaw(Discord)
+    discord: markRaw(Discord),
+    mspaint: markRaw(MicrosoftPaint),
 }
