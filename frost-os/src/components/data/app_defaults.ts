@@ -45,7 +45,7 @@ export const DEFAULT_RUNTIME: Runtime = {
 
 export const DEFAULT_USER: UserSettings = {
   isPinned: false,
-  isPinnedStart: false,
-  isPinnedDesktop: false,
+  isPinnedStart: true,
+  isPinnedDesktop: true,
   overrides: {},
 }
