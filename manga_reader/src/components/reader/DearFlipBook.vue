@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { ensureDearFlipAssets } from '../../lib/dearflip'
 
 interface FlipBookPage {
   id: string
@@ -54,6 +55,7 @@ const isDragging = ref(false)
 const isZoomed = ref(false)
 const errorMessage = ref('')
 let resizeTimers: number[] = []
+let initializationToken = 0
 
 const stageClass = computed(() => ({
   'dearflip-stage--dragging': isDragging.value,
@@ -169,6 +171,8 @@ const handleBookFlip = function (this: unknown, book: unknown) {
 }
 
 const initializeBook = async () => {
+  const token = ++initializationToken
+
   await nextTick()
 
   if (!hostRef.value) {
@@ -184,6 +188,28 @@ const initializeBook = async () => {
     return
   }
 
+  isLoading.value = true
+  isReady.value = false
+  errorMessage.value = ''
+
+  try {
+    await ensureDearFlipAssets()
+  } catch (error) {
+    if (token !== initializationToken) {
+      return
+    }
+
+    console.error(error)
+    isLoading.value = false
+    errorMessage.value = 'No se pudieron cargar los archivos del lector 3D.'
+    emit('error', errorMessage.value)
+    return
+  }
+
+  if (token !== initializationToken || !hostRef.value) {
+    return
+  }
+
   const $ = window.jQuery ?? window.$
   const DFLIP = window.DFLIP
   const flipBookPlugin = $?.fn?.flipBook
@@ -194,10 +220,6 @@ const initializeBook = async () => {
     emit('error', errorMessage.value)
     return
   }
-
-  isLoading.value = true
-  isReady.value = false
-  errorMessage.value = ''
 
   const options = {
     autoEnableOutline: false,
@@ -368,6 +390,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  initializationToken += 1
   window.removeEventListener('resize', runResize)
   destroyBook()
 })
