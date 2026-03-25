@@ -1,0 +1,33 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/manga_reader"
+  to = "/manga_reader/"
+  status = 301
+
+[[redirects]]
+  from = "/mikurig"
+  to = "/mikurig/"
+  status = 301
+
+[[redirects]]
+  from = "/bibootaxgame"
+  to = "/bibootaxgame/"
+  status = 301
+
+[[redirects]]
+  from = "/frost-os"
+  to = "/frost-os/"
+  status = 301
+
+[[redirects]]
+  from = "/doomgame"
+  to = "/doomgame/"
+  status = 301
+
+[[redirects]]
+  from = "/theos"
+  to = "/frost-os/"
+  status = 301
