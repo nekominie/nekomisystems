@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ReaderProgressiveImage from './ReaderProgressiveImage.vue'
 import type { ReaderPage, ReadingUnit } from '../../types/manga'
 
 const props = defineProps<{
@@ -244,12 +245,12 @@ const handlePointerUp = (event: PointerEvent) => {
   isDragging.value = false
 }
 
-const recordRatio = (pageId: string | undefined, event: Event) => {
-  if (!pageId || !(event.target instanceof HTMLImageElement)) {
+const recordRatio = (pageId: string | undefined, image: HTMLImageElement) => {
+  if (!pageId) {
     return
   }
 
-  const { naturalWidth, naturalHeight } = event.target
+  const { naturalWidth, naturalHeight } = image
 
   if (!naturalWidth || !naturalHeight) {
     return
@@ -298,12 +299,11 @@ onBeforeUnmount(() => {
       <div class="book-stage__canvas" :style="canvasStyle">
         <div v-if="mode === 'single'" class="single-book" :style="singleFrameStyle">
           <div class="book-page book-page--single" :key="unit?.id">
-            <img
+            <ReaderProgressiveImage
               v-if="currentSinglePage"
               :src="currentSinglePage.image"
               :alt="currentSinglePage.title"
-              draggable="false"
-              @load="recordRatio(currentSinglePage.id, $event)"
+              @loaded="recordRatio(currentSinglePage.id, $event)"
             />
           </div>
         </div>
@@ -318,32 +318,29 @@ onBeforeUnmount(() => {
           <div class="spread-book__shadow"></div>
 
           <div v-if="unit?.full" class="book-page book-page--full" :style="spreadPageStyle">
-            <img
+            <ReaderProgressiveImage
               :src="unit.full.image"
               :alt="unit.full.title"
-              draggable="false"
-              @load="recordRatio(unit.full.id, $event)"
+              @loaded="recordRatio(unit.full.id, $event)"
             />
           </div>
 
           <template v-else>
             <div class="book-page book-page--left" :style="spreadPageStyle">
-              <img
+              <ReaderProgressiveImage
                 v-if="unit?.left"
                 :src="unit.left.image"
                 :alt="unit.left.title"
-                draggable="false"
-                @load="recordRatio(unit.left.id, $event)"
+                @loaded="recordRatio(unit.left.id, $event)"
               />
             </div>
 
             <div class="book-page book-page--right" :style="spreadPageStyle">
-              <img
+              <ReaderProgressiveImage
                 v-if="unit?.right"
                 :src="unit.right.image"
                 :alt="unit.right.title"
-                draggable="false"
-                @load="recordRatio(unit.right.id, $event)"
+                @loaded="recordRatio(unit.right.id, $event)"
               />
             </div>
 
