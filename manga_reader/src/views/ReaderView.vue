@@ -166,8 +166,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="reader-panel">
-        <span class="view-label">Lector inmersivo</span>
-        <h2>{{ selectedVolume?.title }}</h2>
+        <span class="view-label">{{ selectedVolume?.title }} - {{ selectedChapter?.title }}</span>
+        <h3>{{ selectedChapter?.subtitle }}</h3>
         <p>{{ selectedChapter?.summary }}</p>
         <small class="reader-gesture-hint">
           Scroll para zoom, click para acercar y arrastrar para moverte.

@@ -1,6 +1,7 @@
 import logo from "../../images/Nuevo_Logo_2022.png"
 import { libraryVolumes } from './library'
 import type { CharacterProfile, MangaProject } from '../types/manga'
+import { display } from "html2canvas/dist/types/css/property-descriptors/display"
 
 const coverImage = libraryVolumes[0]?.cover ?? logo
 
@@ -39,8 +40,8 @@ const createCharacter = (character: CharacterSeed): CharacterProfile => {
 
   return {
     ...character,
-    displayName: character.displayName ?? character.name,
-    fullName: character.fullName ?? character.name,
+    displayName: character.displayName ?? character.name ?? "",
+    fullName: character.fullName ?? character.name ?? "",
     portrait,
     slotPortrait,
   }
@@ -68,10 +69,9 @@ export const mangaProject: MangaProject = {
   tags: ['Manga', 'Archivo', 'Tomo interactivo', 'Visual first'],
   nav: [
     { id: 'overview', label: 'Inicio', icon: 'bi bi-stars', caption: 'Conoce la obra' },
-    { id: 'volumes', label: 'Leer', icon: 'bi bi-journals', caption: 'Ver el manga >' },
+    { id: 'volumes', label: 'Leer', icon: 'bi bi-book-half', caption: 'Ver el manga >' },
     { id: 'characters', label: 'Personajes', icon: 'bi bi-person-bounding-box', caption: '' },
-    { id: 'lore', label: 'Lore', icon: 'bi bi-moon-stars', caption: 'Conoce la historia y su mundo' },
-    { id: 'reader', label: 'Leer', icon: 'bi bi-book-half', caption: 'Ver el manga >' },
+    { id: 'lore', label: 'Lore', icon: 'bi bi-moon-stars', caption: 'Conoce la historia y su mundo' }
   ],
   spotlight: [
     { label: 'Direccion de lectura', value: 'RTL con doble pagina' },
@@ -101,12 +101,13 @@ export const mangaProject: MangaProject = {
   characters: [
     {
       id: '1',
-      name: 'Hana Karunyotsi ',
+      displayName: "Hana",
+      fullName: "Hana Karunyotsi",
       role: 'Protagonista',
       tagline: 'Carga la luz como si tambien fuera una herida.',
       bio: 'Su presencia define el tono del proyecto. La ficha esta pensada para que luego conectes imagen real, simbolos, playlist, relaciones y anotaciones de guion sin tocar la vista.',
       accent: '#a85be7',
-      portrait: null,
+      portrait: getCharacterPortrait('1'),
       facts: [
         { label: 'Estado', value: 'En escritura' },
         { label: 'Clave visual', value: 'Contrastes calidos y vacio azul' },
@@ -116,11 +117,12 @@ export const mangaProject: MangaProject = {
     {
       id: '2',
       displayName: 'Kento',
+      fullName: "Kento Ikeda Aminazame",
       role: 'Presidente del departamento de vigilancia y protección civil de la A.S.P.E',
       tagline: 'Habita fuera de cuadro incluso cuando aparece.',
       bio: 'Placeholder curado para representar personajes secundarios o antagonistas. Puedes reemplazar el arte y mantener la misma estructura de datos para escalar el cast.',
       accent: '#969696',
-      portrait: null,
+      portrait: getCharacterPortrait('2'),
       facts: [
         { label: 'Funcion', value: 'Tension y contraste' },
         { label: 'Entrada', value: 'Presentacion gradual' },
@@ -144,7 +146,8 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '4',
-      name: 'Nicktelai Kruger',
+      displayName: "Nicki",
+      fullName: 'Nicktelai Kruger',
       role: 'Aparenta ser una estudiante normal',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
@@ -158,36 +161,35 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '6',
-      name: 'Ryusei Harrsh',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Ryusei",
+      fullName: 'Ryusei Harrsh',
+      role: 'Fundador de la ACK',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
       portrait: null,
       facts: [
-        { label: 'Arquetipo', value: 'Presagio' },
-        { label: 'Ritmo', value: 'Apariciones intermitentes' },
-        { label: 'Potencial', value: 'Notas, citas, extras' },
+        { label: "Apodos", value: 'Tegu' }
       ],
     },
     {
       id: '7',
-      name: 'Koransai Fréun',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Koransai",
+      fullName: 'Koransai Fréun',
+      role: 'Una demonio de altisimo rango',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
       portrait: getCharacterPortrait('7'),
       facts: [
-        { label: 'Arquetipo', value: 'Presagio' },
-        { label: 'Ritmo', value: 'Apariciones intermitentes' },
-        { label: 'Potencial', value: 'Notas, citas, extras' },
+        { label: "Apodos", value: 'Kora' }
       ],
     },
     {
       id: '8',
-      name: 'Fred Hideman',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: 'Uzi',
+      fullName: 'Fred Hideman',
+      role: 'Un mercenario astuto',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -200,22 +202,21 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '9',
-      name: 'Hiroshi Abe Miyamoto',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Hiroshi",
+      fullName: 'Hiroshi Abe Miyamoto',
+      role: 'Director y presidente ejecutivo de la A.S.P.E',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
       portrait: null,
       facts: [
-        { label: 'Arquetipo', value: 'Presagio' },
-        { label: 'Ritmo', value: 'Apariciones intermitentes' },
-        { label: 'Potencial', value: 'Notas, citas, extras' },
       ],
     },
     {
       id: '10',
-      name: 'Yemy Karunyosti Hayashi',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Yemy",
+      fullName: 'Yemy Karunyosti Hayashi',
+      role: 'Hermano menor de Hana',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -228,8 +229,9 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '11',
-      name: 'Midori Karunyotsi Hayashi',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Midori",
+      role: 'Presidenta del departamento de desarrollo e inteligencía de la A.S.P.E',
+      fullName: 'Midori Karunyosti Hayashi',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -242,8 +244,9 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '12',
-      name: 'Revv Ramirez',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Revv",
+      fullName: 'Revv Ramirez',
+      role: 'El mejor gurú clandestino que hay',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -256,8 +259,9 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '13',
-      name: 'Fernanda Yukino',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Fernanda",
+      fullName: 'Fernanda Yukino',
+      role: 'La mejor secretaria que hay',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -271,22 +275,9 @@ export const mangaProject: MangaProject = {
 
     {
       id: '14',
-      name: 'Ayame Hayashi',
-      role: 'Aparenta ser una estudiante normal',
-      tagline: 'Mejor amiga de Hana.',
-      bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
-      accent: '#f8e265',
-      portrait: null,
-      facts: [
-        { label: 'Arquetipo', value: 'Presagio' },
-        { label: 'Ritmo', value: 'Apariciones intermitentes' },
-        { label: 'Potencial', value: 'Notas, citas, extras' },
-      ],
-    },
-    {
-      id: '15',
-      name: 'Ayame Hayashi',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Ayame",
+      fullName: 'Ayame Hayashi',
+      role: 'Madre de Hana',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -299,8 +290,9 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '16',
-      name: 'Daz Karunyotsi',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Daz",
+      fullName: 'Daz Karunyotsi',
+      role: 'Padre de Hana',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -313,8 +305,9 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '17',
-      name: 'Sousuke',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: "Sousuke",
+      fullName: 'Sousuke',
+      role: 'Fundador y director actual de la mafia Tokoro',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',
@@ -327,8 +320,8 @@ export const mangaProject: MangaProject = {
     },
     {
       id: '18',
-      name: 'Big D',
-      role: 'Aparenta ser una estudiante normal',
+      displayName: 'Big D',
+      role: 'Jefe del ',
       tagline: 'Mejor amiga de Hana.',
       bio: 'Tercera ficha de ejemplo con enfoque mas abstracto para que la interfaz se vea rica aunque todavia no tengas todo el material final.',
       accent: '#f8e265',

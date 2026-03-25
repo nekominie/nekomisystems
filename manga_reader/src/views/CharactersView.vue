@@ -23,18 +23,14 @@ const getPortrait = (character: CharacterProfile) => character.portrait ?? props
     <div class="view-header">
       <div>
         <span class="view-label">Elenco</span>
-        <h2>Personajes y presencias</h2>
+        <h2>Personajes y entidades</h2>
       </div>
       <p>Esta vista funciona como panel de personaje. Luego puedes sumarle relaciones, quotes, OST o galerias.</p>
     </div>
 
     <div class="character-stage">
+
       <aside class="character-roster">
-        <div class="character-roster__header">
-          <span class="view-label">Archivo vivo</span>
-          <strong>{{ project.characters.length }} perfiles</strong>
-          <p>La lista lateral ahora tiene su propio scroll para que el panel principal no se deforme.</p>
-        </div>
 
         <div class="character-list">
           <button
