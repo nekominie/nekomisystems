@@ -63,8 +63,11 @@ const displayMode = ref<'single' | 'spread'>('spread')
 const currentUnitIndex = ref(0)
 const currentBookPage = ref(1)
 const thumbnailsOpen = ref(true)
+const readerRootRef = ref<HTMLElement | null>(null)
 const spreadBookRef = ref<SpreadBookHandle | null>(null)
 const syncingChapterFromBook = ref(false)
+const fallbackFullscreen = ref(false)
+const isFullscreen = ref(false)
 const prefetchedAssets = new Set<string>()
 
 const selectedVolume = computed(
@@ -288,6 +291,101 @@ const toggleDrawerLabel = computed(() =>
       : 'Mostrar miniaturas'
 )
 
+const fullscreenLabel = computed(() =>
+  isFullscreen.value ? 'Salir de pantalla completa' : 'Pantalla completa'
+)
+
+const getFullscreenDocument = () =>
+  document as Document & {
+    msExitFullscreen?: () => Promise<void> | void
+    msFullscreenElement?: Element | null
+    webkitExitFullscreen?: () => Promise<void> | void
+    webkitFullscreenElement?: Element | null
+  }
+
+const getFullscreenElement = () => {
+  const fullscreenDocument = getFullscreenDocument()
+
+  return (
+    fullscreenDocument.fullscreenElement ??
+    fullscreenDocument.webkitFullscreenElement ??
+    fullscreenDocument.msFullscreenElement ??
+    null
+  )
+}
+
+const refreshReaderStage = (delay = 80) => {
+  window.setTimeout(() => {
+    spreadBookRef.value?.resize()
+    window.dispatchEvent(new Event('resize'))
+  }, delay)
+}
+
+const syncFullscreenState = () => {
+  isFullscreen.value = Boolean(getFullscreenElement()) || fallbackFullscreen.value
+  document.body.classList.toggle('reader-fullscreen-lock', isFullscreen.value)
+}
+
+const enterReaderFullscreen = async () => {
+  const target = readerRootRef.value as
+    | (HTMLElement & {
+        msRequestFullscreen?: () => Promise<void> | void
+        webkitRequestFullscreen?: () => Promise<void> | void
+      })
+    | null
+
+  if (!target) {
+    return
+  }
+
+  try {
+    if (target.requestFullscreen) {
+      await target.requestFullscreen()
+    } else if (target.webkitRequestFullscreen) {
+      await target.webkitRequestFullscreen()
+    } else if (target.msRequestFullscreen) {
+      await target.msRequestFullscreen()
+    } else {
+      fallbackFullscreen.value = true
+    }
+  } catch (error) {
+    console.warn('No se pudo activar pantalla completa nativa. Se usara el modo inmersivo.', error)
+    fallbackFullscreen.value = true
+  }
+
+  syncFullscreenState()
+  refreshReaderStage(120)
+}
+
+const exitReaderFullscreen = async () => {
+  const fullscreenDocument = getFullscreenDocument()
+
+  try {
+    if (fullscreenDocument.fullscreenElement && fullscreenDocument.exitFullscreen) {
+      await fullscreenDocument.exitFullscreen()
+    } else if (fullscreenDocument.webkitFullscreenElement && fullscreenDocument.webkitExitFullscreen) {
+      await fullscreenDocument.webkitExitFullscreen()
+    } else if (fullscreenDocument.msFullscreenElement && fullscreenDocument.msExitFullscreen) {
+      await fullscreenDocument.msExitFullscreen()
+    }
+  } catch (error) {
+    console.warn('No se pudo cerrar la pantalla completa nativa.', error)
+  }
+
+  fallbackFullscreen.value = false
+  syncFullscreenState()
+  refreshReaderStage(120)
+}
+
+const toggleReaderFullscreen = async () => {
+  if (isFullscreen.value) {
+    await exitReaderFullscreen()
+    return
+  }
+
+  await enterReaderFullscreen()
+}
+
 const preloadAsset = (src?: string) => {
   if (!src || prefetchedAssets.has(src) || typeof Image === 'undefined') {
     return
@@ -465,6 +563,13 @@ watch(
 )
 
 const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && fallbackFullscreen.value) {
+    fallbackFullscreen.value = false
+    syncFullscreenState()
+    refreshReaderStage(80)
+    return
+  }
+
   if (event.key === 'ArrowLeft') {
     goForward()
   }
@@ -474,17 +579,48 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 }
 
+const handleFullscreenChange = () => {
+  if (!getFullscreenElement()) {
+    fallbackFullscreen.value = false
+  }
+
+  syncFullscreenState()
+  refreshReaderStage(80)
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener)
+  document.addEventListener('msfullscreenchange', handleFullscreenChange as EventListener)
+  syncFullscreenState()
 })
 
 onBeforeUnmount(() => {
+  const fullscreenDocument = getFullscreenDocument()
+  const fullscreenElement = getFullscreenElement()
+
   window.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener)
+  document.removeEventListener('msfullscreenchange', handleFullscreenChange as EventListener)
+  fallbackFullscreen.value = false
+  document.body.classList.remove('reader-fullscreen-lock')
+
+  if (fullscreenElement && fullscreenElement === readerRootRef.value) {
+    void fullscreenDocument.exitFullscreen?.()
+    void fullscreenDocument.webkitExitFullscreen?.()
+    void fullscreenDocument.msExitFullscreen?.()
+  }
 })
 </script>
 
 <template>
-  <section class="reader-view">
+  <section
+    ref="readerRootRef"
+    class="reader-view"
+    :class="{ 'reader-view--fullscreen': isFullscreen }"
+  >
     <div class="reader-view__sidebar">
       <div class="reader-panel">
         <button type="button" class="ink-button ink-button--ghost" @click="emit('backToLibrary')">
@@ -579,6 +715,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="reader-toolbar__actions">
+          <button type="button" class="chrome-button" @click="toggleReaderFullscreen">
+            <i class="bi" :class="isFullscreen ? 'bi-arrows-angle-contract' : 'bi-arrows-angle-expand'"></i>
+            {{ fullscreenLabel }}
+          </button>
           <button type="button" class="chrome-button" :disabled="!canGoBack" @click="goBack">
             Anterior
             <i class="bi bi-chevron-right"></i>
