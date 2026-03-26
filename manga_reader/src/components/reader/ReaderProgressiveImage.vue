@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 const props = defineProps<{
   src: string
   alt: string
+  previewSrc?: string
 }>()
 
 const emit = defineEmits<{
@@ -30,6 +31,18 @@ const progressLabel = computed(() => {
   }
 
   return `${Math.round(progress.value)}%`
+})
+
+const previewSource = computed(() => {
+  if (
+    !props.previewSrc ||
+    props.previewSrc === displaySrc.value ||
+    (!isLoading.value && !hasError.value)
+  ) {
+    return ''
+  }
+
+  return props.previewSrc
 })
 
 const cleanupObjectUrl = () => {
@@ -171,7 +184,19 @@ onBeforeUnmount(() => {
 <template>
   <div class="reader-image" :class="{ 'reader-image--loading': isLoading }">
     <img
+      v-if="previewSource"
+      class="reader-image__preview"
+      :src="previewSource"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+      decoding="async"
+      loading="eager"
+    />
+
+    <img
       v-if="displaySrc"
+      class="reader-image__full"
       :src="displaySrc"
       :alt="alt"
       draggable="false"

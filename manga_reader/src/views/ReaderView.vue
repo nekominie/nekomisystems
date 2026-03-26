@@ -65,6 +65,7 @@ const currentBookPage = ref(1)
 const thumbnailsOpen = ref(true)
 const spreadBookRef = ref<SpreadBookHandle | null>(null)
 const syncingChapterFromBook = ref(false)
+const prefetchedAssets = new Set<string>()
 
 const selectedVolume = computed(
   () => props.project.volumes.find((volume) => volume.id === selectedVolumeId.value) ?? props.project.volumes[0]
@@ -113,7 +114,7 @@ const createVolumeBook = (volume?: ReaderVolume) => {
       id: `${volume.id}-cover`,
       image: volume.cover,
       pageNumber: 1,
-      thumbnail: volume.cover,
+      thumbnail: volume.coverThumbnail || volume.cover,
       title: `${volume.title} - Portada`,
     },
   ]
@@ -126,7 +127,7 @@ const createVolumeBook = (volume?: ReaderVolume) => {
       label: 'Portada',
       pageNumber: 1,
       subtitle: volume.title,
-      thumbnail: volume.cover,
+      thumbnail: volume.coverThumbnail || volume.cover,
     },
   ]
 
@@ -287,6 +288,33 @@ const toggleDrawerLabel = computed(() =>
       : 'Mostrar miniaturas'
 )
 
+const preloadAsset = (src?: string) => {
+  if (!src || prefetchedAssets.has(src) || typeof Image === 'undefined') {
+    return
+  }
+
+  const image = new Image()
+  image.decoding = 'async'
+  image.src = src
+  prefetchedAssets.add(src)
+}
+
+const preloadSingleNeighbors = (index: number) => {
+  for (const offset of [-1, 1, 2]) {
+    const page = readingUnits.value[index + offset]?.full
+    preloadAsset(page?.thumbnail)
+    preloadAsset(page?.image)
+  }
+}
+
+const preloadSpreadNeighbors = (pageNumber: number) => {
+  for (const offset of [1, 2]) {
+    const page = volumeBook.value.pages[pageNumber - 1 + offset]
+    preloadAsset(page?.thumbnail)
+    preloadAsset(page?.image)
+  }
+}
+
 const goToUnit = (index: number) => {
   if (index < 0 || index >= readingUnits.value.length) {
     return
@@ -397,6 +425,30 @@ watch(thumbnailsOpen, () => {
     spreadBookRef.value?.resize()
   }, 60)
 })
+
+watch(
+  () => [displayMode.value, currentUnitIndex.value] as const,
+  ([mode, unitIndex]) => {
+    if (mode !== 'single') {
+      return
+    }
+
+    preloadSingleNeighbors(unitIndex)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [displayMode.value, currentBookPage.value] as const,
+  ([mode, pageNumber]) => {
+    if (mode !== 'spread') {
+      return
+    }
+
+    preloadSpreadNeighbors(pageNumber)
+  },
+  { immediate: true }
+)
 
 watch(
   () => props.initialSelection,

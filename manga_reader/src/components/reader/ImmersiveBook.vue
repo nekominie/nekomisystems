@@ -302,6 +302,7 @@ onBeforeUnmount(() => {
             <ReaderProgressiveImage
               v-if="currentSinglePage"
               :src="currentSinglePage.image"
+              :preview-src="currentSinglePage.thumbnail"
               :alt="currentSinglePage.title"
               @loaded="recordRatio(currentSinglePage.id, $event)"
             />
@@ -320,6 +321,7 @@ onBeforeUnmount(() => {
           <div v-if="unit?.full" class="book-page book-page--full" :style="spreadPageStyle">
             <ReaderProgressiveImage
               :src="unit.full.image"
+              :preview-src="unit.full.thumbnail"
               :alt="unit.full.title"
               @loaded="recordRatio(unit.full.id, $event)"
             />
@@ -330,6 +332,7 @@ onBeforeUnmount(() => {
               <ReaderProgressiveImage
                 v-if="unit?.left"
                 :src="unit.left.image"
+                :preview-src="unit.left.thumbnail"
                 :alt="unit.left.title"
                 @loaded="recordRatio(unit.left.id, $event)"
               />
@@ -339,6 +342,7 @@ onBeforeUnmount(() => {
               <ReaderProgressiveImage
                 v-if="unit?.right"
                 :src="unit.right.image"
+                :preview-src="unit.right.thumbnail"
                 :alt="unit.right.title"
                 @loaded="recordRatio(unit.right.id, $event)"
               />

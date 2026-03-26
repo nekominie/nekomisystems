@@ -1125,8 +1125,32 @@ img {
 
 .reader-image {
   position: relative;
+  display: grid;
+  place-items: stretch;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  background: #f3efe9;
+}
+
+.reader-image__preview,
+.reader-image__full {
+  grid-area: 1 / 1;
+}
+
+.reader-image__preview {
+  filter: blur(12px) saturate(0.92);
+  transform: scale(1.02);
+  opacity: 0.82;
+}
+
+.reader-image__full {
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.reader-image--loading .reader-image__full {
+  opacity: 0;
 }
 
 .reader-image__status {

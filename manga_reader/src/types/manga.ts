@@ -93,6 +93,7 @@ export interface ReaderVolume {
   publishDate: string
   summary: string
   cover: string
+  coverThumbnail: string
   chapters: ReaderChapter[]
 }
 

@@ -7,15 +7,21 @@ import type {
   VolumeMeta,
 } from '../types/manga'
 
-const pageModules = import.meta.glob('../../pages/**/*.{png,jpg,jpeg,webp,avif}', {
+const pageModules = import.meta.glob('../../optimized-pages/**/*.{png,jpg,jpeg,webp,avif}', {
   eager: true,
   import: 'default',
 }) as Record<string, string>
 
-const thumbnailModules = import.meta.glob('../../thumbs/**/*.{png,jpg,jpeg,webp,avif}', {
+const thumbnailModules = import.meta.glob('../../page-thumbs/**/*.{png,jpg,jpeg,webp,avif}', {
   eager: true,
   import: 'default',
 }) as Record<string, string>
+
+if (!Object.keys(pageModules).length) {
+  console.warn(
+    '[manga_reader] No se encontraron paginas optimizadas. Ejecuta "npm run manga:optimize-images" para regenerarlas.'
+  )
+}
 
 const chapterMeta: Record<string, Record<string, ChapterMeta>> = {
   tomo1: {
@@ -107,6 +113,21 @@ const numericIndex = (value: string) => {
 }
 
 const stripExtension = (fileName: string) => fileName.replace(/\.[^.]+$/, '')
+const normalizeSlashes = (value: string) => value.replace(/\\/g, '/')
+
+const getRelativeAssetPath = (path: string, rootFolder: string) => {
+  const normalized = normalizeSlashes(path)
+  const marker = `/${rootFolder}/`
+  const markerIndex = normalized.indexOf(marker)
+
+  if (markerIndex === -1) {
+    return normalized
+  }
+
+  return normalized.slice(markerIndex + marker.length)
+}
+
+const toAssetKey = (path: string, rootFolder: string) => stripExtension(getRelativeAssetPath(path, rootFolder))
 
 const normalizePageMetaKey = (value: string) => stripExtension(value).trim().toLowerCase()
 
@@ -141,14 +162,16 @@ const parsePageSide = (fileName: string) => {
 }
 
 const pageRecords = Object.entries(pageModules).map(([path, image]) => {
-  const normalized = path.replace(/\\/g, '/')
-  const parts = normalized.split('/')
-  const volumeFolder = parts[3]
-  const isChapterAsset = parts.length >= 6
-  const chapterFolder = isChapterAsset ? parts[4] : undefined
-  const fileName = isChapterAsset ? parts[5] : parts[4]
+  const normalized = normalizeSlashes(path)
+  const relativePath = getRelativeAssetPath(path, 'optimized-pages')
+  const parts = relativePath.split('/')
+  const volumeFolder = parts[0]
+  const isChapterAsset = parts.length >= 3
+  const chapterFolder = isChapterAsset ? parts[1] : undefined
+  const fileName = isChapterAsset ? parts[2] : parts[1]
 
   return {
+    assetKey: stripExtension(relativePath),
     path: normalized,
     image,
     volumeFolder,
@@ -159,7 +182,7 @@ const pageRecords = Object.entries(pageModules).map(([path, image]) => {
 
 const thumbnailMap = Object.fromEntries(
   Object.entries(thumbnailModules).map(([path, image]) => [
-    path.replace(/\\/g, '/').replace('/thumbs/', '/pages/'),
+    toAssetKey(path, 'page-thumbs'),
     image,
   ])
 )
@@ -171,6 +194,7 @@ const volumeFolders = [...new Set(pageRecords.map((record) => record.volumeFolde
 export const libraryVolumes: ReaderVolume[] = volumeFolders.map((volumeFolder) => {
   const recordsForVolume = pageRecords.filter((record) => record.volumeFolder === volumeFolder)
   const coverRecord = recordsForVolume.find((record) => !record.chapterFolder && record.fileName)
+  const coverThumbnail = coverRecord ? thumbnailMap[coverRecord.assetKey] ?? coverRecord.image : ''
   const chapterFolders = [
     ...new Set(
       recordsForVolume
@@ -192,7 +216,7 @@ export const libraryVolumes: ReaderVolume[] = volumeFolders.map((volumeFolder) =
         index: numericIndex(record.fileName),
         title,
         image: record.image,
-        thumbnail: thumbnailMap[record.path] ?? record.image,
+        thumbnail: thumbnailMap[record.assetKey] ?? record.image,
         side: parsePageSide(record.fileName),
         viewer: getPageViewerMeta(volumeFolder, chapterFolder, title),
       }
@@ -220,6 +244,7 @@ export const libraryVolumes: ReaderVolume[] = volumeFolders.map((volumeFolder) =
     publishDate: meta?.publishDate ?? '2026-03-24',
     summary: meta?.summary ?? 'Volumen generado a partir de la carpeta pages.',
     cover: coverRecord?.image ?? chapters[0]?.pages[0]?.image ?? '',
+    coverThumbnail: coverThumbnail || coverRecord?.image || chapters[0]?.pages[0]?.thumbnail || '',
     chapters,
   }
 })

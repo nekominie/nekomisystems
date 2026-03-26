@@ -76,7 +76,7 @@ export const mangaProject: MangaProject = {
   spotlight: [
     { label: 'Direccion de lectura', value: 'RTL con doble pagina' },
     { label: 'Volteo', value: 'Animacion 3D estilo libro' },
-    { label: 'Fuente real', value: 'Carga imagenes desde /pages' },
+    { label: 'Fuente real', value: 'Genera paginas optimizadas desde /pages' },
   ],
   overviewMoments: [
     {
@@ -389,8 +389,8 @@ export const mangaProject: MangaProject = {
     {
       id: 'n1',
       label: 'Curiosidad 01',
-      title: 'El lector ya usa tus archivos reales',
-      body: 'Las imagenes de la carpeta pages se convierten en paginas automaticamente y se agrupan por tomo/capitulo segun la estructura de carpetas.',
+      title: 'El lector usa una version optimizada de tus paginas',
+      body: 'Las imagenes de la carpeta pages ahora pueden regenerarse como assets ligeros para web sin romper la estructura por tomo y capitulo.',
     },
     {
       id: 'n2',
