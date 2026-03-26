@@ -233,10 +233,12 @@ const initializeBook = async () => {
     height: '100%',
     openPage: normalizePage(props.initialPage),
     pageMode: DFLIP.PAGE_MODE?.DOUBLE ?? 2,
-    paddingBottom: 8,
-    paddingLeft: 8,
-    paddingRight: 8,
-    paddingTop: 8,
+    // Leave a little more room around the rendered book so the hard cover
+    // can extend past the page block without being clipped.
+    paddingBottom: 24,
+    paddingLeft: 18,
+    paddingRight: 18,
+    paddingTop: 14,
     scrollWheel: true,
     search: false,
     soundEnable: false,
@@ -244,6 +246,9 @@ const initializeBook = async () => {
     webgl: true,
     onFlip: handleBookFlip,
     onReady: handleBookReady,
+    renderType: "shelf",
+    skin: "dark-folio",
+    color3DCover: "#aaaaaa",
   }
 
   try {
@@ -323,12 +328,12 @@ const handleWheel = (event: WheelEvent) => {
 }
 
 const handleDoubleClick = (event: MouseEvent) => {
-  if (!isReady.value) {
+  /*if (!isReady.value) {
     return
   }
 
   event.preventDefault()
-  zoomIn()
+  zoomIn()*/
 }
 
 const handlePointerDown = (event: PointerEvent) => {

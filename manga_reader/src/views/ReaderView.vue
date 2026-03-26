@@ -257,8 +257,8 @@ const readerSummary = computed(() => {
 
 const readerHint = computed(() =>
   displayMode.value === 'spread'
-    ? 'Libro 3D con portada del tomo y todos los capitulos. Usa la rueda del mouse para zoom, arrastra cuando estes acercado y en tactil haz pinch con dos dedos.'
-    : 'Scroll para zoom, click para acercar y arrastrar para moverte.'
+    ? ""
+    : ""
 )
 
 const statsPublishDate = computed(() => {
@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
       <div class="reader-panel">
         <span class="view-label">{{ readerContextLabel }}</span>
         <h3>{{ readerHeadline }}</h3>
-        <p>{{ readerSummary }}</p>
+        <p style="overflow-y: auto; max-height: 165px;">{{ readerSummary }}</p>
         <small class="reader-gesture-hint">
           {{ readerHint }}
         </small>
