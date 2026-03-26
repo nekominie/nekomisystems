@@ -2,6 +2,7 @@ import type {
   ChapterMeta,
   ReaderChapter,
   ReaderPage,
+  ReaderPageViewerOptions,
   ReaderVolume,
   VolumeMeta,
 } from '../types/manga'
@@ -18,6 +19,13 @@ const thumbnailModules = import.meta.glob('../../thumbs/**/*.{png,jpg,jpeg,webp,
 
 const chapterMeta: Record<string, Record<string, ChapterMeta>> = {
   tomo1: {
+    cap0: {
+      title: "Indices",
+      subtitle: 'Contenido',
+      viewer:{
+        //hideInReaderSelectors: true
+      }      
+    },
     cap1: {
       title: 'Capitulo 1',
       subtitle: 'La papeleria',
@@ -54,6 +62,40 @@ const volumeMeta: Record<string, VolumeMeta> = {
   },
 }
 
+const pageMeta: Record<string, Record<string, Record<string, ReaderPageViewerOptions>>> = {
+  tomo1: {
+    cap0:{
+      "1":{
+        hideInSinglePageMode: true
+      },
+      "3":{
+        hideInSinglePageMode: true
+      },
+      "5":{
+        hideInSinglePageMode: true
+      }
+    },
+    cap1: {
+      '30': {
+        hideInSinglePageMode: true,
+      },
+      "31": {
+        hideInSinglePageMode: true,
+      }
+    },
+    cap3:{
+      "71": {
+        hideInSinglePageMode: true
+      }
+    },
+    cap4: {
+      "71": {
+        hideInSinglePageMode: true
+      }
+    }
+  }
+}
+
 const slugToLabel = (slug: string) =>
   slug
     .replace(/[_-]/g, ' ')
@@ -62,6 +104,22 @@ const slugToLabel = (slug: string) =>
 const numericIndex = (value: string) => {
   const match = value.match(/(\d+)/)
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER
+}
+
+const stripExtension = (fileName: string) => fileName.replace(/\.[^.]+$/, '')
+
+const normalizePageMetaKey = (value: string) => stripExtension(value).trim().toLowerCase()
+
+const getPageViewerMeta = (volumeId: string, chapterId: string, pageTitle: string) => {
+  const chapterPages = pageMeta[volumeId]?.[chapterId]
+
+  if (!chapterPages) {
+    return undefined
+  }
+
+  const normalizedTitle = normalizePageMetaKey(pageTitle)
+
+  return Object.entries(chapterPages).find(([key]) => normalizePageMetaKey(key) === normalizedTitle)?.[1]
 }
 
 const parsePageSide = (fileName: string) => {
@@ -126,14 +184,19 @@ export const libraryVolumes: ReaderVolume[] = volumeFolders.map((volumeFolder) =
       .filter((record) => record.chapterFolder === chapterFolder)
       .sort((left, right) => numericIndex(left.fileName) - numericIndex(right.fileName))
 
-    const pages: ReaderPage[] = chapterRecords.map((record, pageIndex) => ({
-      id: `${volumeFolder}-${chapterFolder}-${pageIndex + 1}`,
-      index: numericIndex(record.fileName),
-      title: record.fileName.replace(/\.[^.]+$/, ''),
-      image: record.image,
-      thumbnail: thumbnailMap[record.path] ?? record.image,
-      side: parsePageSide(record.fileName),
-    }))
+    const pages: ReaderPage[] = chapterRecords.map((record, pageIndex) => {
+      const title = stripExtension(record.fileName)
+
+      return {
+        id: `${volumeFolder}-${chapterFolder}-${pageIndex + 1}`,
+        index: numericIndex(record.fileName),
+        title,
+        image: record.image,
+        thumbnail: thumbnailMap[record.path] ?? record.image,
+        side: parsePageSide(record.fileName),
+        viewer: getPageViewerMeta(volumeFolder, chapterFolder, title),
+      }
+    })
 
     const meta = chapterMeta[volumeFolder]?.[chapterFolder]
 
@@ -144,6 +207,7 @@ export const libraryVolumes: ReaderVolume[] = volumeFolders.map((volumeFolder) =
       publishDate: meta?.publishDate ?? '2026-03-24',
       summary: meta?.summary ?? 'Capitulo cargado desde la biblioteca local del manga.',
       pages,
+      viewer: meta?.viewer,
     }
   })
 

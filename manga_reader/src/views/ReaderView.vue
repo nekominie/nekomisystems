@@ -48,9 +48,16 @@ const emit = defineEmits<{
   backToLibrary: []
 }>()
 
-const selectedVolumeId = ref(props.initialSelection?.volumeId ?? props.project.volumes[0]?.id ?? '')
+const initialVolume =
+  props.project.volumes.find((volume) => volume.id === props.initialSelection?.volumeId) ??
+  props.project.volumes[0]
+
+const selectedVolumeId = ref(initialVolume?.id ?? '')
 const selectedChapterId = ref(
-  props.initialSelection?.chapterId ?? props.project.volumes[0]?.chapters[0]?.id ?? ''
+  props.initialSelection?.chapterId ??
+    initialVolume?.chapters.find((chapter) => !chapter.viewer?.hideInReaderSelectors)?.id ??
+    initialVolume?.chapters[0]?.id ??
+    ''
 )
 const displayMode = ref<'single' | 'spread'>('spread')
 const currentUnitIndex = ref(0)
@@ -74,7 +81,20 @@ const createSingleUnits = (pages: ReaderPage[]): ReadingUnit[] =>
     full: page,
   }))
 
-const readingUnits = computed(() => createSingleUnits(selectedChapter.value?.pages ?? []))
+const getSingleViewPages = (pages: ReaderPage[]) =>
+  pages.filter((page) => !page.viewer?.hideInSinglePageMode)
+
+const getSelectableChapters = (volume?: ReaderVolume) =>
+  volume?.chapters.filter((chapter) => !chapter.viewer?.hideInReaderSelectors) ?? []
+
+const getDefaultChapterId = (volume?: ReaderVolume) =>
+  getSelectableChapters(volume)[0]?.id ?? volume?.chapters[0]?.id ?? ''
+
+const selectableChapters = computed(() => getSelectableChapters(selectedVolume.value))
+
+const readingUnits = computed(() =>
+  createSingleUnits(getSingleViewPages(selectedChapter.value?.pages ?? []))
+)
 
 const currentUnit = computed(() => readingUnits.value[currentUnitIndex.value])
 
@@ -250,7 +270,7 @@ const statsPublishDate = computed(() => {
 })
 
 const statsPageCount = computed(() =>
-  displayMode.value === 'spread' ? volumeBook.value.pages.length : selectedChapter.value?.pages.length ?? 0
+  displayMode.value === 'spread' ? volumeBook.value.pages.length : readingUnits.value.length
 )
 
 const statsPageLabel = computed(() =>
@@ -325,6 +345,10 @@ const handleBookPageChange = (page: number) => {
     return
   }
 
+  if (range.chapter.viewer?.hideInReaderSelectors) {
+    return
+  }
+
   syncingChapterFromBook.value = true
   selectedChapterId.value = range.chapterId
 
@@ -334,7 +358,7 @@ const handleBookPageChange = (page: number) => {
 }
 
 watch(selectedVolume, (volume) => {
-  selectedChapterId.value = volume?.chapters[0]?.id ?? ''
+  selectedChapterId.value = getDefaultChapterId(volume)
   currentUnitIndex.value = 0
   currentBookPage.value = 1
 })
@@ -440,7 +464,7 @@ onBeforeUnmount(() => {
           <span>Capitulo</span>
           <select v-model="selectedChapterId">
             <option
-              v-for="chapter in selectedVolume?.chapters"
+              v-for="chapter in selectableChapters"
               :key="chapter.id"
               :value="chapter.id"
             >

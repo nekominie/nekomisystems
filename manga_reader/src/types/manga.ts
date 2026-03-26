@@ -46,6 +46,7 @@ export interface ChapterMeta {
   subtitle: string
   publishDate: string
   summary: string
+  viewer?: ReaderChapterViewerOptions
 }
 
 export interface VolumeMeta {
@@ -57,6 +58,14 @@ export interface VolumeMeta {
 
 export type PageSide = 'left' | 'right' | 'spread' | 'single'
 
+export interface ReaderPageViewerOptions {
+  hideInSinglePageMode?: boolean
+}
+
+export interface ReaderChapterViewerOptions {
+  hideInReaderSelectors?: boolean
+}
+
 export interface ReaderPage {
   id: string
   index: number
@@ -64,6 +73,7 @@ export interface ReaderPage {
   image: string
   thumbnail: string
   side: PageSide
+  viewer?: ReaderPageViewerOptions
 }
 
 export interface ReaderChapter {
@@ -73,6 +83,7 @@ export interface ReaderChapter {
   publishDate: string
   summary: string
   pages: ReaderPage[]
+  viewer?: ReaderChapterViewerOptions
 }
 
 export interface ReaderVolume {
