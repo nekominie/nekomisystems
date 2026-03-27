@@ -1022,7 +1022,8 @@ body.reader-fullscreen-lock {
 }
 
 .reader-view__stage > .book-stage,
-.reader-view__stage > .dearflip-stage {
+.reader-view__stage > .dearflip-stage,
+.reader-view__stage > .cascade-stage {
   min-height: 0;
 }
 
@@ -1105,7 +1106,8 @@ body.reader-fullscreen-lock {
 }
 
 .reader-viewport-content > .book-stage,
-.reader-viewport-content > .dearflip-stage {
+.reader-viewport-content > .dearflip-stage,
+.reader-viewport-content > .cascade-stage {
   min-height: 0;
   height: 100%;
 }
@@ -1225,6 +1227,100 @@ body.reader-fullscreen-lock {
   perspective: 3200px;
   background: #ffffff24;
   border-radius: 13px;
+}
+
+.cascade-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.06), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    #ffffff1c;
+}
+
+.cascade-stage__glow {
+  position: absolute;
+  inset: 8% 12% auto;
+  height: 30%;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(255, 141, 93, 0.16), transparent 58%),
+    radial-gradient(circle at 65% 45%, rgba(119, 242, 213, 0.1), transparent 56%);
+  filter: blur(36px);
+  pointer-events: none;
+}
+
+.cascade-stage__viewport {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 10px 72px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scroll-snap-type: y proximity;
+}
+
+.cascade-stage--zoomed .cascade-stage__viewport {
+  touch-action: pan-x pan-y;
+}
+
+.cascade-stage__lane {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  margin-inline: auto;
+  padding: 2px 0 18px;
+  transition: width 180ms ease;
+}
+
+.cascade-page {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(4, 9, 20, 0.9);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  scroll-snap-align: start;
+}
+
+.cascade-page::before {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 26%),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.02), transparent 20%);
+  content: "";
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cascade-page--active {
+  border-color: rgba(255, 141, 93, 0.16);
+}
+
+.cascade-page .reader-image,
+.cascade-page .reader-image * {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cascade-page .reader-image__full,
+.cascade-page .reader-image__preview {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 .dearflip-stage {

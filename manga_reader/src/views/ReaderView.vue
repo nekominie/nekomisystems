@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import CascadeReader from '../components/reader/CascadeReader.vue'
 import DearFlipBook from '../components/reader/DearFlipBook.vue'
 import ImmersiveBook from '../components/reader/ImmersiveBook.vue'
 import type { MangaProject, ReaderChapter, ReaderPage, ReaderVolume, ReadingUnit } from '../types/manga'
@@ -42,6 +43,14 @@ interface SingleBookHandle {
   resetZoom: () => void
 }
 
+interface CascadeReaderHandle {
+  goToPage: (index: number) => void
+  next: () => void
+  prev: () => void
+  refreshLayout: () => void
+  resetZoom: () => void
+}
+
 const props = defineProps<{
   project: MangaProject
   initialSelection?: {
@@ -65,7 +74,7 @@ const selectedChapterId = ref(
     initialVolume?.chapters[0]?.id ??
     ''
 )
-const displayMode = ref<'single' | 'spread'>('spread')
+const displayMode = ref<'single' | 'spread' | 'cascade'>('spread')
 const currentUnitIndex = ref(0)
 const currentBookPage = ref(1)
 const thumbnailsOpen = ref(true)
@@ -75,6 +84,7 @@ const thumbDrawerRef = ref<HTMLElement | null>(null)
 const drawerToggleRef = ref<HTMLElement | null>(null)
 const singleBookRef = ref<SingleBookHandle | null>(null)
 const spreadBookRef = ref<SpreadBookHandle | null>(null)
+const cascadeReaderRef = ref<CascadeReaderHandle | null>(null)
 const syncingChapterFromBook = ref(false)
 const fallbackFullscreen = ref(false)
 const isFullscreen = ref(false)
@@ -112,6 +122,9 @@ const readingUnits = computed(() =>
 )
 
 const currentUnit = computed(() => readingUnits.value[currentUnitIndex.value])
+const cascadePages = computed(
+  () => readingUnits.value.map((unit) => unit.full).filter((page): page is ReaderPage => Boolean(page))
+)
 
 const createVolumeBook = (volume?: ReaderVolume) => {
   if (!volume) {
@@ -269,7 +282,9 @@ const readerSummary = computed(() => {
 const readerHint = computed(() =>
   displayMode.value === 'spread'
     ? 'Rueda, doble clic o pellizco para acercar el libro 3D. Arrastra mientras haya zoom.'
-    : 'Pellizca o haz doble toque para acercar la pagina. Arrastra con un dedo cuando haya zoom.'
+    : displayMode.value === 'cascade'
+      ? 'Desplazate verticalmente para leer. Usa Ctrl + rueda, doble clic o pellizco para acercar.'
+      : 'Pellizca o haz doble toque para acercar la pagina. Arrastra con un dedo cuando haya zoom.'
 )
 
 const statsPublishDate = computed(() => {
@@ -334,6 +349,7 @@ const refreshReaderStage = (delays = [80, 180, 320, 480]) => {
     window.setTimeout(() => {
       spreadBookRef.value?.resize()
       singleBookRef.value?.refreshLayout()
+      cascadeReaderRef.value?.refreshLayout()
       window.dispatchEvent(new Event('resize'))
     }, delay)
   })
@@ -437,6 +453,10 @@ const goToUnit = (index: number) => {
   }
 
   currentUnitIndex.value = index
+
+  if (displayMode.value === 'cascade') {
+    cascadeReaderRef.value?.goToPage(index)
+  }
 }
 
 const goToBookPage = (page: number) => {
@@ -454,6 +474,11 @@ const goForward = () => {
     return
   }
 
+  if (displayMode.value === 'cascade') {
+    cascadeReaderRef.value?.next()
+    return
+  }
+
   goToUnit(currentUnitIndex.value + 1)
 }
 
@@ -463,12 +488,22 @@ const goBack = () => {
     return
   }
 
+  if (displayMode.value === 'cascade') {
+    cascadeReaderRef.value?.prev()
+    return
+  }
+
   goToUnit(currentUnitIndex.value - 1)
 }
 
 const resetReaderZoom = () => {
   if (displayMode.value === 'spread') {
     spreadBookRef.value?.resetZoom()
+    return
+  }
+
+  if (displayMode.value === 'cascade') {
+    cascadeReaderRef.value?.resetZoom()
     return
   }
 
@@ -586,6 +621,14 @@ const handleBookPageChange = (page: number) => {
   }, 0)
 }
 
+const handleCascadePageChange = (index: number) => {
+  if (index < 0 || index >= readingUnits.value.length) {
+    return
+  }
+
+  currentUnitIndex.value = index
+}
+
 watch(selectedVolume, (volume) => {
   selectedChapterId.value = getDefaultChapterId(volume)
   currentUnitIndex.value = 0
@@ -614,23 +657,31 @@ watch(displayMode, (mode) => {
     window.setTimeout(() => {
       spreadBookRef.value?.resize()
     }, 60)
-  }
-})
-
-watch(thumbnailsOpen, () => {
-  if (displayMode.value !== 'spread') {
     return
   }
 
   window.setTimeout(() => {
+    if (mode === 'cascade') {
+      cascadeReaderRef.value?.refreshLayout()
+      cascadeReaderRef.value?.goToPage(0)
+      return
+    }
+
+    singleBookRef.value?.refreshLayout()
+  }, 60)
+})
+
+watch(thumbnailsOpen, () => {
+  window.setTimeout(() => {
     spreadBookRef.value?.resize()
+    cascadeReaderRef.value?.refreshLayout()
   }, 60)
 })
 
 watch(
   () => [displayMode.value, currentUnitIndex.value] as const,
   ([mode, unitIndex]) => {
-    if (mode !== 'single') {
+    if (mode === 'spread') {
       return
     }
 
@@ -785,6 +836,14 @@ onBeforeUnmount(() => {
           >
             Libro 3D
           </button>
+          <button
+            type="button"
+            class="toggle-chip"
+            :class="{ 'toggle-chip--active': displayMode === 'cascade' }"
+            @click="displayMode = 'cascade'"
+          >
+            Cascada
+          </button>
         </div>
 
         <div class="reader-stats">
@@ -813,6 +872,13 @@ onBeforeUnmount(() => {
             :unit-count="readingUnits.length"
             mode="single"
             :overlay-open="thumbnailsOpen"
+          />
+
+          <CascadeReader
+            v-else-if="displayMode === 'cascade'"
+            ref="cascadeReaderRef"
+            :pages="cascadePages"
+            @page-change="handleCascadePageChange"
           />
 
           <DearFlipBook
@@ -903,7 +969,7 @@ onBeforeUnmount(() => {
 
         <transition name="thumb-drawer">
           <div v-show="thumbnailsOpen" ref="thumbDrawerRef" class="thumb-drawer">
-            <div v-if="displayMode === 'single'" class="thumb-drawer__grid" @wheel="handleThumbDrawerWheel">
+            <div v-if="displayMode !== 'spread'" class="thumb-drawer__grid" @wheel="handleThumbDrawerWheel">
               <button
                 v-for="(unit, index) in readingUnits"
                 :key="unit.id"
