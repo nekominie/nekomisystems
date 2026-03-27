@@ -498,9 +498,9 @@ defineExpose({
       </div>
     </div>
 
-    <div class="book-stage__counter">
-      <span>Spread {{ unitIndex + 1 }}</span>
-      <strong>{{ unitCount }}</strong>
+    <div class="book-stage__counter" style="display:none;">
+      <span>Paginas</span>
+      <strong>{{ unitIndex + 1 }} / {{ unitCount }}</strong>
       <small>{{ zoomLevel.toFixed(2) }}x</small>
     </div>
   </div>

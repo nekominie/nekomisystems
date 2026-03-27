@@ -291,19 +291,19 @@ const statsPageLabel = computed(() =>
 const toggleDrawerLabel = computed(() =>
   displayMode.value === 'spread'
     ? thumbnailsOpen.value
-      ? 'Ocultar capitulos'
-      : 'Mostrar capitulos'
+      ? 'Caps'
+      : 'Caps'
     : thumbnailsOpen.value
-      ? 'Ocultar miniaturas'
-      : 'Mostrar miniaturas'
+      ? 'Pags'
+      : 'Pags'
 )
 
 const fullscreenLabel = computed(() =>
-  isFullscreen.value ? 'Salir de pantalla completa' : 'Pantalla completa'
+  isFullscreen.value ? ""/*'Salir de pantalla completa'*/ : ""/*'Pantalla completa'*/
 )
 
 const resetZoomLabel = computed(() =>
-  displayMode.value === 'spread' ? 'Restablecer zoom del libro' : 'Restablecer zoom'
+  displayMode.value === 'spread' ? /*'Restablecer zoom del libro'*/"" : /*'Restablecer zoom'*/""
 )
 
 const getFullscreenDocument = () =>
@@ -718,17 +718,6 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="reader-view__stage">
-      <div class="reader-toolbar">
-        <div class="reader-toolbar__progress">
-          <span>{{ toolbarCurrent }} / {{ toolbarTotal }}</span>
-          <div class="reader-toolbar__track">
-            <div
-              class="reader-toolbar__fill"
-              :style="{ width: `${progressFill}%` }"
-            ></div>
-          </div>
-        </div>
-      </div>
 
       <div class="reader-viewport-shell">
         <ImmersiveBook
@@ -753,32 +742,56 @@ onBeforeUnmount(() => {
         />
 
         <div class="reader-viewport-controls">
+          
           <button
             type="button"
-            class="chrome-button reader-edge-control reader-edge-control--top-left reader-label"
+            class="chrome-button reader-edge-control reader-edge-control--bottom-right reader-label" style=""
             @click="thumbnailsOpen = !thumbnailsOpen"
           >
-            <i class="bi" :class="thumbnailsOpen ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'"></i>
+            <i class="bi" :class="thumbnailsOpen ? 'bi-chevron-down' : 'bi-chevron-up'"></i>
             <span>{{ toggleDrawerLabel }}</span>
           </button>
 
-          <button
-            type="button"
-            class="chrome-button reader-edge-control reader-edge-control--top-center reader-label"
-            @click="resetReaderZoom"
-          >
-            <i class="bi bi-aspect-ratio"></i>
-            <span>{{ resetZoomLabel }}</span>
-          </button>
+          <div class="reader-edge-container reader-edge-control--top-right">
+            <button
+              type="button"
+              class="chrome-button reader-edge-control reader-label"
+              @click="resetReaderZoom"
+              style="gap: 0 !important;"
+            >
+              <i class="bi bi-aspect-ratio"></i>
+              <span>{{ resetZoomLabel }}</span>
+            </button>
 
-          <button
-            type="button"
-            class="chrome-button reader-edge-control reader-edge-control--top-right reader-label"
-            @click="toggleReaderFullscreen"
-          >
-            <i class="bi" :class="isFullscreen ? 'bi-arrows-angle-contract' : 'bi-arrows-angle-expand'"></i>
-            <span>{{ fullscreenLabel }}</span>
-          </button>
+            <button
+              type="button"
+              class="chrome-button reader-edge-control eader-label"
+              style="gap: 0 !important;"
+              @click="toggleReaderFullscreen"
+            >
+              <i class="bi" :class="isFullscreen ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'"></i>
+              <span>{{ fullscreenLabel }}</span>
+            </button>
+
+          </div>
+
+          <div class="book-stage__counter reader-edge-control--bottom-left" style="display: flex; gap: 8px; align-items: center; justify-content: center; overflow: hidden;">
+            <span>Pag</span>
+            
+            <strong>{{ toolbarCurrent}} / {{ toolbarTotal }}</strong>
+            
+            <button
+              type="button"
+              class="reader-edge-control" style="position: unset !important; cursor: pointer; border: 0; background: none; backdrop-filter: unset !important; box-shadow: unset !important; display: none;"
+              @click="thumbnailsOpen = !thumbnailsOpen"
+            >
+              <i class="bi" :class="thumbnailsOpen ? 'bi-chevron-down' : 'bi-chevron-up'" style=""></i>
+            </button>
+            
+            <div class="reader-toolbar__track" style="bottom:0; position: absolute; width: 100%; border-radius: 0;">
+              <div class="reader-toolbar__fill" :style="{ width: `${progressFill}%` }"></div>
+            </div>
+          </div>
 
           <button
             type="button"
