@@ -54,6 +54,14 @@ const loadScript = (src: string, id: string) =>
     document.head.appendChild(script)
   })
 
+export const ensureDearFlipPreviewStyles = async () => {
+  const baseUrl = resolveDearFlipBaseUrl()
+
+  await loadStylesheet(`${baseUrl}css/dflip.min.css`, 'dearflip-style')
+
+  return baseUrl
+}
+
 const configureDearFlipDefaults = (baseUrl: string) => {
   window.dFlipLocation = baseUrl
 
@@ -75,7 +83,7 @@ const configureDearFlipDefaults = (baseUrl: string) => {
 }
 
 export const ensureDearFlipAssets = async () => {
-  const baseUrl = resolveDearFlipBaseUrl()
+  const baseUrl = await ensureDearFlipPreviewStyles()
 
   if (window.DFLIP && window.jQuery?.fn?.flipBook) {
     configureDearFlipDefaults(baseUrl)
@@ -84,10 +92,7 @@ export const ensureDearFlipAssets = async () => {
 
   if (!loadPromise) {
     loadPromise = (async () => {
-      await Promise.all([
-        loadStylesheet(`${baseUrl}css/dflip.min.css`, 'dearflip-style'),
-        loadStylesheet(`${baseUrl}css/themify-icons.min.css`, 'dearflip-icons'),
-      ])
+      await loadStylesheet(`${baseUrl}css/themify-icons.min.css`, 'dearflip-icons')
 
       if (!window.jQuery) {
         await loadScript(`${baseUrl}js/libs/jquery.min.js`, 'dearflip-jquery')

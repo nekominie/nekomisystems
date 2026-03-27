@@ -392,16 +392,211 @@ img {
   font-size: 1.5rem;
 }
 
-.volume-grid {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+.volume-library__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 24px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 141, 93, 0.12), rgba(119, 242, 213, 0.06)),
+    rgba(255, 255, 255, 0.03);
+}
+
+.volume-library__notice i {
+  color: #ffd48f;
+  font-size: 1.08rem;
+}
+
+.volume-library__notice strong {
+  color: #fff7ef;
+  font-size: 0.96rem;
+}
+
+.volume-library__notice span {
+  color: #b6c6de;
+  font-size: 0.92rem;
+}
+
+.volume-grid--library {
+  align-items: end;
+  gap: 28px 20px;
+  grid-template-columns: none;
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 420px;
+  padding: 28px 24px 40px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 30px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 28px 70px rgba(0, 0, 0, 0.24);
 }
 
 .volume-card {
-  overflow: hidden;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 0;
+  overflow: visible;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03)),
+    rgba(6, 10, 24, 0.82);
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.volume-card::after {
+  position: absolute;
+  right: 18px;
+  bottom: -10px;
+  left: 18px;
+  height: 16px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.34), transparent 70%);
+  content: "";
+  filter: blur(6px);
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .volume-card__cover {
-  height: 320px;
+  height: 336px;
+}
+
+.volume-card__cover--action {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.volume-card__cover--action:focus-visible {
+  outline: 2px solid rgba(255, 212, 143, 0.86);
+  outline-offset: 4px;
+}
+
+.volume-card__cover--preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 26px 16px 20px;
+  overflow: hidden;
+  border-radius: 28px 28px 18px 18px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.12), transparent 24%),
+    radial-gradient(circle at 82% 76%, rgba(255, 141, 93, 0.18), transparent 28%),
+    linear-gradient(160deg, rgba(10, 16, 32, 0.96), rgba(5, 10, 22, 0.92));
+}
+
+.volume-card__cover--preview::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 34%),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.04), transparent 28%);
+  content: "";
+  pointer-events: none;
+}
+
+.volume-card__preview-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  perspective: 1200px;
+}
+
+.volume-card__thumb._df_thumb {
+  width: min(100%, 196px);
+  height: min(100%, 268px);
+  margin: 0;
+  box-shadow: none;
+  cursor: pointer;
+  pointer-events: none;
+  transition: transform 180ms ease;
+}
+
+.volume-card:hover .volume-card__thumb._df_thumb,
+.volume-card:focus-within .volume-card__thumb._df_thumb,
+.volume-card__cover--action:hover .volume-card__thumb._df_thumb,
+.volume-card__cover--action:focus-visible .volume-card__thumb._df_thumb {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.volume-card__thumb._df_thumb ._df_book-cover {
+  /*border-radius: 22px;*/
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow:
+    0 24px 44px rgba(0, 0, 0, 0.4),
+    0 8px 18px rgba(0, 0, 0, 0.25);
+}
+
+.volume-card:hover .volume-card__thumb._df_thumb ._df_book-cover,
+.volume-card:focus-within .volume-card__thumb._df_thumb ._df_book-cover,
+.volume-card__cover--action:hover .volume-card__thumb._df_thumb ._df_book-cover,
+.volume-card__cover--action:focus-visible .volume-card__thumb._df_thumb ._df_book-cover {
+  transform: rotateY(-20deg) rotateZ(0);
+  box-shadow:
+    3px 0 12px rgba(0, 0, 0, 0.6),
+    0 24px 44px rgba(0, 0, 0, 0.4),
+    0 8px 18px rgba(0, 0, 0, 0.25);
+}
+
+.volume-card__thumb._df_thumb ._df_book-title {
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, transparent, rgba(3, 5, 13, 0.88) 34%);
+}
+
+.volume-card__read-cue {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  z-index: 2;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(3, 5, 13, 0.74);
+  color: #fff5e8;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+  pointer-events: none;
+}
+
+.volume-card:hover .volume-card__read-cue,
+.volume-card:focus-within .volume-card__read-cue,
+.volume-card__cover--action:hover .volume-card__read-cue,
+.volume-card__cover--action:focus-visible .volume-card__read-cue {
+  transform: translateY(-2px);
+  border-color: rgba(255, 212, 143, 0.48);
+  background: rgba(8, 13, 28, 0.88);
 }
 
 .volume-card__cover img {
@@ -411,15 +606,37 @@ img {
 }
 
 .volume-card__body {
-  padding: 22px;
+  display: grid;
+  align-content: start;
+  gap: 0;
+  padding: 18px 18px 20px;
+}
+
+.volume-card__body h3 {
+  margin: 8px 0 10px;
+  font-size: 1.24rem;
+  line-height: 1.04;
+}
+
+.volume-card__body p {
+  display: -webkit-box;
+  min-height: 6.4em;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
 .volume-card__meta {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin: 20px 0;
+  margin: 16px 0 18px;
   color: #a5b5cf;
+}
+
+.volume-card .ink-button {
+  width: 100%;
 }
 
 .ink-button,
@@ -1728,6 +1945,32 @@ body.reader-fullscreen-lock {
 
   .view-header {
     align-items: start;
+  }
+
+  .volume-library__notice {
+    align-items: flex-start;
+  }
+
+  .volume-grid--library {
+    justify-content: center;
+    gap: 24px 16px;
+    padding: 22px 16px 30px;
+    background:
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.05), transparent 26%),
+      radial-gradient(circle at 82% 14%, rgba(255, 141, 93, 0.1), transparent 24%),
+      repeating-linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0) 0 442px,
+        rgba(109, 75, 47, 0.82) 442px 458px,
+        rgba(45, 28, 16, 0.92) 458px 468px,
+        rgba(255, 255, 255, 0) 468px 490px
+      ),
+      linear-gradient(180deg, rgba(7, 11, 25, 0.9), rgba(5, 10, 22, 0.95));
+  }
+
+  .volume-card {
+    flex-basis: min(100%, 220px);
+    width: min(100%, 220px);
   }
 
   .character-stage {

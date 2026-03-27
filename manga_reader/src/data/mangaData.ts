@@ -69,8 +69,8 @@ export const mangaProject: MangaProject = {
   tags: ['Manga', 'Archivo', 'Tomo interactivo', 'Visual first'],
   nav: [
     { id: 'overview', label: 'Inicio', icon: 'bi bi-stars', caption: 'Conoce la obra' },
-    { id: 'volumes', label: 'Leer', icon: 'bi bi-book-half', caption: 'Ver el manga >' },
-    { id: 'characters', label: 'Personajes', icon: 'bi bi-person-bounding-box', caption: '' },
+    { id: 'volumes', label: 'Biblioteca', icon: 'bi bi-book-half', caption: 'Lee el manga' },
+    { id: 'characters', label: 'Personajes', icon: 'bi bi-person-bounding-box', caption: 'Protagonistas y entidades' },
     { id: 'lore', label: 'Lore', icon: 'bi bi-moon-stars', caption: 'Conoce la historia y su mundo' }
   ],
   spotlight: [
