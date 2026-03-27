@@ -881,8 +881,14 @@ body.reader-fullscreen-lock {
   overflow: hidden;
 }
 
-.reader-viewport-shell > .book-stage,
-.reader-viewport-shell > .dearflip-stage {
+.reader-viewport-content {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+}
+
+.reader-viewport-content > .book-stage,
+.reader-viewport-content > .dearflip-stage {
   min-height: 0;
   height: 100%;
 }

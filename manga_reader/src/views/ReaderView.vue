@@ -70,11 +70,15 @@ const currentUnitIndex = ref(0)
 const currentBookPage = ref(1)
 const thumbnailsOpen = ref(true)
 const readerRootRef = ref<HTMLElement | null>(null)
+const viewportContentRef = ref<HTMLElement | null>(null)
+const thumbDrawerRef = ref<HTMLElement | null>(null)
+const drawerToggleRef = ref<HTMLElement | null>(null)
 const singleBookRef = ref<SingleBookHandle | null>(null)
 const spreadBookRef = ref<SpreadBookHandle | null>(null)
 const syncingChapterFromBook = ref(false)
 const fallbackFullscreen = ref(false)
 const isFullscreen = ref(false)
+const swallowViewportClickOnce = ref(false)
 const prefetchedAssets = new Set<string>()
 
 const selectedVolume = computed(
@@ -471,6 +475,82 @@ const resetReaderZoom = () => {
   singleBookRef.value?.resetZoom()
 }
 
+const handleThumbDrawerWheel = (event: WheelEvent) => {
+  const scroller = event.currentTarget as HTMLElement | null
+
+  if (!scroller) {
+    return
+  }
+
+  const delta =
+    Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+
+  if (!delta) {
+    return
+  }
+
+  const deltaMultiplier =
+    event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 28
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? scroller.clientWidth
+        : 1
+
+  event.preventDefault()
+  scroller.scrollLeft += delta * deltaMultiplier
+}
+
+const handlePointerDownOutsideDrawer = (event: PointerEvent) => {
+  if (!thumbnailsOpen.value) {
+    return
+  }
+
+  const target = event.target
+
+  if (!(target instanceof Node)) {
+    return
+  }
+
+  if (thumbDrawerRef.value?.contains(target) || drawerToggleRef.value?.contains(target)) {
+    return
+  }
+
+  const clickedViewportContent = viewportContentRef.value?.contains(target) ?? false
+
+  thumbnailsOpen.value = false
+
+  if (!clickedViewportContent) {
+    return
+  }
+
+  swallowViewportClickOnce.value = true
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+}
+
+const handleClickAfterDrawerDismiss = (event: MouseEvent) => {
+  if (!swallowViewportClickOnce.value) {
+    return
+  }
+
+  swallowViewportClickOnce.value = false
+
+  const target = event.target
+
+  if (!(target instanceof Node)) {
+    return
+  }
+
+  if (!(viewportContentRef.value?.contains(target) ?? false)) {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+}
+
 const jumpToChapter = (chapterId: string) => {
   selectedChapterId.value = chapterId
 }
@@ -613,6 +693,8 @@ const handleFullscreenChange = () => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
+  document.addEventListener('pointerdown', handlePointerDownOutsideDrawer, true)
+  document.addEventListener('click', handleClickAfterDrawerDismiss, true)
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   document.addEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener)
   document.addEventListener('msfullscreenchange', handleFullscreenChange as EventListener)
@@ -624,6 +706,8 @@ onBeforeUnmount(() => {
   const fullscreenElement = getFullscreenElement()
 
   window.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('pointerdown', handlePointerDownOutsideDrawer, true)
+  document.removeEventListener('click', handleClickAfterDrawerDismiss, true)
   document.removeEventListener('fullscreenchange', handleFullscreenChange)
   document.removeEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener)
   document.removeEventListener('msfullscreenchange', handleFullscreenChange as EventListener)
@@ -720,30 +804,33 @@ onBeforeUnmount(() => {
     <div class="reader-view__stage">
 
       <div class="reader-viewport-shell">
-        <ImmersiveBook
-          v-if="displayMode === 'single'"
-          ref="singleBookRef"
-          :unit="currentUnit"
-          :unit-index="currentUnitIndex"
-          :unit-count="readingUnits.length"
-          mode="single"
-          :overlay-open="thumbnailsOpen"
-        />
+        <div ref="viewportContentRef" class="reader-viewport-content">
+          <ImmersiveBook
+            v-if="displayMode === 'single'"
+            ref="singleBookRef"
+            :unit="currentUnit"
+            :unit-index="currentUnitIndex"
+            :unit-count="readingUnits.length"
+            mode="single"
+            :overlay-open="thumbnailsOpen"
+          />
 
-        <DearFlipBook
-          v-else
-          ref="spreadBookRef"
-          :book-id="selectedVolume?.id ?? 'reader-volume'"
-          :title="selectedVolume?.title ?? project.title"
-          :pages="volumeBook.pages"
-          :initial-page="currentBookPage"
-          :overlay-open="thumbnailsOpen"
-          @page-change="handleBookPageChange"
-        />
+          <DearFlipBook
+            v-else
+            ref="spreadBookRef"
+            :book-id="selectedVolume?.id ?? 'reader-volume'"
+            :title="selectedVolume?.title ?? project.title"
+            :pages="volumeBook.pages"
+            :initial-page="currentBookPage"
+            :overlay-open="thumbnailsOpen"
+            @page-change="handleBookPageChange"
+          />
+        </div>
 
         <div class="reader-viewport-controls">
           
           <button
+            ref="drawerToggleRef"
             type="button"
             class="chrome-button reader-edge-control reader-edge-control--bottom-right reader-label" style=""
             @click="thumbnailsOpen = !thumbnailsOpen"
@@ -815,8 +902,8 @@ onBeforeUnmount(() => {
         </div>
 
         <transition name="thumb-drawer">
-          <div v-show="thumbnailsOpen" class="thumb-drawer">
-            <div v-if="displayMode === 'single'" class="thumb-drawer__grid">
+          <div v-show="thumbnailsOpen" ref="thumbDrawerRef" class="thumb-drawer">
+            <div v-if="displayMode === 'single'" class="thumb-drawer__grid" @wheel="handleThumbDrawerWheel">
               <button
                 v-for="(unit, index) in readingUnits"
                 :key="unit.id"
@@ -836,7 +923,11 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <div v-else class="thumb-drawer__grid thumb-drawer__grid--chapters">
+            <div
+              v-else
+              class="thumb-drawer__grid thumb-drawer__grid--chapters"
+              @wheel="handleThumbDrawerWheel"
+            >
               <button
                 v-for="card in volumeBook.jumpCards"
                 :key="card.id"
