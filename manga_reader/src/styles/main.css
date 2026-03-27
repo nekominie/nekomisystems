@@ -694,11 +694,11 @@ body.reader-fullscreen-lock {
   gap: 0;
   width: 100vw;
   height: 100dvh;
-  padding:
+  /*padding:
     max(8px, env(safe-area-inset-top))
     max(8px, env(safe-area-inset-right))
     max(8px, env(safe-area-inset-bottom))
-    max(8px, env(safe-area-inset-left));
+    max(8px, env(safe-area-inset-left));*/
   background:
     radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.05), transparent 24%),
     linear-gradient(180deg, rgba(2, 6, 16, 0.99), rgba(1, 4, 10, 1));
@@ -801,7 +801,7 @@ body.reader-fullscreen-lock {
 
 .reader-view--fullscreen .reader-view__stage {
   height: 100%;
-  border-radius: 26px;
+  /*border-radius: 26px;*/
 }
 
 .reader-view__stage > .book-stage,
@@ -1783,9 +1783,13 @@ body.reader-fullscreen-lock {
   }
 }
 
+.reader-view--fullscreen .reader-view__stage{
+  border-radius: unset !important;
+}
+
 @media (max-width: 680px) {
   .app-shell {
-    padding: 12px;
+    /*padding: 12px;*/
     gap: 12px;
   }
 
@@ -1803,7 +1807,9 @@ body.reader-fullscreen-lock {
   }
 
   .reader-view__stage {
-    padding: 8px;
+    /*padding: 8px;*/
+    /*border-radius: 10px;*/
+    height: 80dvh /*100dvh*/;
   }
 
   .reader-edge-control {
@@ -1813,7 +1819,7 @@ body.reader-fullscreen-lock {
 
   .thumb-drawer {
     right: max(10px, env(safe-area-inset-right));
-    bottom: max(10px, env(safe-area-inset-bottom));
+    bottom: max(60px, env(safe-area-inset-bottom));
     left: max(10px, env(safe-area-inset-left));
     width: auto;
     padding: 8px;
