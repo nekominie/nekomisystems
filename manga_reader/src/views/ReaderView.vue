@@ -33,7 +33,13 @@ interface SpreadBookHandle {
   goToPage: (page: number) => void
   next: () => void
   prev: () => void
+  resetZoom: () => void
   resize: () => void
+}
+
+interface SingleBookHandle {
+  refreshLayout: () => void
+  resetZoom: () => void
 }
 
 const props = defineProps<{
@@ -64,6 +70,7 @@ const currentUnitIndex = ref(0)
 const currentBookPage = ref(1)
 const thumbnailsOpen = ref(true)
 const readerRootRef = ref<HTMLElement | null>(null)
+const singleBookRef = ref<SingleBookHandle | null>(null)
 const spreadBookRef = ref<SpreadBookHandle | null>(null)
 const syncingChapterFromBook = ref(false)
 const fallbackFullscreen = ref(false)
@@ -257,8 +264,8 @@ const readerSummary = computed(() => {
 
 const readerHint = computed(() =>
   displayMode.value === 'spread'
-    ? ""
-    : ""
+    ? 'Rueda, doble clic o pellizco para acercar el libro 3D. Arrastra mientras haya zoom.'
+    : 'Pellizca o haz doble toque para acercar la pagina. Arrastra con un dedo cuando haya zoom.'
 )
 
 const statsPublishDate = computed(() => {
@@ -295,6 +302,10 @@ const fullscreenLabel = computed(() =>
   isFullscreen.value ? 'Salir de pantalla completa' : 'Pantalla completa'
 )
 
+const resetZoomLabel = computed(() =>
+  displayMode.value === 'spread' ? 'Restablecer zoom del libro' : 'Restablecer zoom'
+)
+
 const getFullscreenDocument = () =>
   document as Document & {
     msExitFullscreen?: () => Promise<void> | void
@@ -314,11 +325,14 @@ const getFullscreenElement = () => {
   )
 }
 
-const refreshReaderStage = (delay = 80) => {
-  window.setTimeout(() => {
-    spreadBookRef.value?.resize()
-    window.dispatchEvent(new Event('resize'))
-  }, delay)
+const refreshReaderStage = (delays = [80, 180, 320, 480]) => {
+  delays.forEach((delay) => {
+    window.setTimeout(() => {
+      spreadBookRef.value?.resize()
+      singleBookRef.value?.refreshLayout()
+      window.dispatchEvent(new Event('resize'))
+    }, delay)
+  })
 }
 
 const syncFullscreenState = () => {
@@ -354,7 +368,7 @@ const enterReaderFullscreen = async () => {
   }
 
   syncFullscreenState()
-  refreshReaderStage(120)
+  refreshReaderStage([120, 240, 420, 620])
 }
 
 const exitReaderFullscreen = async () => {
@@ -374,7 +388,7 @@ const exitReaderFullscreen = async () => {
 
   fallbackFullscreen.value = false
   syncFullscreenState()
-  refreshReaderStage(120)
+  refreshReaderStage([120, 240, 420, 620])
 }
 
 const toggleReaderFullscreen = async () => {
@@ -432,7 +446,7 @@ const goToBookPage = (page: number) => {
 
 const goForward = () => {
   if (displayMode.value === 'spread') {
-    spreadBookRef.value?.next()
+    spreadBookRef.value?.prev()
     return
   }
 
@@ -441,11 +455,20 @@ const goForward = () => {
 
 const goBack = () => {
   if (displayMode.value === 'spread') {
-    spreadBookRef.value?.prev()
+    spreadBookRef.value?.next()
     return
   }
 
   goToUnit(currentUnitIndex.value - 1)
+}
+
+const resetReaderZoom = () => {
+  if (displayMode.value === 'spread') {
+    spreadBookRef.value?.resetZoom()
+    return
+  }
+
+  singleBookRef.value?.resetZoom()
 }
 
 const jumpToChapter = (chapterId: string) => {
@@ -566,7 +589,7 @@ const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && fallbackFullscreen.value) {
     fallbackFullscreen.value = false
     syncFullscreenState()
-    refreshReaderStage(80)
+    refreshReaderStage([80, 180, 320, 480])
     return
   }
 
@@ -585,7 +608,7 @@ const handleFullscreenChange = () => {
   }
 
   syncFullscreenState()
-  refreshReaderStage(80)
+  refreshReaderStage([80, 180, 320, 480])
 }
 
 onMounted(() => {
@@ -692,19 +715,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="reader-panel">
-        <button type="button" class="ink-button ink-button--ghost" @click="thumbnailsOpen = !thumbnailsOpen">
-          {{ toggleDrawerLabel }}
-        </button>
-      </div>
     </div>
 
     <div class="reader-view__stage">
       <div class="reader-toolbar">
-        <button type="button" class="chrome-button" :disabled="!canGoForward" @click="goForward">
-          <i class="bi bi-chevron-left"></i>
-          Siguiente
-        </button>
         <div class="reader-toolbar__progress">
           <span>{{ toolbarCurrent }} / {{ toolbarTotal }}</span>
           <div class="reader-toolbar__track">
@@ -714,81 +728,123 @@ onBeforeUnmount(() => {
             ></div>
           </div>
         </div>
-        <div class="reader-toolbar__actions">
-          <button type="button" class="chrome-button" @click="toggleReaderFullscreen">
-            <i class="bi" :class="isFullscreen ? 'bi-arrows-angle-contract' : 'bi-arrows-angle-expand'"></i>
-            {{ fullscreenLabel }}
+      </div>
+
+      <div class="reader-viewport-shell">
+        <ImmersiveBook
+          v-if="displayMode === 'single'"
+          ref="singleBookRef"
+          :unit="currentUnit"
+          :unit-index="currentUnitIndex"
+          :unit-count="readingUnits.length"
+          mode="single"
+          :overlay-open="thumbnailsOpen"
+        />
+
+        <DearFlipBook
+          v-else
+          ref="spreadBookRef"
+          :book-id="selectedVolume?.id ?? 'reader-volume'"
+          :title="selectedVolume?.title ?? project.title"
+          :pages="volumeBook.pages"
+          :initial-page="currentBookPage"
+          :overlay-open="thumbnailsOpen"
+          @page-change="handleBookPageChange"
+        />
+
+        <div class="reader-viewport-controls">
+          <button
+            type="button"
+            class="chrome-button reader-edge-control reader-edge-control--top-left reader-label"
+            @click="thumbnailsOpen = !thumbnailsOpen"
+          >
+            <i class="bi" :class="thumbnailsOpen ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'"></i>
+            <span>{{ toggleDrawerLabel }}</span>
           </button>
-          <button type="button" class="chrome-button" :disabled="!canGoBack" @click="goBack">
-            Anterior
+
+          <button
+            type="button"
+            class="chrome-button reader-edge-control reader-edge-control--top-center reader-label"
+            @click="resetReaderZoom"
+          >
+            <i class="bi bi-aspect-ratio"></i>
+            <span>{{ resetZoomLabel }}</span>
+          </button>
+
+          <button
+            type="button"
+            class="chrome-button reader-edge-control reader-edge-control--top-right reader-label"
+            @click="toggleReaderFullscreen"
+          >
+            <i class="bi" :class="isFullscreen ? 'bi-arrows-angle-contract' : 'bi-arrows-angle-expand'"></i>
+            <span>{{ fullscreenLabel }}</span>
+          </button>
+
+          <button
+            type="button"
+            class="chrome-button reader-edge-control reader-edge-control--nav reader-edge-control--left"
+            :disabled="!canGoForward"
+            @click="goForward"
+          >
+            <i class="bi bi-chevron-left"></i>
+            <span style="display: none;">Siguiente</span>
+          </button>
+
+          <button
+            type="button"
+            class="chrome-button reader-edge-control reader-edge-control--nav reader-edge-control--right"
+            :disabled="!canGoBack"
+            @click="goBack"
+          >
+            <span style="display: none;">Anterior</span>
             <i class="bi bi-chevron-right"></i>
           </button>
         </div>
+
+        <transition name="thumb-drawer">
+          <div v-show="thumbnailsOpen" class="thumb-drawer">
+            <div v-if="displayMode === 'single'" class="thumb-drawer__grid">
+              <button
+                v-for="(unit, index) in readingUnits"
+                :key="unit.id"
+                type="button"
+                class="thumb-card"
+                :class="{ 'thumb-card--active': index === currentUnitIndex }"
+                @click="goToUnit(index)"
+              >
+                <img
+                  v-if="unit.full"
+                  :src="unit.full.thumbnail"
+                  :alt="unit.full.title"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <span>{{ index + 1 }}</span>
+              </button>
+            </div>
+
+            <div v-else class="thumb-drawer__grid thumb-drawer__grid--chapters">
+              <button
+                v-for="card in volumeBook.jumpCards"
+                :key="card.id"
+                type="button"
+                class="thumb-card thumb-card--chapter"
+                :class="{ 'thumb-card--active': isActiveJumpCard(card) }"
+                @click="card.chapterId ? jumpToChapter(card.chapterId) : goToBookPage(card.pageNumber)"
+              >
+                <img
+                  :src="card.thumbnail"
+                  :alt="card.label"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <span>{{ card.label }}</span>
+                <small>{{ card.subtitle }}</small>
+              </button>
+            </div>
+          </div>
+        </transition>
       </div>
-
-      <ImmersiveBook
-        v-if="displayMode === 'single'"
-        :unit="currentUnit"
-        :unit-index="currentUnitIndex"
-        :unit-count="readingUnits.length"
-        mode="single"
-        :overlay-open="thumbnailsOpen"
-      />
-
-      <DearFlipBook
-        v-else
-        ref="spreadBookRef"
-        :book-id="selectedVolume?.id ?? 'reader-volume'"
-        :title="selectedVolume?.title ?? project.title"
-        :pages="volumeBook.pages"
-        :initial-page="currentBookPage"
-        :overlay-open="thumbnailsOpen"
-        @page-change="handleBookPageChange"
-      />
-
-      <transition name="thumb-drawer">
-        <div v-show="thumbnailsOpen" class="thumb-drawer">
-          <div v-if="displayMode === 'single'" class="thumb-drawer__grid">
-            <button
-              v-for="(unit, index) in readingUnits"
-              :key="unit.id"
-              type="button"
-              class="thumb-card"
-              :class="{ 'thumb-card--active': index === currentUnitIndex }"
-              @click="goToUnit(index)"
-            >
-              <img
-                v-if="unit.full"
-                :src="unit.full.thumbnail"
-                :alt="unit.full.title"
-                loading="lazy"
-                decoding="async"
-              />
-              <span>{{ index + 1 }}</span>
-            </button>
-          </div>
-
-          <div v-else class="thumb-drawer__grid thumb-drawer__grid--chapters">
-            <button
-              v-for="card in volumeBook.jumpCards"
-              :key="card.id"
-              type="button"
-              class="thumb-card thumb-card--chapter"
-              :class="{ 'thumb-card--active': isActiveJumpCard(card) }"
-              @click="card.chapterId ? jumpToChapter(card.chapterId) : goToBookPage(card.pageNumber)"
-            >
-              <img
-                :src="card.thumbnail"
-                :alt="card.label"
-                loading="lazy"
-                decoding="async"
-              />
-              <span>{{ card.label }}</span>
-              <small>{{ card.subtitle }}</small>
-            </button>
-          </div>
-        </div>
-      </transition>
     </div>
   </section>
 </template>

@@ -31,7 +31,15 @@ let dragOriginX = 0
 let dragOriginY = 0
 let dragStartX = 0
 let dragStartY = 0
+let lastTouchTapAt = 0
+let pinchStartDistance = 0
+let pinchStartZoom = 1
+let suppressClickUntil = 0
+let suppressTouchTapUntil = 0
+let pinchActive = false
 let resizeObserver: ResizeObserver | null = null
+const activeTouchPointers = new Map<number, { x: number; y: number }>()
+let viewportRefreshTimers: number[] = []
 
 const resetView = () => {
   zoomLevel.value = 1
@@ -39,17 +47,45 @@ const resetView = () => {
   offsetY.value = 0
   isDragging.value = false
   dragMoved.value = false
+  activeTouchPointers.clear()
+  pinchActive = false
+  pinchStartDistance = 0
+  pinchStartZoom = 1
 }
 
-const updateViewportSize = () => {
+const updateViewportSize = (force = false) => {
   if (!viewportRef.value) {
     return
   }
 
-  viewportSize.value = {
-    width: viewportRef.value.clientWidth,
-    height: viewportRef.value.clientHeight,
+  const nextWidth = Math.round(viewportRef.value.clientWidth)
+  const nextHeight = Math.round(viewportRef.value.clientHeight)
+
+  if ((!nextWidth || !nextHeight) && !force) {
+    return
   }
+
+  viewportSize.value = {
+    width: nextWidth,
+    height: nextHeight,
+  }
+}
+
+const clearViewportRefreshTimers = () => {
+  viewportRefreshTimers.forEach((timer) => window.clearTimeout(timer))
+  viewportRefreshTimers = []
+}
+
+const scheduleViewportRefresh = (delays = [0, 120, 260, 420]) => {
+  clearViewportRefreshTimers()
+
+  delays.forEach((delay, index) => {
+    viewportRefreshTimers.push(
+      window.setTimeout(() => {
+        updateViewportSize(index === delays.length - 1)
+      }, delay)
+    )
+  })
 }
 
 const getRatio = (page?: ReaderPage) => {
@@ -90,6 +126,39 @@ const setZoom = (nextZoom: number) => {
   const clamped = clampOffset(offsetX.value, offsetY.value, normalizedZoom)
   offsetX.value = clamped.x
   offsetY.value = clamped.y
+}
+
+const toggleQuickZoom = () => {
+  setZoom(zoomLevel.value === 1 ? quickZoom : 1)
+}
+
+const resetZoom = () => {
+  resetView()
+}
+
+const getTouchDistance = () => {
+  if (activeTouchPointers.size < 2) {
+    return 0
+  }
+
+  const [first, second] = Array.from(activeTouchPointers.values())
+  return Math.hypot(second.x - first.x, second.y - first.y)
+}
+
+const handleTouchTap = () => {
+  const now = Date.now()
+
+  if (now < suppressTouchTapUntil) {
+    return
+  }
+
+  if (now - lastTouchTapAt <= 280) {
+    toggleQuickZoom()
+    lastTouchTapAt = 0
+    return
+  }
+
+  lastTouchTapAt = now
 }
 
 const currentSinglePage = computed(
@@ -195,15 +264,33 @@ const handleWheel = (event: WheelEvent) => {
 }
 
 const handleClick = () => {
+  if (Date.now() < suppressClickUntil) {
+    return
+  }
+
   if (dragMoved.value) {
     dragMoved.value = false
     return
   }
 
-  setZoom(zoomLevel.value === 1 ? quickZoom : 1)
+  toggleQuickZoom()
 }
 
 const handlePointerDown = (event: PointerEvent) => {
+  if (event.pointerType === 'touch') {
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    suppressClickUntil = Date.now() + 450
+
+    if (activeTouchPointers.size >= 2) {
+      pinchActive = true
+      isDragging.value = false
+      dragMoved.value = true
+      pinchStartDistance = getTouchDistance()
+      pinchStartZoom = zoomLevel.value
+      return
+    }
+  }
+
   if (zoomLevel.value <= 1) {
     return
   }
@@ -218,7 +305,22 @@ const handlePointerDown = (event: PointerEvent) => {
 }
 
 const handlePointerMove = (event: PointerEvent) => {
-  if (!isDragging.value || zoomLevel.value <= 1) {
+  if (event.pointerType === 'touch' && activeTouchPointers.has(event.pointerId)) {
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+    if (activeTouchPointers.size >= 2 && pinchStartDistance > 0) {
+      const pinchDistance = getTouchDistance()
+
+      if (pinchDistance > 0) {
+        setZoom(pinchStartZoom * (pinchDistance / pinchStartDistance))
+      }
+
+      dragMoved.value = true
+      return
+    }
+  }
+
+  if (!isDragging.value || zoomLevel.value <= 1 || pinchActive) {
     return
   }
 
@@ -234,6 +336,9 @@ const handlePointerMove = (event: PointerEvent) => {
 }
 
 const handlePointerUp = (event: PointerEvent) => {
+  const wasPinching = pinchActive
+  const wasDragGesture = dragMoved.value
+
   if (!(event.currentTarget instanceof HTMLElement)) {
     return
   }
@@ -243,6 +348,26 @@ const handlePointerUp = (event: PointerEvent) => {
   }
 
   isDragging.value = false
+
+  if (event.pointerType === 'touch') {
+    activeTouchPointers.delete(event.pointerId)
+
+    if (activeTouchPointers.size < 2) {
+      pinchActive = false
+      pinchStartDistance = 0
+      pinchStartZoom = zoomLevel.value
+    }
+
+    if (wasPinching) {
+      suppressTouchTapUntil = Date.now() + 280
+    }
+
+    if (!wasPinching && !wasDragGesture) {
+      handleTouchTap()
+    }
+
+    dragMoved.value = false
+  }
 }
 
 const recordRatio = (pageId: string | undefined, image: HTMLImageElement) => {
@@ -261,24 +386,42 @@ const recordRatio = (pageId: string | undefined, image: HTMLImageElement) => {
     [pageId]: naturalWidth / naturalHeight,
   }
 
-  updateViewportSize()
+  scheduleViewportRefresh([0, 80])
 }
 
 onMounted(async () => {
   await nextTick()
-  updateViewportSize()
+  scheduleViewportRefresh([0, 80, 180])
 
   resizeObserver = new ResizeObserver(() => {
-    updateViewportSize()
+    scheduleViewportRefresh([0, 80])
   })
 
   if (viewportRef.value) {
     resizeObserver.observe(viewportRef.value)
   }
+
+  window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('orientationchange', handleWindowResize)
+  window.visualViewport?.addEventListener('resize', handleWindowResize)
 })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  clearViewportRefreshTimers()
+  window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('orientationchange', handleWindowResize)
+  window.visualViewport?.removeEventListener('resize', handleWindowResize)
+  activeTouchPointers.clear()
+})
+
+const handleWindowResize = () => {
+  scheduleViewportRefresh([0, 120, 260])
+}
+
+defineExpose({
+  refreshLayout: () => scheduleViewportRefresh([0, 120, 260, 420]),
+  resetZoom,
 })
 </script>
 

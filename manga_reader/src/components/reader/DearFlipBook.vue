@@ -2,6 +2,35 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ensureDearFlipAssets } from '../../lib/dearflip'
 
+// Ajusta estos valores para cambiar el comportamiento del zoom del libro 3D.
+const BOOK_ZOOM_SETTINGS = {
+  // Multiplicador que usa DearFlip en cada paso de zoom hacia adentro.
+  internalZoomStepRatio: 1.2,
+  // Limite maximo del zoom interno de DearFlip.
+  maxInternalScale: 6,
+  // Permite alejar el libro por debajo de su tamano base.
+  minOuterScale: 0.6,
+  // Paso que se aplica al alejar/acercar el libro cuando esta por debajo de 1x.
+  outerScaleStep: 0.12,
+  // Delta minimo de la rueda antes de aplicar un paso de zoom.
+  wheelDeltaThreshold: 2,
+} as const
+
+// Ajusta estas medidas para afinar el area real que DearFlip usa
+// para calcular su canvas y el espacio interno del libro.
+const BOOK_RENDER_BOX_SETTINGS = {
+  height: '100%',
+  maxHeight: '100%',
+  maxWidth: '100%',
+  minHeight: '0px',
+  minWidth: '0px',
+  paddingBottom: 24,
+  paddingLeft: 18,
+  paddingRight: 18,
+  paddingTop: 14,
+  width: '100%',
+} as const
+
 interface FlipBookPage {
   id: string
   image: string
@@ -53,6 +82,7 @@ const isLoading = ref(true)
 const isReady = ref(false)
 const isDragging = ref(false)
 const isZoomed = ref(false)
+const outerBookScale = ref(1)
 const errorMessage = ref('')
 let resizeTimers: number[] = []
 let initializationToken = 0
@@ -62,6 +92,16 @@ const stageClass = computed(() => ({
   'dearflip-stage--overlay-open': props.overlayOpen,
   'dearflip-stage--ready': isReady.value,
   'dearflip-stage--zoomed': isZoomed.value,
+}))
+
+const bookShellStyle = computed(() => ({
+  height: BOOK_RENDER_BOX_SETTINGS.height,
+  maxHeight: BOOK_RENDER_BOX_SETTINGS.maxHeight,
+  maxWidth: BOOK_RENDER_BOX_SETTINGS.maxWidth,
+  minHeight: BOOK_RENDER_BOX_SETTINGS.minHeight,
+  minWidth: BOOK_RENDER_BOX_SETTINGS.minWidth,
+  transform: `scale(${outerBookScale.value})`,
+  width: BOOK_RENDER_BOX_SETTINGS.width,
 }))
 
 const normalizePage = (page: number) => {
@@ -80,11 +120,29 @@ const asFlipBook = (value: unknown): FlipBookInstance | null => {
   return value as FlipBookInstance
 }
 
-const getZoomScale = (book: FlipBookInstance | null = instanceRef.value) =>
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const getInternalZoomScale = (book: FlipBookInstance | null = instanceRef.value) =>
   Number(book?.contentProvider?.zoomScale ?? book?.zoomValue ?? 1)
 
+const getDisplayZoomScale = (book: FlipBookInstance | null = instanceRef.value) =>
+  outerBookScale.value * getInternalZoomScale(book)
+
+const syncZoomLimits = (book: FlipBookInstance | null = instanceRef.value) => {
+  if (!book?.contentProvider) {
+    return
+  }
+
+  book.contentProvider.maxZoom = BOOK_ZOOM_SETTINGS.maxInternalScale
+}
+
 const syncZoomState = (book: FlipBookInstance | null = instanceRef.value) => {
-  isZoomed.value = getZoomScale(book) > 1.01
+  syncZoomLimits(book)
+  isZoomed.value = getDisplayZoomScale(book) > 1.01
+}
+
+const setOuterBookScale = (value: number) => {
+  outerBookScale.value = clamp(value, BOOK_ZOOM_SETTINGS.minOuterScale, 1)
 }
 
 const getActivePage = (book: FlipBookInstance | null) => {
@@ -141,6 +199,7 @@ const destroyBook = () => {
   }
 
   instanceRef.value = null
+  outerBookScale.value = 1
   isDragging.value = false
   isReady.value = false
   isZoomed.value = false
@@ -157,9 +216,11 @@ const handleBookReady = function (this: unknown, book: unknown) {
     instanceRef.value = resolvedBook
   }
 
+  outerBookScale.value = 1
   isLoading.value = false
   isReady.value = true
   errorMessage.value = ''
+  syncZoomLimits(resolvedBook)
   syncZoomState(resolvedBook)
   emit('ready', props.pages.length)
   syncPageFromBook(resolvedBook)
@@ -235,20 +296,18 @@ const initializeBook = async () => {
     pageMode: DFLIP.PAGE_MODE?.DOUBLE ?? 2,
     // Leave a little more room around the rendered book so the hard cover
     // can extend past the page block without being clipped.
-    paddingBottom: 24,
-    paddingLeft: 18,
-    paddingRight: 18,
-    paddingTop: 14,
-    scrollWheel: true,
+    paddingBottom: BOOK_RENDER_BOX_SETTINGS.paddingBottom,
+    paddingLeft: BOOK_RENDER_BOX_SETTINGS.paddingLeft,
+    paddingRight: BOOK_RENDER_BOX_SETTINGS.paddingRight,
+    paddingTop: BOOK_RENDER_BOX_SETTINGS.paddingTop,
+    scrollWheel: false,
     search: false,
     soundEnable: false,
     transparent: true,
     webgl: true,
+    zoomRatio: BOOK_ZOOM_SETTINGS.internalZoomStepRatio,
     onFlip: handleBookFlip,
     onReady: handleBookReady,
-    renderType: "shelf",
-    skin: "dark-folio",
-    color3DCover: "#aaaaaa",
   }
 
   try {
@@ -257,6 +316,7 @@ const initializeBook = async () => {
       options
     ) as FlipBookInstance
 
+    syncZoomLimits(instanceRef.value)
     scheduleResize()
 
     window.setTimeout(() => {
@@ -285,13 +345,14 @@ const prev = () => {
   instanceRef.value?.prev?.()
 }
 
-const applyZoom = (direction: 1 | -1) => {
+const applyInternalZoom = (direction: 1 | -1) => {
   const book = instanceRef.value
 
   if (!book?.zoom) {
     return
   }
 
+  syncZoomLimits(book)
   book.zoom(direction)
   book.ui?.update?.()
   book.target?.startPoint && book.target?.pan?.(book.target.startPoint)
@@ -301,11 +362,54 @@ const applyZoom = (direction: 1 | -1) => {
 }
 
 const zoomIn = () => {
-  applyZoom(1)
+  if (outerBookScale.value < 1) {
+    setOuterBookScale(outerBookScale.value + BOOK_ZOOM_SETTINGS.outerScaleStep)
+    syncZoomState()
+    return
+  }
+
+  applyInternalZoom(1)
 }
 
 const zoomOut = () => {
-  applyZoom(-1)
+  const book = instanceRef.value
+
+  if (!book) {
+    return
+  }
+
+  if (getInternalZoomScale(book) > 1.01) {
+    applyInternalZoom(-1)
+    return
+  }
+
+  setOuterBookScale(outerBookScale.value - BOOK_ZOOM_SETTINGS.outerScaleStep)
+  syncZoomState(book)
+}
+
+const resetZoom = () => {
+  const book = instanceRef.value
+  outerBookScale.value = 1
+
+  if (!book?.zoom) {
+    syncZoomState(book)
+    return
+  }
+
+  syncZoomLimits(book)
+
+  let guard = 0
+  while (getInternalZoomScale(book) > 1.01 && guard < 24) {
+    book.zoom(-1)
+    guard += 1
+  }
+
+  book.ui?.update?.()
+  book.target?.startPoint && book.target?.pan?.(book.target.startPoint)
+
+  window.requestAnimationFrame(() => {
+    syncZoomState(book)
+  })
 }
 
 const handleWheel = (event: WheelEvent) => {
@@ -314,8 +418,9 @@ const handleWheel = (event: WheelEvent) => {
   }
 
   event.preventDefault()
+  event.stopPropagation()
 
-  if (Math.abs(event.deltaY) < 2) {
+  if (Math.abs(event.deltaY) < BOOK_ZOOM_SETTINGS.wheelDeltaThreshold) {
     return
   }
 
@@ -328,12 +433,12 @@ const handleWheel = (event: WheelEvent) => {
 }
 
 const handleDoubleClick = (event: MouseEvent) => {
-  /*if (!isReady.value) {
+  if (!isReady.value) {
     return
   }
 
   event.preventDefault()
-  zoomIn()*/
+  zoomIn()
 }
 
 const handlePointerDown = (event: PointerEvent) => {
@@ -404,6 +509,7 @@ defineExpose({
   goToPage,
   next,
   prev,
+  resetZoom,
   resize: runResize,
   zoomIn,
   zoomOut,
@@ -423,7 +529,9 @@ defineExpose({
       @pointercancel="handlePointerUp"
       @pointerleave="handlePointerLeave"
     >
-      <div ref="hostRef" class="dearflip-stage__book"></div>
+      <div class="dearflip-stage__book-shell" :style="bookShellStyle">
+        <div ref="hostRef" class="dearflip-stage__book"></div>
+      </div>
     </div>
 
     <transition name="reader-image-status">
