@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch, computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ReaderProgressiveImage from './ReaderProgressiveImage.vue'
 import type { ReaderPage } from '../../types/manga'
+
+interface ZoomFocus {
+  x: number
+  y: number
+}
 
 const props = defineProps<{
   pages: ReaderPage[]
 }>()
 
-const emit = defineEmits<{
-  pageChange: [index: number]
-}>()
-
 const viewportRef = ref<HTMLElement | null>(null)
-const pageRefs = ref<HTMLElement[]>([])
 const viewportSize = ref({ width: 0, height: 0 })
 const zoomLevel = ref(1)
-const activeIndex = ref(0)
+const isPanning = ref(false)
 
 const minZoom = 0.78
 const maxZoom = 2.8
@@ -24,11 +24,20 @@ const quickZoom = 1.42
 
 let resizeObserver: ResizeObserver | null = null
 let viewportRefreshTimers: number[] = []
-let scrollUpdateFrame = 0
 let lastTouchTapAt = 0
 let pinchStartDistance = 0
 let pinchStartZoom = 1
 let suppressTouchTapUntil = 0
+let pinchMoveAttached = false
+let touchGestureMoved = false
+let touchStartX = 0
+let touchStartY = 0
+let zoomAnimationToken = 0
+let panPointerId: number | null = null
+let panStartX = 0
+let panStartY = 0
+let panStartScrollLeft = 0
+let panStartScrollTop = 0
 
 const clearViewportRefreshTimers = () => {
   viewportRefreshTimers.forEach((timer) => window.clearTimeout(timer))
@@ -60,7 +69,6 @@ const scheduleViewportRefresh = (delays = [0, 120, 260, 420]) => {
     viewportRefreshTimers.push(
       window.setTimeout(() => {
         updateViewportSize(index === delays.length - 1)
-        queueCurrentPageUpdate()
       }, delay)
     )
   })
@@ -75,104 +83,156 @@ const laneStyle = computed(() => ({
   width: `${Math.round(baseColumnWidth.value * zoomLevel.value)}px`,
 }))
 
-const setPageRef = (element: Element | null, index: number) => {
-  if (!(element instanceof HTMLElement)) {
-    return
-  }
-
-  pageRefs.value[index] = element
-}
-
-const emitActiveIndex = (index: number) => {
-  if (index === activeIndex.value) {
-    return
-  }
-
-  activeIndex.value = index
-  emit('pageChange', index)
-}
-
-const updateCurrentPage = () => {
+const getViewportFocus = (clientX?: number, clientY?: number): ZoomFocus => {
   const viewport = viewportRef.value
 
-  if (!viewport || !props.pages.length) {
-    return
+  if (!viewport) {
+    return { x: 0, y: 0 }
   }
 
-  const viewportCenter = viewport.scrollTop + viewport.clientHeight / 2
-  let closestIndex = 0
-  let closestDistance = Number.POSITIVE_INFINITY
+  const bounds = viewport.getBoundingClientRect()
 
-  props.pages.forEach((_, index) => {
-    const pageElement = pageRefs.value[index]
-
-    if (!pageElement) {
-      return
-    }
-
-    const pageCenter = pageElement.offsetTop + pageElement.offsetHeight / 2
-    const distance = Math.abs(pageCenter - viewportCenter)
-
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestIndex = index
-    }
-  })
-
-  emitActiveIndex(closestIndex)
-}
-
-const queueCurrentPageUpdate = () => {
-  if (scrollUpdateFrame) {
-    return
+  return {
+    x: Math.max(
+      0,
+      Math.min(bounds.width, (clientX ?? bounds.left + bounds.width / 2) - bounds.left)
+    ),
+    y: Math.max(
+      0,
+      Math.min(bounds.height, (clientY ?? bounds.top + bounds.height / 2) - bounds.top)
+    ),
   }
-
-  scrollUpdateFrame = window.requestAnimationFrame(() => {
-    scrollUpdateFrame = 0
-    updateCurrentPage()
-  })
 }
 
-const setZoom = async (nextZoom: number) => {
+const clampScroll = (viewport: HTMLElement, left: number, top: number) => ({
+  left: Math.max(0, Math.min(Math.max(0, viewport.scrollWidth - viewport.clientWidth), left)),
+  top: Math.max(0, Math.min(Math.max(0, viewport.scrollHeight - viewport.clientHeight), top)),
+})
+
+const nextAnimationFrame = () =>
+  new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+
+const stopZoomAnimation = () => {
+  zoomAnimationToken += 1
+}
+
+const resetPan = () => {
   const viewport = viewportRef.value
-  const normalizedZoom = Math.max(minZoom, Math.min(maxZoom, Number(nextZoom.toFixed(2))))
 
-  if (normalizedZoom === zoomLevel.value) {
-    return
+  if (viewport && panPointerId !== null && viewport.hasPointerCapture(panPointerId)) {
+    viewport.releasePointerCapture(panPointerId)
   }
 
-  const verticalRatio = viewport
-    ? viewport.scrollTop / Math.max(1, viewport.scrollHeight - viewport.clientHeight)
-    : 0
-  const horizontalRatio = viewport
-    ? viewport.scrollLeft / Math.max(1, viewport.scrollWidth - viewport.clientWidth)
-    : 0
+  isPanning.value = false
+  panPointerId = null
+}
 
-  zoomLevel.value = normalizedZoom
-  await nextTick()
+const setZoom = async (
+  nextZoom: number,
+  options: {
+    animated?: boolean
+    focus?: ZoomFocus
+  } = {}
+) => {
+  const viewport = viewportRef.value
 
   if (!viewport) {
     return
   }
 
-  const nextScrollTop = verticalRatio * Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-  const nextScrollLeft = horizontalRatio * Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+  const normalizedZoom = Math.max(minZoom, Math.min(maxZoom, Number(nextZoom.toFixed(2))))
+  const startZoom = zoomLevel.value
 
-  viewport.scrollTo({
-    top: nextScrollTop,
-    left: normalizedZoom <= 1 ? 0 : nextScrollLeft,
-    behavior: 'auto',
-  })
+  if (Math.abs(normalizedZoom - startZoom) < 0.001) {
+    return
+  }
 
-  queueCurrentPageUpdate()
+  const focus = options.focus ?? getViewportFocus()
+  const startScrollLeft = viewport.scrollLeft
+  const startScrollTop = viewport.scrollTop
+  const scaleRatio = normalizedZoom / Math.max(startZoom, 0.001)
+  const targetScrollLeft = (startScrollLeft + focus.x) * scaleRatio - focus.x
+  const targetScrollTop = (startScrollTop + focus.y) * scaleRatio - focus.y
+
+  stopZoomAnimation()
+  const animationToken = zoomAnimationToken
+
+  if (options.animated === false) {
+    zoomLevel.value = normalizedZoom
+    await nextTick()
+    await nextAnimationFrame()
+
+    const nextViewport = viewportRef.value
+
+    if (!nextViewport || animationToken !== zoomAnimationToken) {
+      return
+    }
+
+    const clamped = clampScroll(nextViewport, targetScrollLeft, targetScrollTop)
+    nextViewport.scrollTo({
+      left: clamped.left,
+      top: clamped.top,
+      behavior: 'auto',
+    })
+
+    if (normalizedZoom <= 1) {
+      resetPan()
+    }
+
+    return
+  }
+
+  const startedAt = performance.now()
+  const duration = 150
+
+  while (true) {
+    const elapsed = performance.now() - startedAt
+    const progress = Math.min(elapsed / duration, 1)
+    const eased = 1 - Math.pow(1 - progress, 3)
+
+    zoomLevel.value = Number((startZoom + (normalizedZoom - startZoom) * eased).toFixed(3))
+    await nextTick()
+
+    const nextViewport = viewportRef.value
+
+    if (!nextViewport || animationToken !== zoomAnimationToken) {
+      return
+    }
+
+    const interpolatedLeft = startScrollLeft + (targetScrollLeft - startScrollLeft) * eased
+    const interpolatedTop = startScrollTop + (targetScrollTop - startScrollTop) * eased
+    const clamped = clampScroll(nextViewport, interpolatedLeft, interpolatedTop)
+
+    nextViewport.scrollTo({
+      left: clamped.left,
+      top: clamped.top,
+      behavior: 'auto',
+    })
+
+    if (progress >= 1) {
+      break
+    }
+
+    await nextAnimationFrame()
+  }
+
+  if (normalizedZoom <= 1) {
+    resetPan()
+  }
 }
 
 const resetZoom = () => {
-  void setZoom(1)
+  resetPan()
+  void setZoom(1, { animated: true })
 }
 
-const toggleQuickZoom = () => {
-  void setZoom(zoomLevel.value === 1 ? quickZoom : 1)
+const toggleQuickZoom = (focus?: ZoomFocus) => {
+  void setZoom(zoomLevel.value === 1 ? quickZoom : 1, {
+    animated: true,
+    focus,
+  })
 }
 
 const getTouchDistance = (touches: TouchList) => {
@@ -192,25 +252,53 @@ const handleWheel = (event: WheelEvent) => {
 
   event.preventDefault()
   const direction = event.deltaY < 0 ? 1 : -1
-  void setZoom(zoomLevel.value + direction * scrollZoomStep)
+
+  void setZoom(zoomLevel.value + direction * scrollZoomStep, {
+    animated: true,
+    focus: getViewportFocus(event.clientX, event.clientY),
+  })
 }
 
 const handleDoubleClick = (event: MouseEvent) => {
   event.preventDefault()
-  toggleQuickZoom()
+  toggleQuickZoom(getViewportFocus(event.clientX, event.clientY))
 }
 
 const handleTouchStart = (event: TouchEvent) => {
+  if (event.touches.length === 1) {
+    const touch = event.touches[0]
+    touchStartX = touch.clientX
+    touchStartY = touch.clientY
+    touchGestureMoved = false
+  }
+
   if (event.touches.length < 2) {
     return
   }
 
+  stopZoomAnimation()
   pinchStartDistance = getTouchDistance(event.touches)
   pinchStartZoom = zoomLevel.value
+  touchGestureMoved = true
   suppressTouchTapUntil = Date.now() + 280
+  attachPinchMoveListener()
 }
 
-const handleTouchMove = (event: TouchEvent) => {
+const handleTouchMoveState = (event: TouchEvent) => {
+  if (event.touches.length !== 1) {
+    return
+  }
+
+  const touch = event.touches[0]
+  const deltaX = Math.abs(touch.clientX - touchStartX)
+  const deltaY = Math.abs(touch.clientY - touchStartY)
+
+  if (deltaX > 10 || deltaY > 10) {
+    touchGestureMoved = true
+  }
+}
+
+const handlePinchMove = (event: TouchEvent) => {
   if (event.touches.length < 2 || pinchStartDistance <= 0) {
     return
   }
@@ -222,60 +310,130 @@ const handleTouchMove = (event: TouchEvent) => {
     return
   }
 
-  void setZoom(pinchStartZoom * (distance / pinchStartDistance))
+  const first = event.touches[0]
+  const second = event.touches[1]
+
+  void setZoom(pinchStartZoom * (distance / pinchStartDistance), {
+    animated: false,
+    focus: getViewportFocus(
+      (first.clientX + second.clientX) / 2,
+      (first.clientY + second.clientY) / 2
+    ),
+  })
 }
 
 const handleTouchEnd = (event: TouchEvent) => {
   if (event.touches.length < 2) {
     pinchStartDistance = 0
     pinchStartZoom = zoomLevel.value
+    detachPinchMoveListener()
   }
 
-  if (event.touches.length > 0 || Date.now() < suppressTouchTapUntil) {
+  if (event.touches.length > 0) {
+    return
+  }
+
+  if (touchGestureMoved || Date.now() < suppressTouchTapUntil) {
+    touchGestureMoved = false
     return
   }
 
   const now = Date.now()
 
   if (now - lastTouchTapAt <= 280) {
-    toggleQuickZoom()
+    const changedTouch = event.changedTouches[0]
+
+    toggleQuickZoom(
+      changedTouch ? getViewportFocus(changedTouch.clientX, changedTouch.clientY) : undefined
+    )
     lastTouchTapAt = 0
     suppressTouchTapUntil = now + 280
+    touchGestureMoved = false
     return
   }
 
   lastTouchTapAt = now
+  touchGestureMoved = false
 }
 
-const scrollToPage = (index: number, behavior: ScrollBehavior = 'smooth') => {
-  const viewport = viewportRef.value
-  const pageElement = pageRefs.value[index]
+const handlePointerDown = (event: PointerEvent) => {
+  if (event.pointerType === 'touch' || event.button !== 0 || zoomLevel.value <= 1) {
+    return
+  }
 
-  if (!viewport || !pageElement || index < 0 || index >= props.pages.length) {
+  const viewport = viewportRef.value
+
+  if (!viewport) {
+    return
+  }
+
+  panPointerId = event.pointerId
+  panStartX = event.clientX
+  panStartY = event.clientY
+  panStartScrollLeft = viewport.scrollLeft
+  panStartScrollTop = viewport.scrollTop
+  isPanning.value = true
+  viewport.setPointerCapture(event.pointerId)
+  event.preventDefault()
+}
+
+const handlePointerMove = (event: PointerEvent) => {
+  if (!isPanning.value || panPointerId !== event.pointerId) {
+    return
+  }
+
+  const viewport = viewportRef.value
+
+  if (!viewport) {
     return
   }
 
   viewport.scrollTo({
-    top: Math.max(pageElement.offsetTop - 18, 0),
-    behavior,
+    left: panStartScrollLeft - (event.clientX - panStartX),
+    top: panStartScrollTop - (event.clientY - panStartY),
+    behavior: 'auto',
   })
 
-  emitActiveIndex(index)
+  event.preventDefault()
 }
 
-const handleScroll = () => {
-  queueCurrentPageUpdate()
+const handlePointerUp = (event: PointerEvent) => {
+  if (panPointerId !== event.pointerId) {
+    return
+  }
+
+  resetPan()
 }
 
 const handleWindowResize = () => {
+  stopZoomAnimation()
+  resetPan()
   scheduleViewportRefresh([0, 120, 260])
+}
+
+const attachPinchMoveListener = () => {
+  if (!viewportRef.value || pinchMoveAttached) {
+    return
+  }
+
+  viewportRef.value.addEventListener('touchmove', handlePinchMove, { passive: false })
+  pinchMoveAttached = true
+}
+
+const detachPinchMoveListener = () => {
+  if (!viewportRef.value || !pinchMoveAttached) {
+    return
+  }
+
+  viewportRef.value.removeEventListener('touchmove', handlePinchMove)
+  pinchMoveAttached = false
 }
 
 watch(
   () => props.pages.map((page) => page.id),
   async (pageIds) => {
-    pageRefs.value = []
-    activeIndex.value = 0
+    stopZoomAnimation()
+    resetPan()
 
     if (!pageIds.length) {
       return
@@ -284,7 +442,11 @@ watch(
     await nextTick()
     scheduleViewportRefresh([0, 80, 180, 320])
     window.setTimeout(() => {
-      scrollToPage(0, 'auto')
+      viewportRef.value?.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'auto',
+      })
     }, 0)
   },
   { immediate: true }
@@ -308,49 +470,51 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  stopZoomAnimation()
   resizeObserver?.disconnect()
   clearViewportRefreshTimers()
+  detachPinchMoveListener()
+  resetPan()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('orientationchange', handleWindowResize)
   window.visualViewport?.removeEventListener('resize', handleWindowResize)
-
-  if (scrollUpdateFrame) {
-    window.cancelAnimationFrame(scrollUpdateFrame)
-    scrollUpdateFrame = 0
-  }
 })
 
 defineExpose({
-  goToPage: (index: number) => scrollToPage(index),
-  next: () => scrollToPage(Math.min(activeIndex.value + 1, props.pages.length - 1)),
-  prev: () => scrollToPage(Math.max(activeIndex.value - 1, 0)),
   resetZoom,
   refreshLayout: () => scheduleViewportRefresh([0, 120, 260, 420]),
 })
 </script>
 
 <template>
-  <div class="cascade-stage" :class="{ 'cascade-stage--zoomed': zoomLevel > 1 }">
+  <div
+    class="cascade-stage"
+    :class="{
+      'cascade-stage--zoomed': zoomLevel > 1,
+      'cascade-stage--panning': isPanning,
+    }"
+  >
     <div class="cascade-stage__glow"></div>
 
     <div
       ref="viewportRef"
       class="cascade-stage__viewport"
-      @scroll="handleScroll"
       @wheel="handleWheel"
       @dblclick="handleDoubleClick"
+      @pointerdown="handlePointerDown"
+      @pointermove="handlePointerMove"
+      @pointerup="handlePointerUp"
+      @pointercancel="handlePointerUp"
       @touchstart="handleTouchStart"
-      @touchmove="handleTouchMove"
+      @touchmove.passive="handleTouchMoveState"
       @touchend="handleTouchEnd"
       @touchcancel="handleTouchEnd"
     >
       <div class="cascade-stage__lane" :style="laneStyle">
         <article
-          v-for="(page, index) in pages"
+          v-for="page in pages"
           :key="page.id"
-          :ref="(element) => setPageRef(element, index)"
           class="cascade-page"
-          :class="{ 'cascade-page--active': index === activeIndex }"
         >
           <ReaderProgressiveImage
             :src="page.image"

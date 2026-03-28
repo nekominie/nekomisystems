@@ -44,9 +44,6 @@ interface SingleBookHandle {
 }
 
 interface CascadeReaderHandle {
-  goToPage: (index: number) => void
-  next: () => void
-  prev: () => void
   refreshLayout: () => void
   resetZoom: () => void
 }
@@ -217,8 +214,14 @@ const displayChapter = computed(() => {
   return selectedChapter.value
 })
 
+const hasDiscretePageNavigation = computed(() => displayMode.value !== 'cascade')
+
 const toolbarTotal = computed(() =>
-  displayMode.value === 'spread' ? volumeBook.value.pages.length : readingUnits.value.length
+  displayMode.value === 'spread'
+    ? volumeBook.value.pages.length
+    : displayMode.value === 'single'
+      ? readingUnits.value.length
+      : 0
 )
 
 const toolbarCurrent = computed(() => {
@@ -230,13 +233,19 @@ const toolbarCurrent = computed(() => {
 })
 
 const canGoBack = computed(() =>
-  displayMode.value === 'spread' ? currentBookPage.value > 1 : currentUnitIndex.value > 0
+  displayMode.value === 'spread'
+    ? currentBookPage.value > 1
+    : displayMode.value === 'single'
+      ? currentUnitIndex.value > 0
+      : false
 )
 
 const canGoForward = computed(() =>
   displayMode.value === 'spread'
     ? currentBookPage.value < volumeBook.value.pages.length
-    : currentUnitIndex.value < readingUnits.value.length - 1
+    : displayMode.value === 'single'
+      ? currentUnitIndex.value < readingUnits.value.length - 1
+      : false
 )
 
 const progressFill = computed(() => {
@@ -283,7 +292,7 @@ const readerHint = computed(() =>
   displayMode.value === 'spread'
     ? 'Rueda, doble clic o pellizco para acercar el libro 3D. Arrastra mientras haya zoom.'
     : displayMode.value === 'cascade'
-      ? 'Desplazate verticalmente para leer. Usa Ctrl + rueda, doble clic o pellizco para acercar.'
+      ? 'Desplazate verticalmente para leer. Usa Ctrl + rueda, doble clic o pellizco para acercar. Con zoom, arrastra con mouse o mueve con el dedo.'
       : 'Pellizca o haz doble toque para acercar la pagina. Arrastra con un dedo cuando haya zoom.'
 )
 
@@ -453,10 +462,6 @@ const goToUnit = (index: number) => {
   }
 
   currentUnitIndex.value = index
-
-  if (displayMode.value === 'cascade') {
-    cascadeReaderRef.value?.goToPage(index)
-  }
 }
 
 const goToBookPage = (page: number) => {
@@ -475,7 +480,6 @@ const goForward = () => {
   }
 
   if (displayMode.value === 'cascade') {
-    cascadeReaderRef.value?.next()
     return
   }
 
@@ -489,7 +493,6 @@ const goBack = () => {
   }
 
   if (displayMode.value === 'cascade') {
-    cascadeReaderRef.value?.prev()
     return
   }
 
@@ -621,14 +624,6 @@ const handleBookPageChange = (page: number) => {
   }, 0)
 }
 
-const handleCascadePageChange = (index: number) => {
-  if (index < 0 || index >= readingUnits.value.length) {
-    return
-  }
-
-  currentUnitIndex.value = index
-}
-
 watch(selectedVolume, (volume) => {
   selectedChapterId.value = getDefaultChapterId(volume)
   currentUnitIndex.value = 0
@@ -660,10 +655,13 @@ watch(displayMode, (mode) => {
     return
   }
 
+  if (mode === 'cascade') {
+    thumbnailsOpen.value = false
+  }
+
   window.setTimeout(() => {
     if (mode === 'cascade') {
       cascadeReaderRef.value?.refreshLayout()
-      cascadeReaderRef.value?.goToPage(0)
       return
     }
 
@@ -681,7 +679,7 @@ watch(thumbnailsOpen, () => {
 watch(
   () => [displayMode.value, currentUnitIndex.value] as const,
   ([mode, unitIndex]) => {
-    if (mode === 'spread') {
+    if (mode !== 'single') {
       return
     }
 
@@ -721,6 +719,10 @@ const handleKeydown = (event: KeyboardEvent) => {
     fallbackFullscreen.value = false
     syncFullscreenState()
     refreshReaderStage([80, 180, 320, 480])
+    return
+  }
+
+  if (displayMode.value === 'cascade') {
     return
   }
 
@@ -878,7 +880,6 @@ onBeforeUnmount(() => {
             v-else-if="displayMode === 'cascade'"
             ref="cascadeReaderRef"
             :pages="cascadePages"
-            @page-change="handleCascadePageChange"
           />
 
           <DearFlipBook
@@ -896,6 +897,7 @@ onBeforeUnmount(() => {
         <div class="reader-viewport-controls">
           
           <button
+            v-if="hasDiscretePageNavigation"
             ref="drawerToggleRef"
             type="button"
             class="chrome-button reader-edge-control reader-edge-control--bottom-right reader-label" style=""
@@ -928,7 +930,7 @@ onBeforeUnmount(() => {
 
           </div>
 
-          <div class="book-stage__counter reader-edge-control--bottom-left" style="display: flex; gap: 8px; align-items: center; justify-content: center; overflow: hidden;">
+          <div v-if="hasDiscretePageNavigation" class="book-stage__counter reader-edge-control--bottom-left" style="display: flex; gap: 8px; align-items: center; justify-content: center; overflow: hidden;">
             <span>Pag</span>
             
             <strong>{{ toolbarCurrent}} / {{ toolbarTotal }}</strong>
@@ -947,6 +949,7 @@ onBeforeUnmount(() => {
           </div>
 
           <button
+            v-if="hasDiscretePageNavigation"
             type="button"
             class="chrome-button reader-edge-control reader-edge-control--nav reader-edge-control--left"
             :disabled="!canGoForward"
@@ -957,6 +960,7 @@ onBeforeUnmount(() => {
           </button>
 
           <button
+            v-if="hasDiscretePageNavigation"
             type="button"
             class="chrome-button reader-edge-control reader-edge-control--nav reader-edge-control--right"
             :disabled="!canGoBack"
@@ -967,7 +971,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <transition name="thumb-drawer">
+        <transition v-if="hasDiscretePageNavigation" name="thumb-drawer">
           <div v-show="thumbnailsOpen" ref="thumbDrawerRef" class="thumb-drawer">
             <div v-if="displayMode !== 'spread'" class="thumb-drawer__grid" @wheel="handleThumbDrawerWheel">
               <button
