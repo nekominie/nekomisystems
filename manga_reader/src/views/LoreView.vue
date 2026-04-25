@@ -1,9 +1,34 @@
 <script setup lang="ts">
-import type { MangaProject } from '../types/manga'
+import { reactive } from 'vue'
+import type { LoreEntry, MangaProject } from '../types/manga'
 
 defineProps<{
   project: MangaProject
 }>()
+
+const spoilerOpenState = reactive<Record<string, boolean>>({})
+
+const hasVisibleSpoiler = (entry: LoreEntry) => Boolean(entry.spoiler && !entry.spoiler.hidden)
+
+const isSpoilerOpen = (entry: LoreEntry) => {
+  if (!hasVisibleSpoiler(entry)) {
+    return false
+  }
+
+  if (entry.id in spoilerOpenState) {
+    return spoilerOpenState[entry.id]
+  }
+
+  return !entry.spoiler?.hiddenByDefault
+}
+
+const toggleSpoiler = (entry: LoreEntry) => {
+  if (!hasVisibleSpoiler(entry)) {
+    return
+  }
+
+  spoilerOpenState[entry.id] = !isSpoilerOpen(entry)
+}
 </script>
 
 <template>
@@ -26,6 +51,33 @@ defineProps<{
         <span>{{ entry.summary }}</span>
         <h3>{{ entry.title }}</h3>
         <p>{{ entry.detail }}</p>
+
+        <div
+          v-if="hasVisibleSpoiler(entry)"
+          class="lore-card__spoiler"
+          :class="{ 'lore-card__spoiler--open': isSpoilerOpen(entry) }"
+        >
+          <button
+            type="button"
+            class="lore-card__spoiler-toggle"
+            @click="toggleSpoiler(entry)"
+          >
+            <span>{{ entry.spoiler?.title ?? 'Spoiler' }}</span>
+            <strong>
+              {{
+                isSpoilerOpen(entry)
+                  ? entry.spoiler?.hideLabel ?? 'Ocultar spoiler'
+                  : entry.spoiler?.revealLabel ?? 'Mostrar spoiler'
+              }}
+            </strong>
+          </button>
+
+          <transition name="lore-spoiler">
+            <p v-if="isSpoilerOpen(entry)" class="lore-card__spoiler-body">
+              {{ entry.spoiler?.detail }}
+            </p>
+          </transition>
+        </div>
       </article>
     </div>
 

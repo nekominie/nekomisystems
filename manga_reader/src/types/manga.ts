@@ -32,6 +32,16 @@ export interface LoreEntry {
   summary: string
   detail: string
   accent: string
+  spoiler?: LoreSpoilerSection
+}
+
+export interface LoreSpoilerSection {
+  title?: string
+  detail: string
+  hidden?: boolean
+  hiddenByDefault?: boolean
+  revealLabel?: string
+  hideLabel?: string
 }
 
 export interface ArtifactNote {

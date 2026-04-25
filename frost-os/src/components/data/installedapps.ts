@@ -1,10 +1,10 @@
 import type { Manifest } from './app'
 
 export const InstalledApps: Manifest[] = [
-        {
+    {
             id: 'notepad',
             name: 'Notepad',
-        },
+    },
         {
             id: 'calculator',
             name: 'Calculadora'
@@ -80,6 +80,29 @@ export const InstalledApps: Manifest[] = [
                     app: { contentBg: '#0b0d12' }
                 }
             }
+        },
+    {
+        id: 'desktopmiku',
+        name: 'Desktop Miku',    
+        snippet: {
+            kind: "flyout",
+            mount: "boot"
+        },
+        capabilities: {
+            tray:{ 
+                canUse: true,
+                defaultAction: 'open'
+            }
+        },
+        menus:{
+            tray: [
+                { type: 'item', id: 'show-config', label: 'Configuración' },
+                { type: 'item', id: 'close', label: 'Cerrar' },
+            ]            
+        },
+        preferences: {
+            startInTray: true
         }
+    }
 ]
     

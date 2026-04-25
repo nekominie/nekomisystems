@@ -2,7 +2,7 @@
 
 import { computed } from 'vue';
 import { useVolumeSliderStore } from './store';
-const store = useVolumeSliderStore('discord')
+const store = useVolumeSliderStore('volume_slider')
 
 const trigger = computed(() => store.state.trigger);
 

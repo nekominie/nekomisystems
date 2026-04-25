@@ -369,6 +369,13 @@ export const mangaProject: MangaProject = {
       summary: 'El espacio parece construido para contener emociones en lugar de personas.',
       detail: 'Usa esta area para explicar reglas del mundo, sistemas espirituales, ciudades, facciones o simbolos recurrentes del manga.',
       accent: '#ff8d5d',
+      spoiler: {
+        title: 'Spoiler',
+        detail: 'Aqui puedes guardar revelaciones del mundo, conexiones ocultas o contexto tardio sin exponerlo de inmediato en la card principal.',
+        hiddenByDefault: true,
+        revealLabel: 'Mostrar spoiler',
+        hideLabel: 'Ocultar spoiler',
+      },
     },
     {
       id: 'memory',

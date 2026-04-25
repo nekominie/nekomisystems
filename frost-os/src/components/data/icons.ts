@@ -81,5 +81,8 @@ export const icons: IconConfig[] = [
         id: 'mspaint',
         saved_path: '/mspaint/mspaint.png'
     },
-
+    {
+        id: "desktopmiku",
+        saved_path: "/desktopmiku/icon.jpg"
+    }
 ]

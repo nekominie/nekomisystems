@@ -5,6 +5,7 @@ import BibooTaxGame from /*"../../../../../bibootaxgame/src/components/app.vue"*
 import DoomGame from './doomgame/doomgame.vue'
 import Discord from './discord/discord.vue'
 import MicrosoftPaint from './mspaint/mspaint.vue'
+import DesktopMiku from './desktopmiku/desktopmiku.vue'
 
 export const InstalledAppsIndex: Record<string, any> = {
     notepad: markRaw(Notepad),
@@ -13,4 +14,5 @@ export const InstalledAppsIndex: Record<string, any> = {
     doomgame: markRaw(DoomGame),
     discord: markRaw(Discord),
     mspaint: markRaw(MicrosoftPaint),
+    desktopmiku: markRaw(DesktopMiku)
 }

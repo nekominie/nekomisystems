@@ -5,6 +5,7 @@ import { createApp } from '../data/create_app'
 import { InstalledApps } from '../data/installedapps'
 import { CoreApps } from '../data/core_apps.ts'
 import { CoreSnippets } from '../data/core_snippets.ts'
+import { InstalledSnippets } from '../data/installed_snippets.ts'
 import { startStatsSampler, measureCpu, recordCpu } from './process_stats'
 
 import { db } from '../../database/db.ts'
@@ -24,7 +25,7 @@ async function init() {
     initialized = true
 
     const manifests: Manifest[] = [...CoreApps, ...InstalledApps]
-    const snippets: Manifest[] = CoreSnippets
+    const snippets: Manifest[] = [...CoreSnippets, ...InstalledSnippets]
 
     const userMap = await loadUserSettingsMap()
     const snippetsMap = await loadUserSettingsMap()
