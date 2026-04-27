@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import type { App } from '../data/app'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import IconManager from './iconmanager.vue';
 
 const props = defineProps<{
@@ -262,6 +262,8 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
     window.addEventListener('touchend', onEnd);
 }
 
+const isSnippet = computed(() => props.app.manifest.snippet);
+
 </script>
 
 <style scoped>
@@ -269,7 +271,12 @@ const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
 </style>
 
 <template>
-    <div class="window-frame"
+
+    <div v-if="isSnippet">
+        <component :is="component"/>
+    </div>
+
+    <div v-else class="window-frame"
         :class="{
             'focused' : app.runtime.isFocused,
             'maximized' : app.runtime.isMaximized,

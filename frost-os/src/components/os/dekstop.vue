@@ -100,13 +100,13 @@ const handleContextMenu = (e: MouseEvent) => {
         />
 
         <SnippetHost
-        v-for="snippet in mountedSnippets"
-        :key="snippet.manifest.id"
-        :snippet="snippet"
-        :component="MasterSnippetsRegistry[snippet.manifest.id]"
-        :set-el="setSnippetEl(snippet.manifest.id)"
-        @request-close="() => os.hideSnippet(snippet.manifest.id)"
-        @after-leave="() => os.unmountSnippet(snippet.manifest.id)"
+            v-for="snippet in mountedSnippets"
+            :key="snippet.manifest.id"
+            :snippet="snippet"
+            :component="MasterSnippetsRegistry[snippet.manifest.id]"
+            :set-el="setSnippetEl(snippet.manifest.id)"
+            @request-close="() => os.hideSnippet(snippet.manifest.id)"
+            @after-leave="() => os.unmountSnippet(snippet.manifest.id)"
         />
         
         <TransitionGroup :name="transitionName">
