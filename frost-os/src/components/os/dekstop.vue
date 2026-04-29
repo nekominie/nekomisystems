@@ -12,17 +12,13 @@ import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
 
-const { 
-    openMenu 
-} = useContextMenu()
+const { openMenu } = useContextMenu()
 
 const transitionName = computed(() => 
     os.state.lastAction
 )
 
-const windowOpenApps = computed(() => 
-    os.state.apps.filter(app => app.runtime.isWindowOpen)
-)
+const activeWindows = computed(() => os.state.windows)
 
 const pinnedDesktopApps = computed(() => 
     os.state.apps.filter(app => app.user.isPinnedDesktop)
@@ -110,17 +106,18 @@ const handleContextMenu = (e: MouseEvent) => {
         />
         
         <TransitionGroup :name="transitionName">
-            <Window
-                v-for="app in windowOpenApps"
-                v-show="!app.runtime.isMinimized"
-                :key="app.manifest.id"
-                :app="app"
-                :component="MasterAppRegistry[app.manifest.id]"
-                @close="os.closeApp"
-                @focus="os.bringToFront"
-                @minimize="os.minimizeWindow"
-                @maximize="os.maximizeWindow"
-            />
+            <template v-for="win in activeWindows" :key="win.id">
+                <Window
+                    v-if="os.state.apps.find(a => a.manifest.id === win.appId)"
+                    v-show="!win.isMinimized"
+                    :win="win"
+                    :app="os.state.apps.find(a => a.manifest.id === win.appId)!"
+                    @close="os.closeWindow"
+                    @focus="os.bringToFront"
+                    @minimize="os.minimizeWindow"
+                    @maximize="os.maximizeWindow" 
+                />
+            </template>
         </TransitionGroup>
     </div>
 </template>

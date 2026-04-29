@@ -2,9 +2,6 @@
 
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useDesktopMikuStore } from './store';
-const store = useDesktopMikuStore('')
-
-const showConfigPanel = () => store.showConfigPanel()
 
 type Action = "idle" | "greeting" | "thinking"
 
@@ -114,7 +111,7 @@ onUnmounted(() => {
   position: absolute;
   bottom: 38px;
   z-index: 10000;
-  right: 0;
+  /*right: 0;*/
 }
 
 .miku img {

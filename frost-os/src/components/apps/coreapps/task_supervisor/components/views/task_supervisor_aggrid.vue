@@ -29,7 +29,7 @@ type ProcessRow = {
 
 // asumiendo que inyectas os
 import { inject } from 'vue'
-import { OS_KEY } from '../../../api/os_api'
+import { OS_KEY } from '../../../../../api/os_api'
 const os = inject(OS_KEY)!
 if (!os) throw new Error('OS API not found')
 

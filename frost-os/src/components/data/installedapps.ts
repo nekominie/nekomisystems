@@ -96,7 +96,7 @@ export const InstalledApps: Manifest[] = [
         },
         menus:{
             tray: [
-                { type: 'item', id: 'show-config', label: 'Configuración' },
+                { type: 'item', id: 'view-config', label: 'Configuración' },
                 { type: 'item', id: 'close', label: 'Cerrar' },
             ]            
         },

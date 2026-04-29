@@ -1,8 +1,8 @@
 <!-- MiniDiscord.vue ✅ listo para copiar/pegar -->
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
-import { server_list, type Server, type Channel, type Message, type User, type UserStatus, type Activity } from "./server_list.ts";
-import { playSound } from "../../../../shared"
+import { server_list, type Server, type Channel, type Message, type User, type UserStatus, type Activity } from "../../server_list.ts";
+import { playSound } from "../../../../../../shared.ts"
 
 // ---------- constants ----------
 const LOGGED_USER_ID = "me"; // ✅ SIEMPRE nekominie

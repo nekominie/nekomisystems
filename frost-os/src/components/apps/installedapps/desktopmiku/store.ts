@@ -1,18 +1,40 @@
+// apps/installedapps/desktopmiku/store.ts
 import { reactive } from 'vue'
+import { useOsStore } from "../../../os/os_store" // Importa tu store global directamente
 
-export type VolumeSliderState = {
-    viewConfig: boolean
-}
+// 1. Ya no usamos inject ni OS_KEY aquí
 
 const stores = new Map<string, ReturnType<typeof createDesktopMikuStore>>()
 
 function createDesktopMikuStore() {
-  const state = reactive<VolumeSliderState>({
+  // 2. Instanciamos el store global directamente
+  const os = useOsStore() 
+
+  const state = reactive({
     viewConfig: false,
   })
 
-  function showConfigPanel() {
-    state.viewConfig = !state.viewConfig
+  // 3. Pasamos el parentId como argumento. 
+  // Es vital que el componente pase el ID de la ventana que hace la llamada.
+  function showConfigPanel(parentId: string) {
+    console.log("Intentando abrir configuración...")
+
+    // 4. Usamos el store global directamente sin el "?"
+    const existingWindow = os.activeWindows.find(
+        w => w.appId === 'desktopmiku' && w.view === 'Config' && w.parentWinId === parentId
+    )
+
+    if (existingWindow) {
+        os.bringToFront(existingWindow.id)
+        return
+    }
+
+    os.createWindow("desktopmiku", {
+        view: 'Config',
+        parentId: parentId,
+        title: 'Configuración',
+        size: { width: 400, height: 300 }
+    })
   }
 
   return { state, showConfigPanel }

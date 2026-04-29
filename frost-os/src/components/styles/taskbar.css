@@ -220,44 +220,54 @@
   }
 }
 
-.window-preview{
-  position: fixed;
-  bottom: 60px;
-  transform: translateX(-50%);
-
-  width: fit-content;
-  max-width: 200px;
-  
-  height: auto;
-  max-height: 150px;
-
-  display: flex;
-  flex-direction: column;
-  
-  border-radius: 6px;
-  background-color: rgba(0, 0, 0, 0.521);
-  backdrop-filter: blur(6px);
-  padding: 8px;
-  color:#d7d7d7;
-
-  transition: 
-    left 0.3s cubic-bezier(0.16, 1, 0.3, 1), 
-    opacity 0.2s ease, 
-    transform 0.2s ease,
-    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-  overflow: hidden;
-
-  z-index: 1000;
+.window-preview-item {
+    pointer-events: auto; /* Reactivamos los clicks para la carta */
+    width: 200px;
+    height: 150px;
+    display: flex;
+    flex-direction: column;
+    
+    /* Look Glassmorphism (Tus estilos) */
+    background-color: rgba(20, 20, 20, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15); /* Borde sutil estilo Windows */
+    border-radius: 8px;
+    padding: 8px;
+    color: #d7d7d7;
+    
+    /* Sombra para que se vea realmente flotante */
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    
+    transition: all 0.2s ease;
 }
 
-.preview-title{
-  display: flex;
-  justify-content: space-between;
-  flex-direction: row;
-  align-items: center;
-  margin-bottom: 4px;
+.window-preview-item:hover {
+    background-color: rgba(30, 30, 30, 0.75);
+}
+
+.window-preview-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px; /* Separación entre las ventanas flotantes */
+    position: fixed; /* Fixed evita que se esconda detrás de otros divs con overflow */
+    bottom: 55px; /* Un poco de margen sobre la taskbar */
+    
+    /* ESTA ES LA CLAVE PARA CENTRAR TODO EL GRUPO */
+    transform: translateX(-50%); 
+    z-index: 9999;
+    
+    /* Hacemos que el contenedor en sí no bloquee el click, solo sus hijos */
+    pointer-events: none; 
+}
+
+.preview-title {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: white;
+    padding: 2px 0;
 }
 
 .preview-title > *:first-child{
@@ -306,13 +316,23 @@
   border-radius: 6px;
 }*/
 
-.preview-fade-enter-active {
-  transition: all 0.2s cubic-bezier(0, 0, 0.2, 1);
+/* ANIMACIÓN DE APARICIÓN (Manteniendo el centrado) */
+.preview-fade-enter-active,
+.preview-fade-leave-active {
+    transition: opacity 0.2s cubic-bezier(0, 0, 0.2, 1), transform 0.2s cubic-bezier(0, 0, 0.2, 1);
 }
 
-.preview-fade-enter-from {
-  opacity: 0;
-  transform: translateX(-50%) translateY(10px) scale(0.95);
+.preview-fade-enter-from,
+.preview-fade-leave-to {
+    opacity: 0;
+    /* Mantenemos el translateX(-50%) base, y le sumamos el efecto de "subir" y escalar */
+    transform: translateX(-50%) translateY(15px) scale(0.95);
+}
+
+.preview-fade-enter-to,
+.preview-fade-leave-from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .preview-title .close-icon:hover{

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import TableLite from 'vue3-table-lite/ts'
-import { OS_KEY } from '../../../api/os_api'
-import IconManager from '../../../os/iconmanager.vue'
+import { OS_KEY } from '../../../../../api/os_api'
+import { useOsStore } from "../../../../../os/os_store" // Importa tu store global directamente
+import IconManager from '../../../../../os/iconmanager.vue'
 
 const os = inject(OS_KEY)!
 if (!os) throw new Error('OS API not found')
@@ -110,6 +111,17 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
     // if (row.type === 'app') os.toggleTray?.(row.id)
   }
 }
+
+const alternateView = () => {
+  const osstore = useOsStore()
+  osstore.createWindow("task_supervisor", {
+        view: 'Modern',
+        parentId: "task_supervisor",
+        title: 'Vista alterna',
+        size: { width: 400, height: 300 }
+  })
+}
+
 </script>
 
 <template>
@@ -127,6 +139,7 @@ function handleAction(act: 'Focus' | 'End' | 'Toggle Tray', row: ProcessRow) {
     </ul>
     <div class="tab-content" id="myTabContent">
       <div class="tab-pane fade show active task-manager" id="activity-tab-pane" role="tabpanel" aria-labelledby="activity-tab" tabindex="0">
+        <button @click="alternateView">Alternar vista</button>
         <div class="tm-toolbar">
           <div class="search-container">
             <i class="bi bi-search"></i>

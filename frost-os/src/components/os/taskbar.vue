@@ -18,7 +18,11 @@ if(!os) throw new Error('OS API not found')
 const { openMenu } = useContextMenu()
 
 const taskBarApps = computed(() => {
-    return os.state.apps.filter(app => app.runtime.isWindowOpen || app.user.isPinned)
+    // Si la app está anclada OR tiene al menos una ventana abierta
+    return os.state.apps.filter(app => 
+        app.user.isPinned || 
+        os.state.windows.some(win => win.appId === app.manifest.id)
+    )
 })
 
 const pinnedStartApps = computed(() => {
@@ -27,9 +31,14 @@ const pinnedStartApps = computed(() => {
 
 const traySnippets = computed(() => os.state.snippets.filter(snippet => snippet.runtime.isInTray))
 
-const activeAppForPreview = computed(() => 
-    os.state.apps.find(app => app.manifest.id === hoveredAppId.value && app.runtime.isWindowOpen)
-)
+// Primero, obtenemos la ventana principal de la app para el preview
+const activeWindowForPreview = computed(() => {
+    if (!hoveredAppId.value) return null
+    // Buscamos la última ventana enfocada o la primera que encontremos
+    return os.state.windows
+        .filter(w => w.appId === hoveredAppId.value)
+        .sort((a, b) => b.zIndex - a.zIndex)[0]
+})
 
 const trayApps = computed(() => os.state.apps.filter(app => 
     app.runtime.isRunning && 
@@ -45,6 +54,12 @@ const currentDate = ref('')
 const showingStartMenu = ref(false)
 const showingAppFinder = ref(false)
 const hoveredAppId = ref<string | null>(null)
+
+// Reemplaza activeAppForPreview con esto:
+const hoveredAppWindows = computed(() => {
+    if (!hoveredAppId.value) return []
+    return os.state.windows.filter(w => w.appId === hoveredAppId.value)
+})
 
 let showTimeout: number | null = null
 let hideTimeout: number | null = null
@@ -65,38 +80,44 @@ const onIconRightCLick = (e: MouseEvent, app: App) => {
 
 const previewPositionStyle = ref({ left: '0px' })
 
-const handleMouseEnter = (id: string) => {
-    os.updatePreviewImage(id)
+// En Taskbar.vue
+const handleMouseEnter = (appId: string, event: MouseEvent) => {
+    // 1. Calculamos la posición inmediatamente (Sincrónico)
+    // Esto es seguro porque el evento está ocurriendo en este milisegundo
+    const target = event.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const centerLeft = rect.left + rect.width / 2;
 
+    // 2. Ejecutamos la lógica de previews
+    const appWindows = os.state.windows.filter(w => w.appId === appId);
+    appWindows.forEach(win => {
+        os.updatePreviewImage(win.id);
+    });
+
+    // 3. Limpieza de timouts previos
     if (hideTimeout) {
-        clearTimeout(hideTimeout)
-        hideTimeout = null
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
     }
 
-    const updatePosition = () => {
-        const iconElement = document.getElementById(`taskbar-app-${id}`);
-        if (iconElement) {
-            const rect = iconElement.getBoundingClientRect();
-            previewPositionStyle.value = {
-                left: `${rect.left + rect.width / 2}px`
-            }
-        }
-    }
-
+    // 4. Lógica de selección
     if (hoveredAppId.value !== null) {
-
-        if(showTimeout) clearTimeout(showTimeout)
-
-        updatePosition()
-        hoveredAppId.value = id
-
-        return
+        // Si ya hay uno abierto, cambiamos al instante
+        if (showTimeout) clearTimeout(showTimeout);
+        
+        previewPositionStyle.value = { left: `${centerLeft}px` };
+        hoveredAppId.value = appId;
+    } else {
+        // Si no hay nada abierto, iniciamos el delay
+        if (showTimeout) clearTimeout(showTimeout);
+        
+        showTimeout = window.setTimeout(() => {
+            // Usamos la variable capturada arriba (centerLeft)
+            // Ya no dependemos de 'event' aquí adentro
+            previewPositionStyle.value = { left: `${centerLeft}px` };
+            hoveredAppId.value = appId;
+        }, 500);
     }
-
-    showTimeout = window.setTimeout(() => {
-        updatePosition()
-        hoveredAppId.value = id;
-    }, 500)
 }
 
 const handleMouseLeave = () => {
@@ -153,7 +174,24 @@ const viewAppFinder = () => {
 const handleIconClick = (id: string) => {
     if (showTimeout) clearTimeout(showTimeout)
     hoveredAppId.value = null
-    os.launchApp(id)
+
+    // Buscamos todas las ventanas de esta app
+    const appWindows = os.state.windows.filter(w => w.appId === id)
+
+    if (appWindows.length > 0) {
+        // Si ya hay ventanas, enfocamos la que tenga el mayor zIndex (la que está arriba)
+        const topWindow = appWindows.sort((a, b) => b.zIndex - a.zIndex)[0]
+        
+        // Si ya estaba enfocada y no estaba minimizada, quizás quieras minimizarla
+        if (topWindow.isFocused && !topWindow.isMinimized) {
+            os.minimizeWindow(topWindow.id)
+        } else {
+            os.bringToFront(topWindow.id)
+        }
+    } else {
+        // Si no hay ventanas, lanzamos la app
+        os.launchApp(id)
+    }
 }
 
 const taskbarAppClosed = (id: string) => {
@@ -198,6 +236,15 @@ const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
     }
 }
 
+const isAppRunning = (appId: string) => {
+    return os.state.windows.some(win => win.appId === appId);
+};
+
+
+const isAppFocused = (appId: string) => {
+    return os.state.windows.some(win => win.appId === appId && win.isFocused);
+};
+
 </script>
 
 <style scoped>
@@ -227,31 +274,29 @@ const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
     <!--PREVIEW-->
     <Transition name="preview-fade">
         <div
-            v-if="hoveredAppId && activeAppForPreview"
-            class="window-preview"
-            @mouseenter="handleMouseEnter(hoveredAppId)"
+            v-if="hoveredAppId && hoveredAppWindows.length > 0"
+            class="window-preview-container"
+            @mouseenter="handleMouseEnter(hoveredAppId, $event)"
             @mouseleave="handleMouseLeave"
-            :style="previewPositionStyle"                           
+            :style="previewPositionStyle"
         >
-            <div class="preview-title">
-                <div>
-                    <IconManager :id="activeAppForPreview.manifest.id"/>
-                    <div>{{ activeAppForPreview.manifest.name }}</div>
+            <div 
+                v-for="win in hoveredAppWindows" 
+                :key="win.id" 
+                class="window-preview-item"
+            >
+                <div class="preview-title">
+                    <span>{{ win.title }}</span>
+                    <i class="close-icon bi-x-lg" @click.stop="os.closeWindow(win.id)"></i>
                 </div>
-                <div>
-                    <i class="close-icon bi-x-lg" @click="taskbarAppClosed(activeAppForPreview.manifest.id)"></i>
+                
+                <div class="preview-image" @click="os.bringToFront(win.id)">
+                    <img :src="win.previewImg" v-if="win.previewImg" />
+                    <div v-else class="preview-placeholder">No content</div>
                 </div>
             </div>
-
-            <!--<div class="preview-image-father">-->
-                <div class="preview-image"
-                    @click="handleIconClick(activeAppForPreview.manifest.id)"
-                >
-                    <img :src="activeAppForPreview.runtime.previewImg" v-if="activeAppForPreview.runtime.previewImg" />
-                </div>
-            <!--</div>-->
         </div>
-    </Transition>    
+    </Transition>  
 
     <div class="taskbar">
         <div class="taskbar-elements" @contextmenu.self="contextMenuApps($event)">
@@ -277,10 +322,10 @@ const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
                     <div 
                         class="taskbar-btn app-icon" 
                         :class="{ 
-                            'running-app': app.runtime.isWindowOpen, 
-                            'focused-app': app.runtime.isFocused 
+                            'running-app': isAppRunning(app.manifest.id), 
+                            'focused-app': isAppFocused(app.manifest.id) 
                         }"
-                        @mouseenter="handleMouseEnter(app.manifest.id)"
+                        @mouseenter="handleMouseEnter(app.manifest.id, $event)"
                         @mouseleave="handleMouseLeave"
                     >
                         <IconManager                        

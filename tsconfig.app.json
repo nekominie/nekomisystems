@@ -1,13 +1,25 @@
 {
   "compilerOptions": {
-    "types": ["vite/client"]
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler", /* Crucial para Vite */
+    "strict": false,
+    "jsx": "preserve",
+    "importHelpers": true,
+    "moduleDetection": "force",
+    "allowJs": true, /* Permite que convivan archivos .js y .ts */
+    "types": ["vite/client"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "ignoreDeprecations": "5.0"
   },
   "include": [
     "src/**/*.ts", 
     "src/**/*.d.ts", 
     "src/**/*.tsx", 
-    "src/**/*.vue", 
-    "env.d.ts",
-    "vite-env.d.ts"
+    "src/**/*.vue",
+    "frost-os/**/*.ts", /* Asegúrate de incluir tus subcarpetas */
+    "frost-os/**/*.vue"
   ]
 }

@@ -4,6 +4,7 @@ type SnippetKind = "flyout" | "widget"
 
 export interface App{
     manifest: Manifest,
+    views: Record<string, any>,
     runtime: Runtime,
     user: UserSettings
 }
@@ -63,12 +64,6 @@ export interface Runtime{
     isVisible?: boolean,
 
     isWindowOpen: boolean;
-    isMinimized: boolean;
-    isFocused: boolean;
-    zIndex: number;  
-    position: { x: number; y: number; };  
-    size: { width: number; height: number; };
-    isMaximized: boolean;  
     tempSettings?: {
         position: { x:number; y:number; };    
         size: { width: number; height: number; };
@@ -81,6 +76,34 @@ export interface Runtime{
     previewImg? : string,
 
     stats?: RuntimeStats
+}
+
+export interface WindowInstance {
+    id: string;
+    pid: string;
+    appId: string;
+    isMain: boolean;
+    parentWinId?: string;
+    view?: string;
+    title: string;
+    
+    isMinimized: boolean;
+    isMaximized: boolean;
+    isFocused: boolean;
+    zIndex: number;  
+    
+    // --- ESTADO ACTIVO (Lo que se renderiza siempre) ---
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+
+    // --- RESPALDO (Solo existe cuando isMaximized es true) ---
+    tempSettings?: {
+        position: { x: number; y: number };
+        size: { width: number; height: number };
+    };
+
+    previewImg?: string;
+    params?: any;
 }
 
 export interface RuntimeStats{

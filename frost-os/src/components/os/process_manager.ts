@@ -1,18 +1,17 @@
 import { reactive, nextTick } from 'vue'
-
-import type { App, Manifest, UserSettings, RuntimeStats } from '../data/app'
+import type { App, Manifest, UserSettings, RuntimeStats, WindowInstance } from '../data/app'
 import { createApp } from '../data/create_app'
 import { InstalledApps } from '../data/installedapps'
 import { CoreApps } from '../data/core_apps.ts'
 import { CoreSnippets } from '../data/core_snippets.ts'
 import { InstalledSnippets } from '../data/installed_snippets.ts'
-import { startStatsSampler, measureCpu, recordCpu } from './process_stats'
-
+import { startStatsSampler, measureCpu } from './process_stats'
 import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
 export const state = reactive({
     apps: [] as App[],
+    windows: [] as WindowInstance[],
     snippets: [] as App[],
     topZ: 100,
     lastAction: 'window-spawn'
@@ -30,21 +29,16 @@ async function init() {
     const userMap = await loadUserSettingsMap()
     const snippetsMap = await loadUserSettingsMap()
 
-    state.snippets = snippets.map(m => 
-        createApp(m, snippetsMap.get(m.id))
-    )
-
-    state.apps = manifests.map(m => 
-        createApp(m, userMap.get(m.id))
-    )
+    state.snippets = snippets.map(m => createApp(m, snippetsMap.get(m.id)))
+    state.apps = manifests.map(m => createApp(m, userMap.get(m.id)))
 
     startStatsSampler(state)
 
+    // Inicialización de tray apps
     for (const app of state.apps) {
         if (app.manifest.preferences?.startInTray) {
             app.runtime.isRunning = true
             app.runtime.isInTray = true
-            app.runtime.isWindowOpen = false
             app.runtime.stats = initStats()
         }
     }
@@ -55,7 +49,6 @@ async function init() {
             snippet.runtime.isMounted = true
             snippet.runtime.isVisible = false
             snippet.runtime.stats = initStats()
-
             if(snippet.manifest.preferences?.startInTray){
                 snippet.runtime.isInTray = true
             }
@@ -65,13 +58,11 @@ async function init() {
     async function loadUserSettingsMap() {
         const rows = await db.appSettings.toArray()
         const map = new Map<string, Partial<UserSettings>>()
-
         for (const r of rows) {
             map.set(r.id, {
-            isPinned: r.isPinned,
-            isPinnedStart: r.isPinnedStart,
-            isPinnedDesktop: r.isPinnedDesktop,
-            // overrides: ... si luego lo agregas
+                isPinned: r.isPinned,
+                isPinnedStart: r.isPinnedStart,
+                isPinnedDesktop: r.isPinnedDesktop,
             })
         }
         return map
@@ -86,7 +77,6 @@ export const processInstructions = () => {
         const app = state.apps.find(a => a.manifest.id === id)
         if(app){
             app.user.isPinned = !app.user.isPinned
-
             await db.appSettings.put({ 
                 id: id, 
                 isPinnedStart: app.user.isPinnedStart,
@@ -100,7 +90,6 @@ export const processInstructions = () => {
         const app = state.apps.find(a => a.manifest.id === id)
         if(app){
             app.user.isPinnedStart = !app.user.isPinnedStart
-
             await db.appSettings.put({ 
                 id: id,
                 isPinned: app.user.isPinned,
@@ -110,193 +99,253 @@ export const processInstructions = () => {
         }
     }
 
-    const togglePinAppDesktop = async (id: string) => {
-        const app = state.apps.find(a => a.manifest.id === id)
-        if(app){
-            app.user.isPinnedDesktop = !app.user.isPinnedDesktop
+    /*const launchApp = async (appId: string, params = {}, parentWinId?: string) => {
+        const app = state.apps.find(a => a.manifest.id === appId)
+        if (!app) return
 
-            await db.appSettings.put({
-                id: id,
-                isPinned: app.user.isPinned,
-                isPinnedDesktop: app.user.isPinnedDesktop,
-                isPinnedStart: app.user.isPinnedStart
-            })
+        let pid: string
 
-            await db.desktopIcons.put({ 
-                id: id, 
-                col: app.runtime.position.x, 
-                row: app.runtime.position.y 
-            })
-
-            if (!app.user.isPinnedDesktop) {
-                await db.desktopIcons.delete(id)
-            }
-        }
-    }
-
-    const launchApp = async (id: string) => {
-        const app = state.apps.find(app => app.manifest.id === id)
-        if(!app) return
-
-        if(!app.runtime.isRunning){
-            //Abrir desde cero
-            state.lastAction = 'window-spawn'
-
+        if (parentWinId) {
+            const parentWin = state.windows.find(w => w.id === parentWinId)
+            pid = parentWin ? parentWin.pid : `proc-${Math.random().toString(36).slice(2, 9)}`
+        } else {
+            pid = `proc-${Math.random().toString(36).slice(2, 9)}`
             app.runtime.isRunning = true
-
-            const w = app.manifest.window?.defaultSize ?? { width: 600, height: 400 }
-            app.runtime.size = { ...w }
-
-            const screenWidth = window.innerWidth
-            const screenHeight = window.innerHeight
-
-            app.runtime.position = {
-                x: (screenWidth - app.runtime.size.width) / 2,
-                y: (screenHeight - app.runtime.size.height) / 2
-            }
-                
-            app.runtime.isWindowOpen = true
-            app.runtime.isMinimized = false
-
-            /*setTimeout(() => {
-                updatePreviewImage(id)                
-            }, 100);*/
-
-            bringToFront(id)
-
             ensureStats(app)
-            app.runtime.stats!.startedAt = Date.now()
-
-            return
         }
 
-        if(app.runtime.isFocused && !app.runtime.isMinimized){
-            //Minimizar
-            //updatePreviewImage(id)        
+        const winId = `win-${Math.random().toString(36).slice(2, 9)}`
+        const defaultSize = app.manifest.window?.defaultSize ?? { width: 600, height: 400 }
 
-            state.lastAction = 'window-minimize'
-            await nextTick()            
-
-            app.runtime.isMinimized = true
-            app.runtime.isFocused = false
-            return
+        // Calculamos la posición inicial (fuera del objeto para mayor claridad)
+        const initialPosition = {
+            x: (window.innerWidth - defaultSize.width) / 2 + (state.windows.length * 20),
+            y: (window.innerHeight - defaultSize.height) / 2 + (state.windows.length * 20)
         }
 
-        //desminimizar/restaurar
-        state.lastAction = 'window-minimize'
-        await nextTick()
-        app.runtime.isMinimized = false
-        bringToFront(id)
+        const newWindow: WindowInstance = {
+            id: winId,
+            pid: pid,
+            appId: appId,
+            parentWinId: parentWinId,
+            //view: params.view || "Main",
+            title: app.manifest.name,
+            isMain: !parentWinId,
+            isMinimized: false,
+            isMaximized: false, // La ventana nace normal
+            isFocused: true,
+            zIndex: ++state.topZ,
+            
+            // --- ESTADO ACTIVO (Obligatorio) ---
+            position: initialPosition,
+            size: { ...defaultSize },
+            
+            // --- ESTADO GUARDADO (Opcional, vacío al nacer) ---
+            tempSettings: undefined, 
+            
+            params: params
+        };
+
+        state.windows.push(newWindow);
+        bringToFront(winId);
+    }*/
+
+    const createWindow = (appId: string, params: any = {}, parentWinId?: string) => {
+        const app = state.apps.find(a => a.manifest.id === appId);
+        if (!app) return null;
+
+        // 1. Determinar el PID (Process ID)
+        // Si hay un parentWinId, usamos su PID (misma app). Si no, generamos uno nuevo.
+        let pid: string;
+        if (parentWinId) {
+            const parentWin = state.windows.find(w => w.id === parentWinId);
+            pid = parentWin ? parentWin.pid : `proc-${Math.random().toString(36).slice(2, 9)}`;
+        } else {
+            pid = `proc-${Math.random().toString(36).slice(2, 9)}`;
+        }
+
+        const winId = `win-${Math.random().toString(36).slice(2, 9)}`;
+        const defaultSize = app.manifest.window?.defaultSize ?? { width: 600, height: 400 };
+
+        // 2. Lógica de cascada para que las ventanas no nazcan una encima de otra exactamente
+        const offset = state.windows.length * 25;
+        const initialPosition = {
+            x: (window.innerWidth - defaultSize.width) / 2 + offset,
+            y: (window.innerHeight - defaultSize.height) / 2 + offset
+        };
+
+        const newWindow: WindowInstance = {
+            id: winId,
+            pid: pid,
+            appId: appId,
+            parentWinId: parentWinId,
+            title: params.title || app.manifest.name,
+            view: params.view || 'Main', // <--- Crucial para tu views_loader
+            isMain: !parentWinId,
+            isMinimized: false,
+            isMaximized: false,
+            isFocused: true,
+            zIndex: ++state.topZ,
+            position: initialPosition,
+            size: { ...defaultSize },
+            params: params,
+            tempSettings: undefined
+        };
+
+        state.windows.push(newWindow);
+        bringToFront(winId);
+        
+        return newWindow;
     }
 
-    const closeApp = (id: string) => {
-        const app = state.apps.find(app => app.manifest.id === id)
-
-        if(app){
-            state.lastAction = 'window-spawn'
-            app.runtime.isWindowOpen = false
-            app.runtime.isRunning = false
-        }
-    }
-
-    const bringToFront = (id: string) => {
-        const app = state.apps.find(a => a.manifest.id === id);
+    const launchApp = async (appId: string, params = {}, parentWinId?: string) => {
+        const app = state.apps.find(a => a.manifest.id === appId);
         if (!app) return;
 
-        /*const currentFocused = state.apps.find(a => a.runtime.isFocused);
-        if (currentFocused && currentFocused.manifest.id !== id) 
-            updatePreviewImage(id)*/   
+        if (!app.runtime.isRunning) {
+            app.runtime.isRunning = true;
+            ensureStats(app);
+        }
 
-        if (app.runtime.isFocused && !app.runtime.isMinimized && app.runtime.zIndex === state.topZ) return;
+        return createWindow(appId, params, parentWinId);
+    }
 
-        state.apps.forEach(a => a.runtime.isFocused = false);
-        
-        state.topZ++; 
-        app.runtime.zIndex = state.topZ;
-        app.runtime.isFocused = true;
-        app.runtime.isMinimized = false;
-        app.runtime.isWindowOpen = true;
-    };
+    const closeWindow = (winId: string) => {
+        const win = state.windows.find(w => w.id === winId);
+        if (!win) return;
 
-    const minimizeWindow = async (id: string) => {
-        const app = state.apps.find(a => a.manifest.id === id)
-        if (app) {
-            //updatePreviewImage(id)
+        const children = state.windows.filter(w => w.parentWinId === winId);
+        children.forEach(child => closeWindow(child.id));
 
+        state.windows = state.windows.filter(w => w.id !== winId);
+
+        if (win.isMain) {
+            const siblingWindows = state.windows.filter(w => w.pid === win.pid);
+            siblingWindows.forEach(s => closeWindow(s.id));
+            checkProcessTermination(win.appId);
+        }
+    }
+
+    const checkProcessTermination = (appId: string) => {
+        const stillHasWindows = state.windows.some(w => w.appId === appId);
+        if (!stillHasWindows) {
+            const app = state.apps.find(a => a.manifest.id === appId);
+            if (app) app.runtime.isRunning = false;
+        }
+    }
+
+    const closeApp = (appId: string) => {
+        state.windows = state.windows.filter(w => w.appId !== appId)
+        const app = state.apps.find(a => a.manifest.id === appId)
+        if (app) app.runtime.isRunning = false
+    }
+
+    const bringToFront = (winId: string) => {
+        const win = state.windows.find(w => w.id === winId)
+        if (!win) return
+
+        state.windows.forEach(w => w.isFocused = false)
+        state.topZ++
+        win.zIndex = state.topZ
+        win.isFocused = true
+        win.isMinimized = false
+    }
+
+    const minimizeWindow = async (winId: string) => {
+        const win = state.windows.find(w => w.id === winId)
+        if (win) {
             state.lastAction = 'window-minimize'
             await nextTick()
-
-            app.runtime.isMinimized = true
-            app.runtime.isFocused = false
+            win.isMinimized = true
+            win.isFocused = false
+            
+            const nextWin = [...state.windows]
+                .filter(w => !w.isMinimized && w.id !== winId)
+                .sort((a, b) => b.zIndex - a.zIndex)[0]
+            if (nextWin) bringToFront(nextWin.id)
         }
     }
 
-    const maximizeWindow = (id: string) => {
-        const app = state.apps.find(a => a.manifest.id === id);
-        if (!app) return;
+    const maximizeWindow = (winId: string) => {
+        const win = state.windows.find(w => w.id === winId);
+        if (!win) return;
 
-        //updatePreviewImage(id)
-
-        if (!app.runtime.isMaximized) {
-            app.runtime.tempSettings = {
-                position: { ...app.runtime.position },
-                size: { ...app.runtime.size }
+        if (!win.isMaximized) {
+            // 1. GUARDAR: Copiamos el estado ACTIVO al respaldo (tempSettings)
+            win.tempSettings = {
+                position: { ...win.position },
+                size: { ...win.size }
             };
 
-            app.runtime.position = { x: 0, y: 0 };
-            app.runtime.isMaximized = true;
-        }
-        else{
-            if (app.runtime.tempSettings) {
-                app.runtime.position = { ...app.runtime.tempSettings.position };
-                app.runtime.size = { ...app.runtime.tempSettings.size };
+            // 2. MAXIMIZAR: Forzamos el estado activo a "pantalla completa"
+            win.position = { x: 0, y: 0 };
+            // Ajusta el '48' a la altura real de tu taskbar
+            win.size = { width: window.innerWidth, height: window.innerHeight - 48 }; 
+            
+            win.isMaximized = true;
+        } else {
+            // 1. RESTAURAR: Devolvemos los valores guardados al estado ACTIVO
+            if (win.tempSettings) {
+                win.position = { ...win.tempSettings.position };
+                win.size = { ...win.tempSettings.size };
             }
 
-            app.runtime.isMaximized = false;
+            // 2. LIMPIAR: Marcamos como no maximizado y borramos el respaldo
+            win.isMaximized = false;
+            win.tempSettings = undefined; 
         }
     }
 
-    const updatePreviewImage = async (id: string) => {
-        const el = document.getElementById(`window-content-${id}`);
+    // Esta función es para cuando arrastras el header estando maximizado
+    const unmaximizeAtPosition = (winId: string, newX: number) => {
+        const win = state.windows.find(w => w.id === winId);
+        if (!win || !win.isMaximized || !win.tempSettings) return;
+
+        // Calculamos el porcentaje donde el mouse estaba en la ventana maximizada
+        // para que al encogerse, el mouse siga "agarrando" el mismo sitio (aprox)
+        const ratio = newX / window.innerWidth;
+        const restoredWidth = win.tempSettings.size.width;
         
-        if (el) {
-            try {
-                const app = state.apps.find(a => a.manifest.id === id);
-                if (!app) return
+        win.isMaximized = false;
+        win.tempSettings.size = { ...win.tempSettings.size };
+        
+        // Reposicionamos la ventana para que el mouse quede centrado en el drag
+        win.tempSettings.position = {
+            x: newX - (restoredWidth * ratio), 
+            y: 0 // Lo mantenemos arriba para que siga el drag
+        };
+    }
 
-                if(app.runtime.isMinimized) return
+    const updatePreviewImage = async (winId: string) => {
+        const win = state.windows.find(w => w.id === winId);
+        if (!win) return; // Ahora winId será win-xyz, no spotify
 
-                const canvas = await html2canvas(el, {
-                    backgroundColor: null,
-                    scale: 0.3,
-                    logging: false,
-                    useCORS: true
-                })
-                
-                app.runtime.previewImg = canvas.toDataURL('image/webp', 0.1)               
+        const el = document.getElementById(`window-content-${winId}`);
+        if (!el || win.isMinimized) return;
 
-            } catch (err) {
-                console.error("Error capturando preview:", err);
-            }
+        try {
+            const canvas = await html2canvas(el, {
+                backgroundColor: null,
+                scale: 0.3,
+                logging: false,
+                useCORS: true
+            });
+            win.previewImg = canvas.toDataURL('image/webp', 0.1);
+        } catch (err) {
+            console.error("Error capturando preview:", err);
         }
-    };
+    }
 
     const showSnippet = async (id: string) => {
         const s = state.snippets.find(a => a.manifest.id === id)
         if(!s) return
-
         s.runtime.isRunning = true
         ensureStats(s)
         if (!s.runtime.stats!.startedAt) s.runtime.stats!.startedAt = Date.now()
-        
         s.runtime.isMounted = true
         s.runtime.isVisible = false
-
         await nextTick()
-
-        requestAnimationFrame(() => {
-            s.runtime.isVisible = true
-        })
+        requestAnimationFrame(() => { s.runtime.isVisible = true })
     }
 
     const hideSnippet = (id: string) => {
@@ -315,7 +364,6 @@ export const processInstructions = () => {
         const app = state.apps.find(a => a.manifest.id === id)
             ?? state.snippets.find(s => s.manifest.id === id)
         if (!app) return Promise.resolve(fn() as any)
-
         ensureStats(app)
         return measureCpu(app, fn)
     }
@@ -325,11 +373,12 @@ export const processInstructions = () => {
         launchApp, 
         bringToFront, 
         closeApp, 
-        minimizeWindow: minimizeWindow, 
+        closeWindow,
+        createWindow,
+        minimizeWindow, 
         maximizeWindow, 
         togglePinApp, 
         togglePinAppStart,
-        togglePinAppDesktop,
         showSnippet,
         hideSnippet,
         unmountSnippet,
@@ -345,13 +394,13 @@ function ensureStats(proc: App) {
 }    
 
 function initStats(): RuntimeStats {
-        const now = Date.now()
-        return {
-            startedAt: now,
-            cpuMsWindow: 0,
-            cpuMsLast5s: 0,
-            cpuWindowStartedAt: now,
-            memScore: 0,
-            lastMemSampleAt: 0,
-        }
+    const now = Date.now()
+    return {
+        startedAt: now,
+        cpuMsWindow: 0,
+        cpuMsLast5s: 0,
+        cpuWindowStartedAt: now,
+        memScore: 0,
+        lastMemSampleAt: 0,
+    }
 }

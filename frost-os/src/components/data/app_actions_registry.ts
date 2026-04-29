@@ -12,7 +12,7 @@ export const AppActionHandlers: Record<string, Record<string, ActionHandler>> = 
   notepad: {
   },
 
-  destopmiku: {
+  desktopmiku: {
     "view-config": DesktopMikuActions.ViewConfig
   }
 }
