@@ -5,8 +5,9 @@ import { deepMerge } from './merge'
 export function createApp(
   manifest: Manifest,
   userSaved?: Partial<UserSettings>,
-  runtimeSaved?: Partial<Runtime>,
-): App {
+  runtimeSaved?: Partial<Runtime>
+)
+:App {
   // 1) manifest con defaults
   const m = deepMerge(DEFAULT_MANIFEST as Manifest, manifest)
 

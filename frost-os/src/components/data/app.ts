@@ -51,6 +51,7 @@ export interface Manifest{
         minimizeToTray?: boolean
         closeToTray?: boolean
         startInTray?: boolean
+        startupWindow?: "maximized" | "minimized" | "stealth"
     }
 
     transition?: string
@@ -87,6 +88,7 @@ export interface WindowInstance {
     view?: string;
     title: string;
     
+    hideFromTaskbar?: boolean;
     isMinimized: boolean;
     isMaximized: boolean;
     isFocused: boolean;

@@ -18,12 +18,18 @@ if(!os) throw new Error('OS API not found')
 const { openMenu } = useContextMenu()
 
 const taskBarApps = computed(() => {
-    // Si la app está anclada OR tiene al menos una ventana abierta
-    return os.state.apps.filter(app => 
-        app.user.isPinned || 
-        os.state.windows.some(win => win.appId === app.manifest.id)
-    )
-})
+    return os.state.apps.filter(app => {
+        // 1. Si está anclada, SIEMPRE se muestra (esté abierta o no)
+        if (app.user.isPinned) return true;
+
+        // 2. Si NO está anclada, solo se muestra si tiene ventanas "públicas"
+        const hasVisibleWindows = os.state.windows.some(win => 
+            win.appId === app.manifest.id && !win.hideFromTaskbar
+        );
+
+        return hasVisibleWindows;
+    });
+});
 
 const pinnedStartApps = computed(() => {
     return os.state.apps.filter(app => app.user.isPinnedStart)

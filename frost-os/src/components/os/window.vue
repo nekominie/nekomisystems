@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { App, WindowInstance } from '../data/app'
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import IconManager from './iconmanager.vue';
 import { getViewsForApp } from "../apps/views_loader.ts"
 
@@ -15,6 +15,24 @@ const emit = defineEmits<{
     (e: 'maximize', id: string): void
     (e: 'focus', id: string): void
 }>()
+
+onMounted(() => {
+    // Si la ventana trae parámetros de tamaño específicos al crearse
+    if (props.win.params?.width) {
+        props.win.size.width = props.win.params.width;
+    }
+    if (props.win.params?.height) {
+        props.win.size.height = props.win.params.height;
+    }
+    
+    // Lo mismo para la posición si quieres que aparezca en un lugar exacto
+    if (props.win.params?.x !== undefined) {
+        props.win.position.x = props.win.params.x;
+    }
+    if (props.win.params?.y !== undefined) {
+        props.win.position.y = props.win.params.y;
+    }
+})
 
 const isDragging = ref(false);
 const isResizing = ref(false);
@@ -93,13 +111,25 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
     window.addEventListener('touchend', onEnd);
 }
 
-const windowStyles = computed(() => ({
-    zIndex: props.win.zIndex,
-    left: props.win.position.x + 'px',
-    top: props.win.position.y + 'px',
-    width: props.win.size.width + 'px',
-    height: props.win.size.height + 'px'
-}))
+const windowStyles = computed(() => {
+    if (props.win.isMaximized) {
+        return {
+            zIndex: props.win.zIndex,
+            left: '0px',
+            top: '0px',
+            width: '100%',
+            height: 'calc(100% - 48px)' // Ajusta según el alto de tu barra de tareas
+        }
+    }
+
+    return {
+        zIndex: props.win.zIndex,
+        left: props.win.position.x + 'px',
+        top: props.win.position.y + 'px',
+        width: props.win.size.width + 'px',
+        height: props.win.size.height + 'px'
+    }
+})
 
 const surfaceVars = computed(() => {
     const s = props.app.manifest.window?.surface

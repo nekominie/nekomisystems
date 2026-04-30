@@ -14,12 +14,9 @@ function createDesktopMikuStore() {
     viewConfig: false,
   })
 
-  // 3. Pasamos el parentId como argumento. 
-  // Es vital que el componente pase el ID de la ventana que hace la llamada.
   function showConfigPanel(parentId: string) {
     console.log("Intentando abrir configuración...")
 
-    // 4. Usamos el store global directamente sin el "?"
     const existingWindow = os.activeWindows.find(
         w => w.appId === 'desktopmiku' && w.view === 'Config' && w.parentWinId === parentId
     )
@@ -33,7 +30,10 @@ function createDesktopMikuStore() {
         view: 'Config',
         parentId: parentId,
         title: 'Configuración',
-        size: { width: 400, height: 300 }
+        params: {
+          width: 250,
+          height: 700
+        }
     })
   }
 

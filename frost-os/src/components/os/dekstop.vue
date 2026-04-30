@@ -1,7 +1,6 @@
 <script setup lang="ts">
 
 import { computed, inject, onMounted, onUnmounted, ComponentPublicInstance  } from 'vue'
-import { MasterAppRegistry } from '../data/master_apps_registry.ts'
 import { MasterSnippetsRegistry } from '../data/master_snippets_registry.ts'
 import { useContextMenu } from './context_menu/context_menu.ts'
 import { OS_KEY } from '../api/os_api'

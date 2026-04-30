@@ -1,11 +1,16 @@
 import { reactive, nextTick } from 'vue'
+
 import type { App, Manifest, UserSettings, RuntimeStats, WindowInstance } from '../data/app'
 import { createApp } from '../data/create_app'
+
 import { InstalledApps } from '../data/installedapps'
 import { CoreApps } from '../data/core_apps.ts'
+
 import { CoreSnippets } from '../data/core_snippets.ts'
 import { InstalledSnippets } from '../data/installed_snippets.ts'
+
 import { startStatsSampler, measureCpu } from './process_stats'
+
 import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
@@ -36,21 +41,41 @@ async function init() {
 
     // Inicialización de tray apps
     for (const app of state.apps) {
-        if (app.manifest.preferences?.startInTray) {
-            app.runtime.isRunning = true
-            app.runtime.isInTray = true
-            app.runtime.stats = initStats()
-        }
+            const prefs = app.manifest.preferences;
+            
+            if (prefs?.startInTray) {
+                // Caso Base: La app arranca en memoria
+                app.runtime.isRunning = true;
+                app.runtime.isInTray = true;
+                app.runtime.stats = initStats();
+
+                // CASO 1: Solo Tray (Sin ventana)
+                // No hacemos nada más. Al no llamar a createWindow, no aparece en Taskbar ni Desktop.
+                
+                // CASO 2: Tray + Minimizada en Taskbar
+                if (prefs.startupWindow === 'minimized') {
+                    const win = createWindow(app.manifest.id, { isMinimized: true });
+                }
+
+                // CASO 3: Tray + Abierta (Sin Taskbar) - Útil para Widgets/Miku
+                if (prefs.startupWindow === 'stealth') {
+                    createWindow(app.manifest.id, { 
+                        params: { hideFromTaskbar: true } 
+                    });
+                }
+            }
     }
 
-    for(const snippet of state.snippets){
-        if(snippet.manifest.snippet?.mount === "boot"){
-            snippet.runtime.isRunning = true
-            snippet.runtime.isMounted = true
-            snippet.runtime.isVisible = false
-            snippet.runtime.stats = initStats()
-            if(snippet.manifest.preferences?.startInTray){
-                snippet.runtime.isInTray = true
+    for (const snippet of state.snippets) {
+        if (snippet.manifest.snippet?.mount === "boot") {
+            snippet.runtime.isRunning = true;
+            snippet.runtime.isMounted = true;
+            
+            // Si Miku necesita una ventana stealth al arrancar:
+            if (snippet.manifest.id === 'desktopmiku') {
+                createWindow(snippet.manifest.id, { 
+                    params: { hideFromTaskbar: true } 
+                });
             }
         }
     }
@@ -69,11 +94,62 @@ async function init() {
     }
 }
 
-export const processInstructions = () => {
+const createWindow = (appId: string, options: any = {}, parentWinId?: string) => {
+        const app = state.apps.find(a => a.manifest.id === appId);
+        if (!app) return null;
 
-    init().catch(err => console.error(err))
+        // 1. Determinar el PID
+        let pid: string;
+        if (parentWinId) {
+            const parentWin = state.windows.find(w => w.id === parentWinId);
+            pid = parentWin ? parentWin.pid : `proc-${Math.random().toString(36).slice(2, 9)}`;
+        } else {
+            pid = `proc-${Math.random().toString(36).slice(2, 9)}`;
+        }
 
-    const togglePinApp = async (id: string) => {
+        const winId = `win-${Math.random().toString(36).slice(2, 9)}`;
+
+        // --- NUEVA LÓGICA DE TAMAÑO ---
+        // Extraemos width/height de options.params si existen, si no, del manifest, si no, default
+        const finalWidth = options.params?.width ?? app.manifest.window?.defaultSize?.width ?? 600;
+        const finalHeight = options.params?.height ?? app.manifest.window?.defaultSize?.height ?? 400;
+        
+        const finalSize = { width: finalWidth, height: finalHeight };
+
+        // --- NUEVA LÓGICA DE POSICIÓN ---
+        const offset = state.windows.length * 25;
+        const initialPosition = {
+            x: options.params?.x ?? ((window.innerWidth - finalSize.width) / 2 + offset),
+            y: options.params?.y ?? ((window.innerHeight - finalSize.height) / 2 + offset)
+        };
+
+        const newWindow: WindowInstance = {
+            id: winId,
+            pid: pid,
+            appId: appId,
+            parentWinId: parentWinId,
+            // Usamos options.title si existe, si no options.view, si no el nombre de la app
+            title: options.title || (options.view === 'Config' ? 'Configuración' : app.manifest.name),
+            view: options.view || 'Main', 
+            isMain: !parentWinId,
+            isMinimized: options.isMinimized || false,
+            hideFromTaskbar: options.params?.hideFromTaskbar || false,
+            isMaximized: false,
+            isFocused: true,
+            zIndex: ++state.topZ,
+            position: initialPosition,
+            size: finalSize, // <--- Ahora sí usa el tamaño procesado
+            params: options.params || {}, // <--- Guardamos los params limpios
+            tempSettings: undefined
+        };
+
+        state.windows.push(newWindow);
+        bringToFront(winId);
+        
+        return newWindow;
+}
+
+const togglePinApp = async (id: string) => {
         const app = state.apps.find(a => a.manifest.id === id)
         if(app){
             app.user.isPinned = !app.user.isPinned
@@ -84,9 +160,9 @@ export const processInstructions = () => {
                 isPinnedDesktop: app.user.isPinnedDesktop 
             })
         }
-    }
+}
 
-    const togglePinAppStart = async (id: string) => {
+const togglePinAppStart = async (id: string) => {
         const app = state.apps.find(a => a.manifest.id === id)
         if(app){
             app.user.isPinnedStart = !app.user.isPinnedStart
@@ -97,7 +173,7 @@ export const processInstructions = () => {
                 isPinnedDesktop: app.user.isPinnedDesktop 
             })
         }
-    }
+}
 
     /*const launchApp = async (appId: string, params = {}, parentWinId?: string) => {
         const app = state.apps.find(a => a.manifest.id === appId)
@@ -149,54 +225,6 @@ export const processInstructions = () => {
         state.windows.push(newWindow);
         bringToFront(winId);
     }*/
-
-    const createWindow = (appId: string, params: any = {}, parentWinId?: string) => {
-        const app = state.apps.find(a => a.manifest.id === appId);
-        if (!app) return null;
-
-        // 1. Determinar el PID (Process ID)
-        // Si hay un parentWinId, usamos su PID (misma app). Si no, generamos uno nuevo.
-        let pid: string;
-        if (parentWinId) {
-            const parentWin = state.windows.find(w => w.id === parentWinId);
-            pid = parentWin ? parentWin.pid : `proc-${Math.random().toString(36).slice(2, 9)}`;
-        } else {
-            pid = `proc-${Math.random().toString(36).slice(2, 9)}`;
-        }
-
-        const winId = `win-${Math.random().toString(36).slice(2, 9)}`;
-        const defaultSize = app.manifest.window?.defaultSize ?? { width: 600, height: 400 };
-
-        // 2. Lógica de cascada para que las ventanas no nazcan una encima de otra exactamente
-        const offset = state.windows.length * 25;
-        const initialPosition = {
-            x: (window.innerWidth - defaultSize.width) / 2 + offset,
-            y: (window.innerHeight - defaultSize.height) / 2 + offset
-        };
-
-        const newWindow: WindowInstance = {
-            id: winId,
-            pid: pid,
-            appId: appId,
-            parentWinId: parentWinId,
-            title: params.title || app.manifest.name,
-            view: params.view || 'Main', // <--- Crucial para tu views_loader
-            isMain: !parentWinId,
-            isMinimized: false,
-            isMaximized: false,
-            isFocused: true,
-            zIndex: ++state.topZ,
-            position: initialPosition,
-            size: { ...defaultSize },
-            params: params,
-            tempSettings: undefined
-        };
-
-        state.windows.push(newWindow);
-        bringToFront(winId);
-        
-        return newWindow;
-    }
 
     const launchApp = async (appId: string, params = {}, parentWinId?: string) => {
         const app = state.apps.find(a => a.manifest.id === appId);
@@ -368,22 +396,25 @@ export const processInstructions = () => {
         return measureCpu(app, fn)
     }
 
+export const processInstructions = () => {    
+    init().catch(err => console.error(err))
+
     return { 
-        state, 
-        launchApp, 
-        bringToFront, 
-        closeApp, 
-        closeWindow,
-        createWindow,
-        minimizeWindow, 
-        maximizeWindow, 
-        togglePinApp, 
-        togglePinAppStart,
-        showSnippet,
-        hideSnippet,
-        unmountSnippet,
-        measure,
-        updatePreviewImage
+        state,
+        launchApp: (id: string, params = {}, parentWinId?: string) => launchApp(id, params, parentWinId),
+        bringToFront: (winId: string) => bringToFront(winId), 
+        closeApp: (id: string) => closeApp(id), 
+        closeWindow: (winId: string) => closeWindow(winId),
+        createWindow: (id: string, params = {}, parentWinId?: string) => createWindow(id, params, parentWinId),
+        minimizeWindow: (winId: string) => minimizeWindow(winId), 
+        maximizeWindow: (winId: string) => maximizeWindow(winId), 
+        togglePinApp: (id: string) => togglePinApp(id), 
+        togglePinAppStart: (id: string) => togglePinAppStart(id),
+        showSnippet: (id: string) => showSnippet(id),
+        hideSnippet: (id: string) => hideSnippet(id),
+        unmountSnippet: (id: string) => unmountSnippet(id),
+        measure: <T>(id: string, fn: () => T | Promise<T>) => measure(id, fn),
+        updatePreviewImage: (winId: string) => updatePreviewImage(winId)
     }
 }
 
