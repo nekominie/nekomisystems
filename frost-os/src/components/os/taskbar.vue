@@ -244,12 +244,11 @@ const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
 
 const isAppRunning = (appId: string) => {
     return os.state.windows.some(win => win.appId === appId);
-};
-
+}
 
 const isAppFocused = (appId: string) => {
     return os.state.windows.some(win => win.appId === appId && win.isFocused);
-};
+}
 
 </script>
 

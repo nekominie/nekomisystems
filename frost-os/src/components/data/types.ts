@@ -1,4 +1,4 @@
-import { App } from './app'
+import { App, WindowInstance } from './app'
 
 export interface IconConfig {
   id: string;
@@ -42,10 +42,14 @@ export type MenuResolveCtx = {
   app: App
   context: AppMenuContext
   os: {
-    launchApp: (id: string) => void | Promise<void>
+    launchApp: (id: string) => Promise<any>
     closeApp: (id: string) => void
     minimizeWindow: (id: string) => void | Promise<void>
     togglePinApp: (id: string) => void | Promise<void>
-    // ...lo que quieras exponer
+    createWindow: (appId: string, options: any, parentWinId?: string) => any
+    bringToFront: (winId: string) => void
+    state: {
+      windows: WindowInstance[]
+    }
   }
 }
