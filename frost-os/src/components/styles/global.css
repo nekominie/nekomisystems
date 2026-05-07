@@ -1,8 +1,13 @@
 :root{
     --frst-bg-light: rgba(0, 0, 0, 0.233);
     --frst-bg-normal: rgb(156 156 156 / 31%);
-    --frst-bg-dark: black;
-    --frst-bg-pitch-black: black;
+    --frst-bg-dark: rgba(51, 51, 51, 0.411);
+    --frst-bg-pitch-black: rgba(36, 36, 36, 0.541);
+
+    --frst-btn-bg-light: rgba(0, 0, 0, 0.233);
+    --frst-btn-bg-normal: rgb(156 156 156 / 31%);
+    --frst-btn-bg-dark: rgba(51, 51, 51, 0.411);
+    --frst-btn-bg-pitch-black: rgba(36, 36, 36, 0.541);
 
     --frst-fg-light: white;
     --frst-fg-normal: white;
@@ -39,6 +44,52 @@
     color: var(--frst-font-main) !important;
 }
 
+.frst-root-window{
+  height: 100%;
+  width: 100%;
+  color: var(--frst-font-normal);
+  display: flex;
+  flex-direction: column;
+}
+
+.frst-root-window > *:first-child{
+  padding: 10px;
+  flex: 1;
+}
+
+.frst-txt-input{
+  background-color: var(--frst-bg-dark);
+  color: var(--frst-font-light);
+  border-radius: 5px;
+  padding: 5px;
+  border: 0;
+}
+
+.frst-txt-input:focus{
+  box-shadow: 0 0px 4px 0px #ffffffb8;
+}
+
+.frst-btn{
+  border: 0;
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.frst-btn.generic{
+  background-color: var(--frst-bg-normal);
+  color: var(--frst-font-normal);
+}
+
+.frst-btn.primary{
+  background-color: var(--frst-bg-dark);
+  color: var(--frst-font-normal)
+}
+
+.frst-btn.secondary{
+
+}
+
 
 * {
   scrollbar-width: thin;                 /* auto | thin | none */
@@ -67,4 +118,8 @@
 
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+*:focus{
+  outline: none;
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { useDesktopMikuStore } from './store';
+import { useDesktopMikuStore } from '../../store';
 
 type Action = "idle" | "greeting" | "thinking"
 
