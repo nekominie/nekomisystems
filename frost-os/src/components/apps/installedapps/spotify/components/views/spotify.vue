@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import { spotifyMockSeed } from "./spotify.mock.data";
+import { spotifyMockSeed } from "../../spotify.mock.data";
 
 type ContextMode = "playlist" | "album" | "artist";
 type RightTab = "queue" | "lyrics" | "about";
