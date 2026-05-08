@@ -22,5 +22,9 @@ export const DesktopMikuActions = {
                 height: 700
             }
         })
+    },
+
+    ExitApp: ({ app, os }: MenuResolveCtx) => {
+        os.closeApp(app.manifest.id)
     }
 }

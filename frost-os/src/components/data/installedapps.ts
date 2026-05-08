@@ -111,6 +111,14 @@ export const InstalledApps: Manifest[] = [
             closeToTray: true,
             startupWindow: "stealth"
         }
+    },
+    {
+        id: "tetris",
+        name: "Tetris",
+        window: {
+            defaultSize: { width: 520, height: 719 },
+            minSize: { width: 520, height: 719 },
+        }
     }
 ]
     

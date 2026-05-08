@@ -13,6 +13,7 @@ export const AppActionHandlers: Record<string, Record<string, ActionHandler>> = 
   },
 
   desktopmiku: {
-    "view-config": DesktopMikuActions.ViewConfig
+    "view-config": DesktopMikuActions.ViewConfig,
+    "close": DesktopMikuActions.ExitApp
   }
 }
