@@ -19,6 +19,7 @@ export const CoreApps: Manifest[] = [
         window: {
             defaultSize: { width: 500, height: 220 },
             minSize: { width: 500, height: 220 },
+            maxSize: { width: 500, height: 220 },
         }
     }
 ]
