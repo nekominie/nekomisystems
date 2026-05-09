@@ -87,7 +87,8 @@
 }
 
 .frst-btn.secondary{
-
+  background-color: var(--frst-bg-dark);
+  color: var(--frst-font-normal)
 }
 
 

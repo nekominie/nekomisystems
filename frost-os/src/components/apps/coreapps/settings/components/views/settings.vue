@@ -1,5 +1,20 @@
 <script lang="ts" setup>
 import { computed, ref } from "vue";
+import { useSettingsStore } from "../../store";
+
+const settings = useSettingsStore();
+
+const handleWallpaperChange = async (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  try {
+    await settings.updateWallpaper(file);
+    console.log("Wallpaper actualizado con éxito");
+  } catch (err) {
+    console.error("Error al guardar el wallpaper:", err);
+  }
+};
 
 type SettingsSection =
   | "system"
@@ -15,13 +30,13 @@ const searchQuery = ref("");
 const selectedWallpaper = ref("aurora");
 
 const sections = [
-  { id: "system", label: "System", icon: "bi-display" },
-  { id: "bluetooth", label: "Bluetooth & devices", icon: "bi-bluetooth" },
-  { id: "network", label: "Network & internet", icon: "bi-wifi" },
-  { id: "personalization", label: "Personalization", icon: "bi-palette2" },
+  { id: "system", label: "Sistema", icon: "bi-display" },
+  { id: "bluetooth", label: "Bluetooth y Dispositivos", icon: "bi-bluetooth" },
+  { id: "network", label: "Red e Internet", icon: "bi-wifi" },
+  { id: "personalization", label: "Personalización", icon: "bi-palette2" },
   { id: "apps", label: "Apps", icon: "bi-grid" },
-  { id: "accounts", label: "Accounts", icon: "bi-person-circle" },
-  { id: "update", label: "Windows Update", icon: "bi-arrow-repeat" },
+  { id: "accounts", label: "Cuentas", icon: "bi-person-circle" },
+  { id: "update", label: "Actualización", icon: "bi-arrow-repeat" },
 ] as const;
 
 const wallpapers = [
@@ -43,7 +58,7 @@ const filteredSections = computed(() => {
 </script>
 
 <template>
-  <div class="settings-shell">
+  <div class="settings-shell frst-bg-pitch-black">
     <aside class="sidebar">
       <div class="profile-card glass-card">
         <div class="avatar">
@@ -57,7 +72,7 @@ const filteredSections = computed(() => {
 
       <label class="search-box glass-card">
         <i class="bi bi-search"></i>
-        <input v-model="searchQuery" type="text" placeholder="Find a setting" />
+        <input class="" v-model="searchQuery" type="text" placeholder="Buscar ajustes..." />
       </label>
 
       <nav class="section-list">
@@ -139,8 +154,8 @@ const filteredSections = computed(() => {
       <section v-else-if="activeSection === 'personalization'" class="section-content">
         <div class="grid one">
           <article class="setting-card glass-card">
-            <h3><i class="bi bi-image"></i> Background</h3>
-            <p class="sub">Pick a wallpaper for your desktop.</p>
+            <h3><i class="bi bi-image"></i>Wallpaper</h3>
+            <p class="sub">Selecciona una foto para el fondo del escritorio</p>
             <div class="wallpaper-grid">
               <button
                 v-for="wall in wallpapers"
@@ -152,6 +167,16 @@ const filteredSections = computed(() => {
                 <span>{{ wall.name }}</span>
                 <i v-if="selectedWallpaper === wall.id" class="bi bi-check-circle-fill"></i>
               </button>
+            </div>
+
+            <input 
+              type="file" 
+              accept="image/*" 
+              @change="handleWallpaperChange" 
+            />
+
+            <div v-if="settings.wallpaperUrl" class="preview">
+              <img :src="settings.wallpaperUrl" alt="Preview" />
             </div>
           </article>
 
@@ -220,14 +245,22 @@ const filteredSections = computed(() => {
 </template>
 
 <style scoped>
+.preview img {
+  width: 200px;
+  height: auto;
+  border-radius: 8px;
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
 .settings-shell {
   height: 100%;
   width: 100%;
   display: grid;
   grid-template-columns: 300px 1fr;
-  background:
+  /*background:
     radial-gradient(120% 100% at 0% 0%, rgba(255, 255, 255, 0.11), transparent 60%),
-    linear-gradient(155deg, rgba(33, 36, 46, 0.52), rgba(18, 20, 28, 0.72));
+    linear-gradient(155deg, rgba(33, 36, 46, 0.52), rgba(18, 20, 28, 0.72));*/
   color: rgba(255, 255, 255, 0.92);
 }
 

@@ -7,11 +7,25 @@ import { OS_KEY } from '../api/os_api'
 import Window from './window.vue'
 import SnippetHost from './snippet_host.vue'
 import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
+import { useSettingsStore } from "../apps/coreapps/settings/store.ts"
 
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
 
 const { openMenu } = useContextMenu()
+
+const settings = useSettingsStore();
+
+const desktopStyle = computed(() => {
+  if (settings.wallpaperUrl) {
+    return {
+      backgroundImage: `url(${settings.wallpaperUrl})`
+    };
+  }
+  // Si no hay wallpaper en el store, el CSS por defecto de la clase .desktop tomará el mando
+  return {};
+});
+
 
 const transitionName = computed(() => 
     os.state.lastAction
@@ -88,8 +102,11 @@ const handleContextMenu = (e: MouseEvent) => {
 </style>
 
 <template>
-    <div class="desktop" @contextmenu="handleContextMenu">
-
+    <div 
+        class="desktop" 
+        :style="desktopStyle"
+        @contextmenu="handleContextMenu"
+    >
         <DesktopIconsLayer 
             :pinnedApps="pinnedDesktopApps" 
         />

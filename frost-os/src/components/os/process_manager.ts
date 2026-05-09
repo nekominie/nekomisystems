@@ -14,6 +14,8 @@ import { startStatsSampler, measureCpu } from './process_stats'
 import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
+import { useSettingsStore } from '../apps/coreapps/settings/store.ts'
+
 export const state = reactive({
     apps: [] as App[],
     windows: [] as WindowInstance[],
@@ -92,6 +94,8 @@ async function init() {
         }
         return map
     }
+
+    useSettingsStore().loadSettings()
 }
 
 const createWindow = (appId: string, options: any = {}, parentWinId?: string) => {
