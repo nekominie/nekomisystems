@@ -78,7 +78,9 @@ onUnmounted(() => {
             v-for="app in overflowApps"
             :key="app.manifest.id"
             class="app-icon overflow"
-            title="app.manifest.name"
+            :title="app.manifest.name"
+            @click="trayLeftClick($event, app.manifest.id)"
+            @contextmenu.prevent.stop="trayRightClick($event, app.manifest.id)"
           >
             <IconManager :id="app.manifest.id" />
           </div>

@@ -46,12 +46,14 @@ export interface Manifest{
         }
         background?: boolean
         notifications?: boolean
+        singleInstance?: boolean
     }
 
     preferences?:{
         minimizeToTray?: boolean
         closeToTray?: boolean
         startInTray?: boolean
+        startOnBoot?: boolean
         startupWindow?: "maximized" | "minimized" | "stealth"
     }
 
@@ -89,6 +91,9 @@ export interface IAppStorage {
   getAll: () => Promise<any[]>;
 }
 
+export type SnapTarget = 'maximize' | 'left' | 'right' | 'top-left' | 'bottom-left' | 'top-right' | 'bottom-right';
+export type SnapState = SnapTarget | null;
+
 export interface WindowInstance {
     id: string;
     pid: string;
@@ -108,13 +113,16 @@ export interface WindowInstance {
     position: { x: number; y: number };
     size: { width: number; height: number };
 
-    // --- RESPALDO (Solo existe cuando isMaximized es true) ---
+    // --- RESPALDO (Existe cuando isMaximized o snapState es true) ---
     tempSettings?: {
         position: { x: number; y: number };
         size: { width: number; height: number };
     };
 
+    snapState?: SnapState;
+
     previewImg?: string;
+    lastPreviewUpdate?: number;
     params?: any;
 }
 
@@ -136,6 +144,7 @@ export interface UserSettings{
         minimizeToTray?: boolean
         closeToTray?: boolean
         startInTray?: boolean
+        startOnBoot?: boolean
     }
 }
 

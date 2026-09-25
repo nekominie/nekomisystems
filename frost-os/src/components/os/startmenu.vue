@@ -5,9 +5,12 @@ import IconManager from './iconmanager.vue'
 import type { UserProfile } from '../data/types'
 import type { App } from '../data/app'
 import { OS_KEY } from '../api/os_api'
+import { useLockStore } from './lock/lock_store'
 
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
+
+const lockStore = useLockStore()
 
 const previewUrl = ref('')
 const userName = ref('')
@@ -68,6 +71,11 @@ const launchApp = (id: string) => {
     emit('close-startmenu')
 }
 
+const lockSystem = () => {
+    emit('close-startmenu')
+    lockStore.lock()
+}
+
 </script>
 
 <style scoped>
@@ -95,7 +103,13 @@ const launchApp = (id: string) => {
 
                 <div class="divider"></div>
 
-                <div style="padding-top: 9px;">
+                <div style="padding-top: 9px; display: flex; flex-direction: column; gap: 4px;">
+                    <button class="start-menu-button" style="border-radius: 4px; width: 100%; height: 28px;"
+                    @click="lockSystem"
+                    >
+                        <i class="bi-lock" style="display: flex; font-size: 16px; margin-right: 5px;"></i>
+                        Bloquear
+                    </button>
                     <button class="start-menu-button" style="border-radius: 4px; width: 100%; height: 28px;"
                     @click="emit('shutdown')"
                     >

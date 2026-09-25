@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import type { App, WindowInstance } from '../data/app'
-import { computed, ref, onMounted } from 'vue'
+import type { App, WindowInstance, SnapTarget } from '../data/app'
+import { computed, ref, onMounted, inject } from 'vue'
 import IconManager from './iconmanager.vue';
 import { getViewsForApp } from "../apps/views_loader.ts"
+import { OS_KEY } from '../api/os_api'
 
 const props = defineProps<{
     app: App,
     win: WindowInstance
 }>()
 
+const os = inject(OS_KEY)
+
+const isPeekTarget = computed(() => os?.state.peekWindowId === props.win.id)
+const isGhosted = computed(() => !!os?.state.peekWindowId && os.state.peekWindowId !== props.win.id)
+
 const emit = defineEmits<{
     (e: 'close', id: string): void
     (e: 'minimize', id: string): void
     (e: 'maximize', id: string): void
     (e: 'focus', id: string): void
+    (e: 'snap', id: string, target: SnapTarget): void
+    (e: 'snap-preview', target: SnapTarget | null): void
 }>()
 
 onMounted(() => {
@@ -47,6 +55,49 @@ const currentComponent = computed(() => {
     return appViews[targetView];
 })
 
+const detectSnapTarget = (x: number, y: number, isCurrentlyActive: boolean): SnapTarget | null => {
+    const W = window.innerWidth;
+    const taskbarH = 48;
+    const H = window.innerHeight - taskbarH;
+    
+    // Umbral en px para activar / salir de la zona de anclaje (con histéresis)
+    const enterMargin = 18;
+    const exitMargin = 45;
+    const margin = isCurrentlyActive ? exitMargin : enterMargin;
+    
+    // Tamaño de zona de esquina para cuartos de pantalla
+    const cornerSize = Math.max(90, Math.min(180, W * 0.15));
+
+    // 1. Borde superior
+    if (y <= margin) {
+        if (x <= cornerSize) return 'top-left';
+        if (x >= W - cornerSize) return 'top-right';
+        return 'maximize';
+    }
+
+    // 2. Borde izquierdo
+    if (x <= margin) {
+        if (y <= cornerSize) return 'top-left';
+        if (y >= H - cornerSize) return 'bottom-left';
+        return 'left';
+    }
+
+    // 3. Borde derecho
+    if (x >= W - margin) {
+        if (y <= cornerSize) return 'top-right';
+        if (y >= H - cornerSize) return 'bottom-right';
+        return 'right';
+    }
+
+    // 4. Borde inferior (solo esquinas)
+    if (y >= H - margin) {
+        if (x <= cornerSize) return 'bottom-left';
+        if (x >= W - cornerSize) return 'bottom-right';
+    }
+
+    return null;
+}
+
 const startDrag = (event: MouseEvent | TouchEvent) => {
     const getCoords = (e: MouseEvent | TouchEvent) => {
         if ('touches' in e && e.touches.length > 0) {
@@ -59,25 +110,34 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
     isDragging.value = true;
     emit('focus', props.win.id);
 
-    // --- LÓGICA DE UNMAXIMIZE ---
-    if (props.win.isMaximized && props.win.tempSettings) {
-        // 1. Desmaximizar
+    // --- LÓGICA DE UNSNAP / UNMAXIMIZE AL ARRASTRAR ---
+    if (props.win.isMaximized || props.win.snapState) {
         props.win.isMaximized = false;
-        
-        // 2. Restaurar tamaño y posición guardada
-        props.win.size = { ...props.win.tempSettings.size };
-        
-        // 3. Calcular nueva posición para que el ratón quede en el centro (o proporcional)
-        // Aquí centramos la ventana restaurada bajo el cursor
-        const restoreWidth = props.win.size.width;
-        props.win.position.x = initialCoords.x - (restoreWidth / 2);
-        props.win.position.y = 0; // La pegamos arriba al desmaximizar
-    }
-    // ----------------------------
+        props.win.snapState = null;
 
-    // Ahora calculamos el offset basado en la posición ACTUAL (ya sea normal o recién restaurada)
+        const defaultW = props.app.manifest.window?.defaultSize?.width ?? 600;
+        const defaultH = props.app.manifest.window?.defaultSize?.height ?? 400;
+
+        const restoreWidth = props.win.tempSettings?.size.width ?? Math.min(props.win.size.width, defaultW);
+        const restoreHeight = props.win.tempSettings?.size.height ?? Math.min(props.win.size.height, defaultH);
+
+        props.win.size = { width: restoreWidth, height: restoreHeight };
+        
+        // Centrar la ventana restaurada bajo el cursor asegurando límites
+        const minVisibleWidth = 100;
+        const maxX = window.innerWidth - minVisibleWidth;
+        const clampedX = Math.max(-(restoreWidth - minVisibleWidth), Math.min(initialCoords.x - (restoreWidth / 2), maxX));
+        props.win.position.x = clampedX;
+        props.win.position.y = Math.max(0, initialCoords.y - 16);
+
+        props.win.tempSettings = undefined;
+    }
+    // --------------------------------------------------
+
+    // Ahora calculamos el offset basado en la posición ACTUAL
     let startX = initialCoords.x - props.win.position.x;
     let startY = initialCoords.y - props.win.position.y;
+    let currentSnap: SnapTarget | null = null;
 
     const onMove = (e: MouseEvent | TouchEvent) => {
         const coords = getCoords(e);
@@ -85,7 +145,7 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
         let newX = coords.x - startX;
         let newY = coords.y - startY;
 
-        // Limites para que no salga de pantalla
+        // Límites para que no salga de pantalla
         const minVisibleWidth = 100;
         const maxX = window.innerWidth - minVisibleWidth;
         const maxY = window.innerHeight - 48 - 26; 
@@ -95,6 +155,13 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
 
         props.win.position.x = newX;
         props.win.position.y = newY;        
+
+        // Detección de zonas de anclaje (Windows 11)
+        const snap = detectSnapTarget(coords.x, coords.y, currentSnap !== null);
+        if (snap !== currentSnap) {
+            currentSnap = snap;
+            emit('snap-preview', snap);
+        }
     };
 
     const onEnd = () => {
@@ -103,6 +170,16 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
         window.removeEventListener('mouseup', onEnd);
         window.removeEventListener('touchmove', onMove);
         window.removeEventListener('touchend', onEnd);
+
+        const targetSnap = currentSnap;
+        currentSnap = null;
+        emit('snap-preview', null);
+
+        if (targetSnap) {
+            requestAnimationFrame(() => {
+                emit('snap', props.win.id, targetSnap);
+            });
+        }
     };
 
     window.addEventListener('mousemove', onMove);
@@ -112,18 +189,78 @@ const startDrag = (event: MouseEvent | TouchEvent) => {
 }
 
 const windowStyles = computed(() => {
+    let zIndex = props.win.zIndex;
+    if (isDragging.value) {
+        zIndex = 9999;
+    } else if (isPeekTarget.value) {
+        zIndex = 900;
+    }
+
     if (props.win.isMaximized) {
         return {
-            zIndex: props.win.zIndex,
+            zIndex,
             left: '0px',
             top: '0px',
             width: '100%',
-            height: 'calc(100% - 48px)' // Ajusta según el alto de tu barra de tareas
+            height: 'calc(100% - 48px)'
+        }
+    }
+
+    if (props.win.snapState) {
+        switch (props.win.snapState) {
+            case 'left':
+                return {
+                    zIndex,
+                    left: '0px',
+                    top: '0px',
+                    width: '50%',
+                    height: 'calc(100% - 48px)'
+                }
+            case 'right':
+                return {
+                    zIndex,
+                    left: '50%',
+                    top: '0px',
+                    width: '50%',
+                    height: 'calc(100% - 48px)'
+                }
+            case 'top-left':
+                return {
+                    zIndex,
+                    left: '0px',
+                    top: '0px',
+                    width: '50%',
+                    height: 'calc((100% - 48px) / 2)'
+                }
+            case 'bottom-left':
+                return {
+                    zIndex,
+                    left: '0px',
+                    top: 'calc((100% - 48px) / 2)',
+                    width: '50%',
+                    height: 'calc((100% - 48px) / 2)'
+                }
+            case 'top-right':
+                return {
+                    zIndex,
+                    left: '50%',
+                    top: '0px',
+                    width: '50%',
+                    height: 'calc((100% - 48px) / 2)'
+                }
+            case 'bottom-right':
+                return {
+                    zIndex,
+                    left: '50%',
+                    top: 'calc((100% - 48px) / 2)',
+                    width: '50%',
+                    height: 'calc((100% - 48px) / 2)'
+                }
         }
     }
 
     return {
-        zIndex: props.win.zIndex,
+        zIndex,
         left: props.win.position.x + 'px',
         top: props.win.position.y + 'px',
         width: props.win.size.width + 'px',
@@ -144,6 +281,12 @@ const surfaceVars = computed(() => {
 const startResize = (direction: string, event: MouseEvent | TouchEvent) => {
     if (props.win.isMaximized) return; // No redimensionar si está maximizada
     
+    // Si la ventana estaba anclada, se convierte en flotante al redimensionar
+    if (props.win.snapState) {
+        props.win.snapState = null;
+        props.win.tempSettings = undefined;
+    }
+
     isResizing.value = true;
     document.body.classList.add('resizing-global');
     document.body.style.cursor = direction + '-resize';
@@ -220,6 +363,13 @@ const isSnippet = computed(() => {
     return !!props.app.manifest.snippet && (!props.win.view || props.win.view === 'Main');
 })
 
+const onWindowMouseDown = () => {
+    if (os?.state.peekWindowId) {
+        os.setPeekWindow(null);
+    }
+    emit('focus', props.win.id);
+}
+
 </script>
 
 <style scoped>
@@ -235,12 +385,15 @@ const isSnippet = computed(() => {
         :class="{
             'focused' : win.isFocused,
             'maximized' : win.isMaximized,
+            'snapped' : !!win.snapState,
             'dragging' : isDragging,
             'resizing' : isResizing,
-            'no-transitions' : isResizing || isDragging
+            'no-transitions' : isResizing || isDragging,
+            'peek-target' : isPeekTarget,
+            'peek-ghost' : isGhosted
         }"        
         :style="[windowStyles, surfaceVars]"
-        @mousedown.capture="emit('focus', win.id)"
+        @mousedown.capture="onWindowMouseDown"
     >
         <div class="resizer n" @mousedown.stop="startResize('n', $event)"></div>
         <div class="resizer s" @mousedown.stop="startResize('s', $event)"></div>

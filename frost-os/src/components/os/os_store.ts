@@ -37,6 +37,10 @@ export const useOsStore = defineStore('os', () => {
         showSnippet: kernel.showSnippet,
         hideSnippet: kernel.hideSnippet,
         updatePreviewImage: kernel.updatePreviewImage,
-        measure: kernel.measure
+        setPeekWindow: kernel.setPeekWindow,
+        measure: kernel.measure,
+        lockSystem: kernel.lockSystem,
+        unlockSystem: kernel.unlockSystem,
+        updateAppPreferences: kernel.updateAppPreferences
     };
 });

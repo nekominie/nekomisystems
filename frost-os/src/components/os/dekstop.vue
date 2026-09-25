@@ -7,6 +7,7 @@ import { OS_KEY } from '../api/os_api'
 import Window from './window.vue'
 import SnippetHost from './snippet_host.vue'
 import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
+import SnapPreview from './snap_preview.vue'
 import { useSettingsStore } from "../apps/coreapps/settings/store.ts"
 
 const os = inject(OS_KEY)
@@ -121,17 +122,21 @@ const handleContextMenu = (e: MouseEvent) => {
             @after-leave="() => os.unmountSnippet(snippet.manifest.id)"
         />
         
+        <SnapPreview :target="os.state.activeSnapPreview" />
+
         <TransitionGroup :name="transitionName">
             <template v-for="win in activeWindows" :key="win.id">
                 <Window
                     v-if="os.state.apps.find(a => a.manifest.id === win.appId)"
-                    v-show="!win.isMinimized"
+                    v-show="!win.isMinimized || os.state.peekWindowId === win.id"
                     :win="win"
                     :app="os.state.apps.find(a => a.manifest.id === win.appId)!"
                     @close="os.closeWindow"
                     @focus="os.bringToFront"
                     @minimize="os.minimizeWindow"
                     @maximize="os.maximizeWindow" 
+                    @snap="os.snapWindow"
+                    @snap-preview="os.setSnapPreview"
                 />
             </template>
         </TransitionGroup>

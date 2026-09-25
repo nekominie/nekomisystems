@@ -60,6 +60,11 @@ window.addEventListener('click', closeMenu);
     margin-right: 9px;
 }
 
+.context-menu .text-danger,
+.context-menu .bi-mic-mute-fill {
+    color: #ed4245 !important;
+}
+
 .menu-item{
   padding: 4px 7px;
   border-radius: 6px;

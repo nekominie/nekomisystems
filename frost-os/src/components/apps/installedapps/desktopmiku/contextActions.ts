@@ -16,12 +16,30 @@ export const DesktopMikuActions = {
 
         os.createWindow(appId, {
             view: 'Config',
-            title: 'Configuración',
+            title: 'Desktop Miku • Configuración',
+            isMaximized: false,
             params: {
-                width: 250,
-                height: 700
+                width: 480,
+                height: 640
             }
         })
+    },
+
+    TogglePet: ({ app, os }: MenuResolveCtx) => {
+        const mikuWin = os.state.windows.find(
+            w => w.appId === app.manifest.id && (!w.view || w.view === 'Main')
+        )
+        if (mikuWin) {
+            if (mikuWin.isMinimized) {
+                os.bringToFront(mikuWin.id)
+            } else {
+                os.minimizeWindow(mikuWin.id)
+            }
+        } else {
+            os.createWindow(app.manifest.id, {
+                hideFromTaskbar: true
+            })
+        }
     },
 
     ExitApp: ({ app, os }: MenuResolveCtx) => {

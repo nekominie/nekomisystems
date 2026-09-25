@@ -1,4 +1,5 @@
 import type { Manifest } from './app'
+import { useDiscordStore } from '../apps/installedapps/discord/store'
 
 export const InstalledApps: Manifest[] = [
     {
@@ -7,7 +8,12 @@ export const InstalledApps: Manifest[] = [
     },
     {
         id: 'calculator',
-        name: 'Calculadora'
+        name: 'Calculadora',
+        window: {
+            defaultSize: { width: 320, height: 480 },
+            minSize: { width: 280, height: 400 },
+            maxSize: { width: 500, height: 750 }
+        }
     },
     {
         id: 'explorer',
@@ -36,7 +42,9 @@ export const InstalledApps: Manifest[] = [
         id: 'discord',
         name: 'Discord',
         preferences: {
-            startInTray: true
+            startInTray: true,
+            startOnBoot: true,
+            closeToTray: true,
         },
         capabilities: {
             tray:{ 
@@ -46,11 +54,26 @@ export const InstalledApps: Manifest[] = [
         },
         menus:{
             taskbar: [
-                { type: 'item', id: 'open', label: 'Abrir' },
-                { type: 'item', id: 'new-window', label: 'Nueva Ventana' },
+                { type: 'item', id: 'open', label: 'Abrir', icon: 'bi bi-box-arrow-up-right' },
+                { type: 'item', id: 'new-window', label: 'Nueva Ventana', icon: 'bi bi-window-plus' },
             ],
             tray:[
-                { type: 'item', id: 'toggle-mute', label: 'Silenciar' }
+                { 
+                    type: 'item', 
+                    id: 'toggle-mute', 
+                    label: (ctx) => {
+                        const store = useDiscordStore(ctx.app.manifest.id);
+                        return store.state.muted ? 'Desilenciar' : 'Silenciar';
+                    },
+                    icon: (ctx) => {
+                        const store = useDiscordStore(ctx.app.manifest.id);
+                        return store.state.muted ? 'bi bi-mic-mute-fill text-danger' : 'bi bi-mic-fill';
+                    }
+                },
+                { type: 'separator' },
+                { type: 'item', id: 'open', label: 'Abrir Discord', icon: 'bi bi-discord' },
+                { type: 'separator' },
+                { type: 'item', id: 'quit', label: 'Salir de Discord', icon: 'bi bi-x-circle' }
             ]
         },
         window: {
@@ -89,24 +112,28 @@ export const InstalledApps: Manifest[] = [
             mount: "user"
         },
         window: {
-            defaultSize: { width: 1500, height: 850 },
-            startMaximized: true
+            defaultSize: { width: 480, height: 640 },
+            minSize: { width: 380, height: 500 },
+            startMaximized: false
         },
         capabilities: {
             tray:{ 
                 canUse: true,
-                defaultAction: 'open'
+                defaultAction: 'view-config'
             },
-            background: true
+            background: true,
+            singleInstance: true
         },
         menus:{
             tray: [
-                { type: 'item', id: 'view-config', label: 'Configuración' },
-                { type: 'item', id: 'close', label: 'Cerrar' },
+                { type: 'item', id: 'view-config', label: 'Configuración', icon: 'bi bi-gear-fill' },
+                { type: 'item', id: 'toggle-pet', label: 'Mostrar/Ocultar Miku', icon: 'bi bi-person-heart' },
+                { type: 'item', id: 'close', label: 'Cerrar Desktop Miku', icon: 'bi bi-x-circle' },
             ]            
         },
         preferences: {
-            startInTray: false,
+            startInTray: true,
+            startOnBoot: true,
             minimizeToTray: true,
             closeToTray: true,
             startupWindow: "stealth"

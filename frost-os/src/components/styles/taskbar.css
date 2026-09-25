@@ -242,8 +242,16 @@
     transition: all 0.2s ease;
 }
 
-.window-preview-item:hover {
-    background-color: rgba(30, 30, 30, 0.75);
+.window-preview-item:hover,
+.window-preview-item.peeking {
+    background-color: rgba(28, 36, 48, 0.85);
+    border-color: rgba(72, 202, 228, 0.55);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 14px rgba(72, 202, 228, 0.25);
+}
+
+.window-preview-item.peeking .preview-image {
+    border-color: rgba(72, 202, 228, 0.5);
+    filter: brightness(1.1);
 }
 
 .window-preview-container {
@@ -265,56 +273,114 @@
 .preview-title {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     font-size: 12px;
     color: white;
-    padding: 2px 0;
+    padding: 2px 2px 6px 2px;
+    height: 26px;
+    box-sizing: border-box;
 }
 
-.preview-title > *:first-child{
-  display: flex;
-  flex-direction: row;
-  align-items: center;
+.preview-title-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+    margin-right: 6px;
 }
 
-.preview-title .iconmanager-icon{
-  margin-right: 6px;
-  max-width: 16px;
-  aspect-ratio: 1/1;
-  object-fit: contain;
-  display: block;
+.preview-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 500;
 }
 
-.preview-image{
-  width: 100%;
-  height: auto;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: hidden;
-  background-color: rgba(0, 0, 0, 0.452);
-  border-radius: 6px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.preview-app-icon {
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    aspect-ratio: 1/1;
+    object-fit: contain;
+    display: block;
+    flex-shrink: 0;
 }
 
-.preview-image img{
-  width: 100%;
-  height: auto;
-  max-width: 180px;
-  max-height: 130px;
-  object-fit: contain;
-  display: block;
+.preview-title .close-icon {
+    cursor: pointer;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    padding: 3px 5px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s, color 0.15s;
+    flex-shrink: 0;
 }
 
-.preview-image:hover{
-  opacity: 70%;
-  scale: 90%;
-  cursor: pointer;
+.preview-title .close-icon:hover {
+    background-color: #e81123;
+    color: white;
 }
 
-/*.preview-image-father{
-  background-color: rgba(255, 255, 255, 0.192);
-  border-radius: 6px;
-}*/
+.preview-image {
+    width: 100%;
+    height: 108px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background-color: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: border-color 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.preview-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    display: block;
+}
+
+.preview-image:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+    filter: brightness(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.preview-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.06) 0%, rgba(0, 0, 0, 0.25) 100%);
+    color: rgba(255, 255, 255, 0.65);
+    user-select: none;
+}
+
+.preview-placeholder .placeholder-icon {
+    width: 32px;
+    height: 32px;
+    opacity: 0.85;
+}
+
+.preview-placeholder span {
+    font-size: 11px;
+    max-width: 85%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* ANIMACIÓN DE APARICIÓN (Manteniendo el centrado) */
 .preview-fade-enter-active,
@@ -333,10 +399,4 @@
 .preview-fade-leave-from {
     opacity: 1;
     transform: translateX(-50%) translateY(0) scale(1);
-}
-
-.preview-title .close-icon:hover{
-  background-color: #e66464;
-  padding: 0 2px;
-  border-radius: 3px;
 }

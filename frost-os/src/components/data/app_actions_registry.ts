@@ -7,13 +7,16 @@ export type ActionHandler = (ctx: MenuResolveCtx) => void | Promise<void>
 export const AppActionHandlers: Record<string, Record<string, ActionHandler>> = {
   discord: {
     'toggle-mute': discordActions.toggleMute,
+    'open': discordActions.open,
   },
 
   notepad: {
   },
 
   desktopmiku: {
+    "open": DesktopMikuActions.ViewConfig,
     "view-config": DesktopMikuActions.ViewConfig,
+    "toggle-pet": DesktopMikuActions.TogglePet,
     "close": DesktopMikuActions.ExitApp
   }
 }

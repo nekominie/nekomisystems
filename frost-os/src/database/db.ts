@@ -19,6 +19,12 @@ export interface AppState {
   isPinned: boolean;
   isPinnedStart: boolean;
   isPinnedDesktop: boolean;
+  overrides?: {
+    minimizeToTray?: boolean;
+    closeToTray?: boolean;
+    startInTray?: boolean;
+    startOnBoot?: boolean;
+  };
 }
 
 export interface DesktopIconState {

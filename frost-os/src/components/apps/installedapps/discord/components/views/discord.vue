@@ -1,10 +1,14 @@
 <!-- MiniDiscord.vue ✅ listo para copiar/pegar -->
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch, inject } from "vue";
 import { server_list, type Server, type Channel, type Message, type User, type UserStatus, type Activity } from "../../server_list.ts";
 import { playSound } from "../../../../../../shared.ts"
+import { useDiscordStore } from "../../store.ts"
+import { OS_KEY } from "../../../../../api/os_api.ts"
 
 // ---------- constants ----------
+const os = inject(OS_KEY);
+const discordStore = useDiscordStore("discord");
 const LOGGED_USER_ID = "me"; // ✅ SIEMPRE nekominie
 const emojis = ["🔥","✨","😂","🧠","🧃","🧯","🪟","🧊","⚡","🧩","🚀","🫠","💾","🫶","👀","✅","📌","🥶","💥","🧨"];
 
@@ -194,6 +198,7 @@ const usersGrouped = computed(() => {
 
 // ---------- lifecycle ----------
 onMounted(() => {
+  loadDiscordPreferences();
   activeChanId.value = textChannels.value[0]?.id ?? server.value.channels[0]?.id ?? "";
   scrollToBottom();
   simTimer = window.setInterval(() => {
@@ -513,7 +518,7 @@ function connectToVoice(channelId: string) {
     serverId: server.value.id,
     channelId,
     joinedAt: Date.now(),
-    muted: false,
+    muted: discordStore.state.muted,
     deafened: false,
   };
 
@@ -532,12 +537,18 @@ function disconnectVoice() {
 }
 
 function toggleMute() {
-  if (!voiceConn.value) return;
-  voiceConn.value.muted = !voiceConn.value.muted;
-  showToast(voiceConn.value.muted ? "🎙️ mute ON" : "🎙️ mute OFF");
-
-  playSound(voiceConn.value.muted ? "/discord/sounds/mute.mp3" : "/discord/sounds/unmute.mp3")
+  discordStore.toggleMute();
+  if (voiceConn.value) {
+    voiceConn.value.muted = discordStore.state.muted;
+  }
+  showToast(discordStore.state.muted ? "🎙️ mute ON" : "🎙️ mute OFF");
 }
+
+watch(() => discordStore.state.muted, (isMuted) => {
+  if (voiceConn.value) {
+    voiceConn.value.muted = isMuted;
+  }
+});
 
 function toggleDeafen() {
   if (!voiceConn.value) return;
@@ -648,15 +659,49 @@ function openFromTooltip() {
   openUserCard(hoverCard.userId);
 }
 
-// ---------- settings modal (UI only) ----------
+// ---------- settings modal ----------
 const settings = reactive({
   open: false,
-  section: "myAccount" as "myAccount" | "appearance" | "voice" | "privacy" | "about",
+  section: "myAccount" as "myAccount" | "appearance" | "voice" | "privacy" | "system" | "about",
 });
+
+const discordPrefs = reactive({
+  startOnBoot: true,
+  closeToTray: true,
+  startInTray: true,
+});
+
+function loadDiscordPreferences() {
+  const app = os?.state.apps.find(a => a.manifest.id === 'discord');
+  if (app) {
+    discordPrefs.startOnBoot = app.user.overrides?.startOnBoot ?? app.manifest.preferences?.startOnBoot ?? true;
+    discordPrefs.closeToTray = app.user.overrides?.closeToTray ?? app.manifest.preferences?.closeToTray ?? true;
+    discordPrefs.startInTray = app.user.overrides?.startInTray ?? app.manifest.preferences?.startInTray ?? true;
+  }
+}
+
+async function toggleStartOnBoot() {
+  discordPrefs.startOnBoot = !discordPrefs.startOnBoot;
+  await os?.updateAppPreferences('discord', { startOnBoot: discordPrefs.startOnBoot });
+  showToast(discordPrefs.startOnBoot ? "✅ Iniciar con el sistema activado" : "❌ Iniciar con el sistema desactivado");
+}
+
+async function toggleCloseToTray() {
+  discordPrefs.closeToTray = !discordPrefs.closeToTray;
+  await os?.updateAppPreferences('discord', { closeToTray: discordPrefs.closeToTray });
+  showToast(discordPrefs.closeToTray ? "✅ Minimizar a la bandeja activado" : "❌ Minimizar a la bandeja desactivado");
+}
+
+async function toggleStartInTray() {
+  discordPrefs.startInTray = !discordPrefs.startInTray;
+  await os?.updateAppPreferences('discord', { startInTray: discordPrefs.startInTray });
+  showToast(discordPrefs.startInTray ? "✅ Iniciar en segundo plano activado" : "❌ Iniciar en segundo plano desactivado");
+}
+
 function openSettings() {
+  loadDiscordPreferences();
   settings.open = true;
   settings.section = "myAccount";
-  showToast("⚙️ Ajustes (mock)");
 }
 function closeSettings() {
   settings.open = false;
@@ -1153,7 +1198,15 @@ function onViewerMouseUp() {
           </div>
 
           <div class="meBtns">
-            <button class="iconBtn" type="button" @click="toggleMute" :class="{ on: voiceConn?.muted }" title="Mute"><i class="bi bi-mic-fill"></i></button>
+            <button 
+              class="iconBtn micBtn" 
+              type="button" 
+              @click="toggleMute" 
+              :class="{ on: discordStore.state.muted, muted: discordStore.state.muted }" 
+              :title="discordStore.state.muted ? 'Desilenciar' : 'Silenciar'"
+            >
+              <i :class="discordStore.state.muted ? 'bi bi-mic-mute-fill' : 'bi bi-mic-fill'"></i>
+            </button>
             <button class="iconBtn" type="button" @click="toggleDeafen" :class="{ on: voiceConn?.deafened }" title="Deafen"><i class="bi bi-headphones"></i></button>
             <!-- ✅ ahora abre ajustes -->
             <button class="iconBtn" type="button" title="Settings" @click="openSettings"><i class="bi bi-gear-fill"></i></button>
@@ -1487,6 +1540,14 @@ function onViewerMouseUp() {
 
           <div class="setSep"></div>
 
+          <div class="setTitle" style="margin-top: 10px;">Ajustes de la app</div>
+
+          <button class="setItem" :class="{ on: settings.section==='system' }" type="button" @click="settings.section='system'">
+            <span class="setIcon">💻</span><span class="setTxt">Ajustes de Windows</span>
+          </button>
+
+          <div class="setSep"></div>
+
           <button class="setItem" :class="{ on: settings.section==='privacy' }" type="button" @click="settings.section='privacy'">
             <span class="setIcon">🛡️</span><span class="setTxt">Privacidad</span>
           </button>
@@ -1517,10 +1578,11 @@ function onViewerMouseUp() {
                 <span v-if="settings.section==='myAccount'">Mi cuenta</span>
                 <span v-else-if="settings.section==='appearance'">Apariencia</span>
                 <span v-else-if="settings.section==='voice'">Voz y video</span>
+                <span v-else-if="settings.section==='system'">Ajustes de Windows</span>
                 <span v-else-if="settings.section==='privacy'">Privacidad</span>
                 <span v-else>Acerca de</span>
               </div>
-              <div class="settingsHdrSub">UI mock • deja claras las secciones para que agregues más después</div>
+              <div class="settingsHdrSub">Configuración de la aplicación e integración del sistema</div>
             </div>
 
             <button class="settingsClose" type="button" @click="closeSettings" title="Cerrar">✕</button>
@@ -1609,6 +1671,62 @@ function onViewerMouseUp() {
                 <div class="setRow2">
                   <button class="setBtn" type="button" @click="showToast('🧪 test mic (mock)')">Probar mic</button>
                   <button class="setBtn ghost" type="button" @click="showToast('🔈 test audio (mock)')">Probar audio</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="settings.section==='system'" class="setPanel">
+              <div class="setCard">
+                <div class="setCardTitle">Comportamiento al iniciar el sistema</div>
+                <div class="toggleRow">
+                  <div class="toggleTxt">
+                    <div class="toggleName">Abrir Discord</div>
+                    <div class="toggleDesc">Inicia Discord automáticamente cuando arranca Frost OS.</div>
+                  </div>
+                  <button
+                    class="toggle"
+                    :class="{ off: !discordPrefs.startOnBoot }"
+                    type="button"
+                    title="Alternar inicio automático"
+                    @click="toggleStartOnBoot"
+                  >
+                    <span class="knob"></span>
+                  </button>
+                </div>
+
+                <div class="toggleRow" :style="{ opacity: discordPrefs.startOnBoot ? 1 : 0.45, pointerEvents: discordPrefs.startOnBoot ? 'auto' : 'none', transition: 'opacity 0.2s' }">
+                  <div class="toggleTxt">
+                    <div class="toggleName">Iniciar minimizado</div>
+                    <div class="toggleDesc">Inicia Discord en la bandeja del sistema sin abrir la ventana al encender.</div>
+                  </div>
+                  <button
+                    class="toggle"
+                    :class="{ off: !discordPrefs.startInTray }"
+                    type="button"
+                    title="Alternar inicio minimizado"
+                    @click="toggleStartInTray"
+                  >
+                    <span class="knob"></span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="setCard">
+                <div class="setCardTitle">Comportamiento al cerrar la ventana</div>
+                <div class="toggleRow">
+                  <div class="toggleTxt">
+                    <div class="toggleName">Minimizar a la bandeja</div>
+                    <div class="toggleDesc">Al presionar la 'X' de la ventana, Discord continuará ejecutándose en la bandeja del sistema en lugar de cerrarse por completo.</div>
+                  </div>
+                  <button
+                    class="toggle"
+                    :class="{ off: !discordPrefs.closeToTray }"
+                    type="button"
+                    title="Alternar minimizar a la bandeja"
+                    @click="toggleCloseToTray"
+                  >
+                    <span class="knob"></span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2047,6 +2165,18 @@ function onViewerMouseUp() {
 }
 
 .iconBtn:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.12); }
+
+.iconBtn.muted,
+.iconBtn.muted i,
+.iconBtn.on,
+.iconBtn.on i {
+  color: #ed4245 !important;
+}
+
+.iconBtn.muted:hover,
+.iconBtn.on:hover {
+  background: rgba(237, 66, 69, 0.15) !important;
+}
 
 /* chat */
 .chat{ display:flex; flex-direction:column; min-width:0; background: var(--bg); flex: 1; }

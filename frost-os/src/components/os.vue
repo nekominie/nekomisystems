@@ -7,14 +7,38 @@ import { OS_KEY } from './api/os_api'
 import Taskbar from './os/taskbar.vue'
 import Desktop from './os/dekstop.vue'
 import ContextMenu from './os/context_menu/context_menu.vue'
+import LockScreen from './os/lock/lock_screen.vue'
+import { useLockStore } from './os/lock/lock_store'
+
+const emit = defineEmits<{
+    (e: 'shutdown'): void
+}>()
 
 const os = processInstructions()
 provide(OS_KEY, os)
 
+const lockStore = useLockStore()
+
 const preventDefaulContextMenu = (e: MouseEvent) => e.preventDefault()
 
-onMounted(() => window.addEventListener('contextmenu', preventDefaulContextMenu))
-onUnmounted(() => window.removeEventListener('contextmenu', preventDefaulContextMenu))
+const handleGlobalLockShortcut = (e: KeyboardEvent) => {
+    // Atajo Ctrl + Alt + L o Alt + L para bloquear la pantalla
+    if ((e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l') || (e.altKey && e.key.toLowerCase() === 'l')) {
+        e.preventDefault()
+        lockStore.lock()
+    }
+}
+
+onMounted(() => {
+    window.addEventListener('contextmenu', preventDefaulContextMenu)
+    window.addEventListener('keydown', handleGlobalLockShortcut)
+    lockStore.loadSettings()
+})
+
+onUnmounted(() => {
+    window.removeEventListener('contextmenu', preventDefaulContextMenu)
+    window.removeEventListener('keydown', handleGlobalLockShortcut)
+})
 
 </script>
 
@@ -37,10 +61,18 @@ onUnmounted(() => window.removeEventListener('contextmenu', preventDefaulContext
         <Desktop/>
 
         <Taskbar
-            @shutdown="$emit('shutdown')"
+            @shutdown="emit('shutdown')"
         />
 
         <ContextMenu />
+
+        <Transition name="lock-slide">
+            <LockScreen
+                v-if="lockStore.isLocked"
+                @shutdown="emit('shutdown')"
+            />
+        </Transition>
     </div>
 </template>
+
 

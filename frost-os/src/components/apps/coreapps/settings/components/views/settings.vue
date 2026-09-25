@@ -1,8 +1,66 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref } from "vue";
 import { useSettingsStore } from "../../store";
+import { useLockStore } from "../../../../../os/lock/lock_store";
 
 const settings = useSettingsStore();
+const lockStore = useLockStore();
+
+const newPinInput = ref("");
+const confirmPinInput = ref("");
+const pinSaveSuccess = ref(false);
+const pinSaveError = ref("");
+
+const toggleLockOnStartup = async () => {
+  await lockStore.saveSettings({ lockOnStartup: !lockStore.lockOnStartup });
+};
+
+const toggleRequirePin = async () => {
+  await lockStore.saveSettings({ requirePin: !lockStore.requirePin });
+};
+
+const handleTimeoutChange = async (event: Event) => {
+  const val = Number((event.target as HTMLSelectElement).value);
+  await lockStore.saveSettings({ timeoutMinutes: val });
+};
+
+const handleLockBgModeChange = async (mode: 'desktop' | 'custom') => {
+  await lockStore.saveSettings({ lockBgMode: mode });
+};
+
+const handleCustomLockBgUpload = async (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  await lockStore.saveSettings({ customBgUrl: url, lockBgMode: 'custom' });
+};
+
+const saveNewPin = async () => {
+  pinSaveError.value = "";
+  pinSaveSuccess.value = false;
+
+  if (!newPinInput.value) {
+    pinSaveError.value = "Ingresa un PIN válido";
+    return;
+  }
+  if (newPinInput.value !== confirmPinInput.value) {
+    pinSaveError.value = "Los PINs no coinciden";
+    return;
+  }
+
+  await lockStore.saveSettings({ pin: newPinInput.value });
+  pinSaveSuccess.value = true;
+  newPinInput.value = "";
+  confirmPinInput.value = "";
+
+  setTimeout(() => {
+    pinSaveSuccess.value = false;
+  }, 3000);
+};
+
+const lockNow = () => {
+  lockStore.lock();
+};
 
 const handleWallpaperChange = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
@@ -31,6 +89,7 @@ type SettingsSection =
   | "bluetooth"
   | "network"
   | "personalization"
+  | "lockscreen"
   | "apps"
   | "accounts"
   | "update";
@@ -50,6 +109,7 @@ const sections = [
   { id: "bluetooth", label: "Bluetooth y Dispositivos", icon: "bi-bluetooth" },
   { id: "network", label: "Red e Internet", icon: "bi-wifi" },
   { id: "personalization", label: "Personalización", icon: "bi-palette2" },
+  { id: "lockscreen", label: "Pantalla de bloqueo", icon: "bi-lock" },
   { id: "apps", label: "Apps", icon: "bi-grid" },
   { id: "accounts", label: "Cuentas", icon: "bi-person-circle" },
   { id: "update", label: "Actualización", icon: "bi-arrow-repeat" },
@@ -255,6 +315,168 @@ const filteredSections = computed(() => {
             <input type="range" v-model="settings.accentColor">
 
 
+          </article>
+        </div>
+      </section>
+
+      <section v-else-if="activeSection === 'lockscreen'" class="section-content">
+        <div class="grid two">
+          <!-- Tarjeta 1: Comportamiento y Persistencia -->
+          <article class="setting-card glass-card">
+            <h3><i class="bi bi-shield-lock"></i> Comportamiento de Bloqueo</h3>
+            <p class="sub">Configura la persistencia y el inicio del sistema</p>
+
+            <div class="option-row">
+              <div class="option-info">
+                <span>Bloquear al iniciar el sistema</span>
+                <small class="option-desc">Exigir desbloqueo al encender o recargar Frost OS</small>
+              </div>
+              <div 
+                class="interactive-switch" 
+                :class="{ on: lockStore.lockOnStartup }" 
+                @click="toggleLockOnStartup"
+              ></div>
+            </div>
+
+            <div class="option-row">
+              <div class="option-info">
+                <span>Requerir PIN para desbloquear</span>
+                <small class="option-desc">Solicitar código de seguridad en lugar de clic simple</small>
+              </div>
+              <div 
+                class="interactive-switch" 
+                :class="{ on: lockStore.requirePin }" 
+                @click="toggleRequirePin"
+              ></div>
+            </div>
+
+            <div class="option-row">
+              <div class="option-info">
+                <span>Bloqueo por inactividad</span>
+                <small class="option-desc">Tiempo antes de bloquear la pantalla automáticamente</small>
+              </div>
+              <select 
+                class="setting-select" 
+                :value="lockStore.timeoutMinutes" 
+                @change="handleTimeoutChange"
+              >
+                <option :value="0">Nunca</option>
+                <option :value="1">1 minuto</option>
+                <option :value="3">3 minutos</option>
+                <option :value="5">5 minutos</option>
+                <option :value="15">15 minutos</option>
+                <option :value="30">30 minutos</option>
+              </select>
+            </div>
+
+            <div class="lock-test-action" style="margin-top: 14px;">
+              <button class="lock-now-btn" @click="lockNow">
+                <i class="bi bi-lock-fill"></i>
+                <span>Bloquear el sistema ahora</span>
+              </button>
+            </div>
+          </article>
+
+          <!-- Tarjeta 2: Configuración de PIN y Seguridad -->
+          <article class="setting-card glass-card">
+            <h3><i class="bi bi-key"></i> Código PIN de Acceso</h3>
+            <p class="sub">Establece tu código de acceso para desbloquear</p>
+
+            <div class="pin-config-box">
+              <div class="current-pin-indicator">
+                <span>Estado del PIN:</span>
+                <span class="state-pill" :class="{ ok: lockStore.requirePin }">
+                  {{ lockStore.requirePin ? 'Activo' : 'Desactivado' }}
+                </span>
+              </div>
+
+              <div class="pin-inputs-row">
+                <label>Nuevo PIN:</label>
+                <input 
+                  type="password" 
+                  class="setting-input" 
+                  v-model="newPinInput" 
+                  placeholder="Ej. 1234" 
+                  maxlength="20"
+                />
+              </div>
+
+              <div class="pin-inputs-row">
+                <label>Confirmar PIN:</label>
+                <input 
+                  type="password" 
+                  class="setting-input" 
+                  v-model="confirmPinInput" 
+                  placeholder="Repetir PIN" 
+                  maxlength="20"
+                />
+              </div>
+
+              <div v-if="pinSaveError" class="pin-feedback-msg error">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>{{ pinSaveError }}</span>
+              </div>
+
+              <div v-if="pinSaveSuccess" class="pin-feedback-msg success">
+                <i class="bi bi-check-circle"></i>
+                <span>¡PIN actualizado correctamente!</span>
+              </div>
+
+              <button class="save-pin-btn" @click="saveNewPin">
+                <i class="bi bi-shield-check"></i>
+                <span>Guardar nuevo PIN</span>
+              </button>
+            </div>
+          </article>
+
+          <!-- Tarjeta 3: Fondo de Pantalla de Bloqueo -->
+          <article class="setting-card glass-card" style="grid-column: span 2;">
+            <h3><i class="bi bi-image"></i> Fondo de la Pantalla de Bloqueo</h3>
+            <p class="sub">Elige la imagen para el fondo de bloqueo ambiental</p>
+
+            <div class="lock-bg-options">
+              <label class="lock-bg-radio" :class="{ selected: lockStore.lockBgMode === 'desktop' }">
+                <input 
+                  type="radio" 
+                  name="lockBgMode" 
+                  value="desktop" 
+                  :checked="lockStore.lockBgMode === 'desktop'"
+                  @change="handleLockBgModeChange('desktop')"
+                />
+                <div class="radio-content">
+                  <strong>Usar fondo de escritorio actual</strong>
+                  <small>La pantalla de bloqueo coincidirá automáticamente con tu fondo</small>
+                </div>
+              </label>
+
+              <label class="lock-bg-radio" :class="{ selected: lockStore.lockBgMode === 'custom' }">
+                <input 
+                  type="radio" 
+                  name="lockBgMode" 
+                  value="custom" 
+                  :checked="lockStore.lockBgMode === 'custom'"
+                  @change="handleLockBgModeChange('custom')"
+                />
+                <div class="radio-content">
+                  <strong>Fondo personalizado</strong>
+                  <small>Utiliza una imagen independiente para la pantalla de bloqueo</small>
+                </div>
+              </label>
+            </div>
+
+            <div v-if="lockStore.lockBgMode === 'custom'" class="custom-lock-bg-controls" style="margin-top: 12px;">
+              <input 
+                id="custom-lock-upload" 
+                type="file" 
+                accept="image/*" 
+                @change="handleCustomLockBgUpload"
+                style="display: none;"
+              />
+              <label for="custom-lock-upload" class="wallpaper-upload-btn">
+                <i class="bi bi-upload"></i>
+                <span>Seleccionar imagen para pantalla de bloqueo</span>
+              </label>
+            </div>
           </article>
         </div>
       </section>
@@ -782,5 +1004,217 @@ const filteredSections = computed(() => {
   .wallpaper-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* --- Controles de Pantalla de Bloqueo --- */
+.interactive-switch {
+  width: 42px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.interactive-switch::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.interactive-switch.on {
+  background: #3b82f6;
+  border-color: #60a5fa;
+}
+
+.interactive-switch.on::before {
+  left: 22px;
+}
+
+.option-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.option-desc {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.setting-select {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #ffffff;
+  padding: 5px 10px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.setting-select option {
+  background: #1e2330;
+  color: #ffffff;
+}
+
+.setting-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: #ffffff;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.setting-input:focus {
+  border-color: #60a5fa;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lock-now-btn {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.45) 0%, rgba(37, 99, 235, 0.35) 100%);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lock-now-btn:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.6) 0%, rgba(37, 99, 235, 0.5) 100%);
+  border-color: rgba(96, 165, 250, 0.7);
+  transform: translateY(-1px);
+}
+
+.pin-config-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.current-pin-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.pin-inputs-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pin-inputs-row label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.save-pin-btn {
+  margin-top: 4px;
+  padding: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.save-pin-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.pin-feedback-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.pin-feedback-msg.error {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.pin-feedback-msg.success {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.lock-bg-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lock-bg-radio {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lock-bg-radio:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lock-bg-radio.selected {
+  border-color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.lock-bg-radio .radio-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lock-bg-radio .radio-content strong {
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.lock-bg-radio .radio-content small {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
 }
 </style>

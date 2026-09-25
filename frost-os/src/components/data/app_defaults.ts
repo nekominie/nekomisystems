@@ -13,6 +13,7 @@ export const DEFAULT_MANIFEST: Partial<Manifest> = {
     minimizeToTray: false,
     closeToTray: false,
     startInTray: false,
+    startOnBoot: false,
   },
   window: {
     defaultSize: { width: 600, height: 400 },

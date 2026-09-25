@@ -1,6 +1,6 @@
 import { reactive, nextTick } from 'vue'
 
-import type { App, Manifest, UserSettings, RuntimeStats, WindowInstance } from '../data/app'
+import type { App, Manifest, UserSettings, RuntimeStats, WindowInstance, SnapTarget, SnapState } from '../data/app'
 import { createApp } from '../data/create_app'
 
 import { InstalledApps } from '../data/installedapps'
@@ -17,13 +17,16 @@ import { db } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
 import { useSettingsStore } from '../apps/coreapps/settings/store.ts'
+import { useLockStore } from './lock/lock_store'
 
 export const state = reactive({
     apps: [] as App[],
     windows: [] as WindowInstance[],
     snippets: [] as App[],
     topZ: 100,
-    lastAction: 'window-spawn'
+    lastAction: 'window-spawn',
+    activeSnapPreview: null as SnapTarget | null,
+    peekWindowId: null as string | null
 })
 
 let initialized = false
@@ -43,12 +46,13 @@ async function init() {
 
     startStatsSampler(state)
 
-    // Inicialización de tray apps
+    // Inicialización de apps al arrancar el sistema
     for (const app of state.apps) {
-            const canUseTray = app.manifest.capabilities?.tray?.canUse;
-            const shouldStartInTray = app.user.overrides?.startInTray ?? app.manifest.preferences?.startInTray;
+            const canUseTray = !!app.manifest.capabilities?.tray?.canUse;
+            const startOnBoot = app.user.overrides?.startOnBoot ?? app.manifest.preferences?.startOnBoot ?? false;
+            const shouldStartInTray = app.user.overrides?.startInTray ?? app.manifest.preferences?.startInTray ?? false;
 
-            if (shouldStartInTray && canUseTray) {
+            if (startOnBoot && canUseTray && shouldStartInTray) {
 
                 app.runtime.isRunning = true;
                 app.runtime.isInTray = true;
@@ -72,6 +76,9 @@ async function init() {
                         isMinimized: true 
                     });
                 }
+            } else if (startOnBoot && !shouldStartInTray) {
+                // Iniciar abierta normalmente al arrancar
+                launchApp(app.manifest.id);
             }
     }
 
@@ -92,6 +99,7 @@ async function init() {
                 isPinned: r.isPinned,
                 isPinnedStart: r.isPinnedStart,
                 isPinnedDesktop: r.isPinnedDesktop,
+                overrides: (r as any).overrides || {}
             })
         }
         return map
@@ -103,6 +111,23 @@ async function init() {
 const createWindow = (appId: string, options: any = {}, parentWinId?: string) => {
         const app = state.apps.find(a => a.manifest.id === appId);
         if (!app) return null;
+
+        // Si la aplicación solo permite una instancia única (singleInstance)
+        const targetView = options.view || 'Main';
+        const isSingleInstance = !!app.manifest.capabilities?.singleInstance;
+
+        if (isSingleInstance) {
+            const existingWin = state.windows.find(
+                w => w.appId === appId && (w.view || 'Main') === targetView
+            );
+            if (existingWin) {
+                if (existingWin.isMinimized) {
+                    existingWin.isMinimized = false;
+                }
+                bringToFront(existingWin.id);
+                return existingWin;
+            }
+        }
 
         // 1. Determinar el PID
         let pid: string;
@@ -146,11 +171,17 @@ const createWindow = (appId: string, options: any = {}, parentWinId?: string) =>
             position: initialPosition,
             size: finalSize, // <--- Ahora sí usa el tamaño procesado
             params: options.params || {}, // <--- Guardamos los params limpios
-            tempSettings: undefined
+            tempSettings: undefined,
+            snapState: null
         };
 
         state.windows.push(newWindow);
         bringToFront(winId);
+
+        // Pre-captura en segundo plano cuando la app termina de montarse
+        setTimeout(() => {
+            updatePreviewImage(winId);
+        }, 800);
         
         return newWindow;
 }
@@ -163,7 +194,8 @@ const togglePinApp = async (id: string) => {
                 id: id, 
                 isPinnedStart: app.user.isPinnedStart,
                 isPinned: app.user.isPinned,
-                isPinnedDesktop: app.user.isPinnedDesktop 
+                isPinnedDesktop: app.user.isPinnedDesktop,
+                overrides: app.user.overrides ? { ...app.user.overrides } : undefined
             })
         }
 }
@@ -173,12 +205,31 @@ const togglePinAppStart = async (id: string) => {
         if(app){
             app.user.isPinnedStart = !app.user.isPinnedStart
             await db.appSettings.put({ 
-                id: id,
+                id: id, 
                 isPinned: app.user.isPinned,
                 isPinnedStart: app.user.isPinnedStart,
-                isPinnedDesktop: app.user.isPinnedDesktop 
+                isPinnedDesktop: app.user.isPinnedDesktop,
+                overrides: app.user.overrides ? { ...app.user.overrides } : undefined
             })
         }
+}
+
+const updateAppPreferences = async (appId: string, overrides: Partial<NonNullable<UserSettings['overrides']>>) => {
+        const app = state.apps.find(a => a.manifest.id === appId);
+        if (!app) return;
+
+        if (!app.user.overrides) {
+            app.user.overrides = {};
+        }
+        Object.assign(app.user.overrides, overrides);
+
+        await db.appSettings.put({ 
+            id: appId, 
+            isPinned: app.user.isPinned,
+            isPinnedStart: app.user.isPinnedStart,
+            isPinnedDesktop: app.user.isPinnedDesktop,
+            overrides: { ...app.user.overrides }
+        });
 }
 
 const launchApp = async (appId: string, params = {}, parentWinId?: string) => {
@@ -199,6 +250,9 @@ const launchApp = async (appId: string, params = {}, parentWinId?: string) => {
 }
 
 const closeWindow = (winId: string) => {
+        if (state.peekWindowId === winId) {
+            state.peekWindowId = null;
+        }
         const win = state.windows.find(w => w.id === winId);
         if (!win) return;
 
@@ -218,30 +272,60 @@ const checkProcessTermination = (appId: string) => {
         const stillHasWindows = state.windows.some(w => w.appId === appId);
         if (!stillHasWindows) {
             const app = state.apps.find(a => a.manifest.id === appId);
-            if (app) app.runtime.isRunning = false;
+            if (app) {
+                const canUseTray = !!app.manifest.capabilities?.tray?.canUse;
+                const closeToTray = app.user.overrides?.closeToTray ?? app.manifest.preferences?.closeToTray ?? false;
+
+                if (canUseTray && closeToTray) {
+                    // Mantener el proceso activo en la bandeja del sistema
+                    app.runtime.isRunning = true;
+                    app.runtime.isInTray = true;
+                } else {
+                    app.runtime.isRunning = false;
+                    app.runtime.isInTray = false;
+                }
+            }
         }
 }
 
 const closeApp = (appId: string) => {
-        state.windows = state.windows.filter(w => w.appId !== appId)
-        const app = state.apps.find(a => a.manifest.id === appId)
-        if (app) app.runtime.isRunning = false
+        state.windows = state.windows.filter(w => w.appId !== appId);
+        const app = state.apps.find(a => a.manifest.id === appId);
+        if (app) {
+            app.runtime.isRunning = false;
+            app.runtime.isInTray = false;
+        }
 }
+
+let blurCaptureTimeout: number | null = null
 
 const bringToFront = (winId: string) => {
         const win = state.windows.find(w => w.id === winId)
         if (!win) return
+
+        // Identificar la ventana que estaba activa previamente para refrescar su captura en segundo plano
+        const previousFocusedWin = state.windows.find(w => w.isFocused && w.id !== winId && !w.isMinimized)
 
         state.windows.forEach(w => w.isFocused = false)
         state.topZ++
         win.zIndex = state.topZ
         win.isFocused = true
         win.isMinimized = false
+
+        if (previousFocusedWin) {
+            if (blurCaptureTimeout) clearTimeout(blurCaptureTimeout)
+            blurCaptureTimeout = window.setTimeout(() => {
+                updatePreviewImage(previousFocusedWin.id).catch(() => {})
+            }, 300)
+        }
 }
 
 const minimizeWindow = async (winId: string) => {
         const win = state.windows.find(w => w.id === winId)
         if (win) {
+            // Capturar la imagen antes de ocultar la ventana en el DOM
+            updatePreviewImage(winId, true).catch(() => {})
+
             state.lastAction = 'window-minimize'
             await nextTick()
             win.isMinimized = true
@@ -260,14 +344,17 @@ const maximizeWindow = (winId: string) => {
 
         if (!win.isMaximized) {
             // 1. GUARDAR: Copiamos el estado ACTIVO al respaldo (tempSettings)
-            win.tempSettings = {
-                position: { ...win.position },
-                size: { ...win.size }
-            };
+            if (!win.tempSettings) {
+                win.tempSettings = {
+                    position: { ...win.position },
+                    size: { ...win.size }
+                };
+            }
+
+            win.snapState = null;
 
             // 2. MAXIMIZAR: Forzamos el estado activo a "pantalla completa"
             win.position = { x: 0, y: 0 };
-            // Ajusta el '48' a la altura real de tu taskbar
             win.size = { width: window.innerWidth, height: window.innerHeight - 48 }; 
             
             win.isMaximized = true;
@@ -280,8 +367,75 @@ const maximizeWindow = (winId: string) => {
 
             // 2. LIMPIAR: Marcamos como no maximizado y borramos el respaldo
             win.isMaximized = false;
+            win.snapState = null;
             win.tempSettings = undefined; 
         }
+}
+
+const snapWindow = (winId: string, target: SnapTarget) => {
+        const win = state.windows.find(w => w.id === winId);
+        if (!win) return;
+
+        if (target === 'maximize') {
+            if (!win.isMaximized) {
+                maximizeWindow(winId);
+            }
+            return;
+        }
+
+        // Si la ventana no tiene respaldo previo (estaba flotando), respaldamos su posición/tamaño
+        if (!win.isMaximized && !win.snapState && !win.tempSettings) {
+            win.tempSettings = {
+                position: { ...win.position },
+                size: { ...win.size }
+            };
+        }
+
+        win.isMaximized = false;
+        win.snapState = target;
+
+        const taskbarH = 48;
+        const totalW = window.innerWidth;
+        const totalH = window.innerHeight - taskbarH;
+        const halfW = Math.round(totalW / 2);
+        const halfH = Math.round(totalH / 2);
+
+        switch (target) {
+            case 'left':
+                win.position = { x: 0, y: 0 };
+                win.size = { width: halfW, height: totalH };
+                break;
+            case 'right':
+                win.position = { x: halfW, y: 0 };
+                win.size = { width: totalW - halfW, height: totalH };
+                break;
+            case 'top-left':
+                win.position = { x: 0, y: 0 };
+                win.size = { width: halfW, height: halfH };
+                break;
+            case 'bottom-left':
+                win.position = { x: 0, y: halfH };
+                win.size = { width: halfW, height: totalH - halfH };
+                break;
+            case 'top-right':
+                win.position = { x: halfW, y: 0 };
+                win.size = { width: totalW - halfW, height: halfH };
+                break;
+            case 'bottom-right':
+                win.position = { x: halfW, y: halfH };
+                win.size = { width: totalW - halfW, height: totalH - halfH };
+                break;
+        }
+
+        bringToFront(winId);
+}
+
+const setSnapPreview = (target: SnapTarget | null) => {
+        state.activeSnapPreview = target;
+}
+
+const setPeekWindow = (winId: string | null) => {
+        state.peekWindowId = winId;
 }
 
 // Esta función es para cuando arrastras el header estando maximizado
@@ -304,23 +458,48 @@ const unmaximizeAtPosition = (winId: string, newX: number) => {
         };
 }
 
-const updatePreviewImage = async (winId: string) => {
+const isCapturing = new Set<string>();
+
+const updatePreviewImage = async (winId: string, force = false) => {
         const win = state.windows.find(w => w.id === winId);
-        if (!win) return; // Ahora winId será win-xyz, no spotify
+        if (!win) return;
+
+        const now = Date.now();
+        // Si ya cuenta con preview reciente (menos de 6 segundos) y no se fuerza, omitir para rendimiento instantáneo
+        if (!force && win.previewImg && win.lastPreviewUpdate && (now - win.lastPreviewUpdate < 6000)) {
+            return;
+        }
+
+        if (isCapturing.has(winId)) return;
 
         const el = document.getElementById(`window-content-${winId}`);
         if (!el || win.isMinimized) return;
 
+        isCapturing.add(winId);
+
         try {
+            // Ceder el hilo de ejecución para que la UI responda sin congelarse
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            // Escala dinámica para mantener la imagen cerca de los 200px de ancho y no procesar píxeles de más
+            const elWidth = el.offsetWidth || 800;
+            const dynamicScale = Math.min(0.25, Math.max(0.12, 200 / elWidth));
+
             const canvas = await html2canvas(el, {
                 backgroundColor: null,
-                scale: 0.3,
+                scale: dynamicScale,
                 logging: false,
-                useCORS: true
+                useCORS: true,
+                ignoreElements: (element) => {
+                    return element.classList?.contains('cursor-shield') || element.tagName === 'IFRAME';
+                }
             });
-            win.previewImg = canvas.toDataURL('image/webp', 0.1);
+            win.previewImg = canvas.toDataURL('image/webp', 0.5);
+            win.lastPreviewUpdate = Date.now();
         } catch (err) {
             console.error("Error capturando preview:", err);
+        } finally {
+            isCapturing.delete(winId);
         }
 }
 
@@ -368,13 +547,19 @@ export const processInstructions = () => {
         createWindow: (id: string, params = {}, parentWinId?: string) => createWindow(id, params, parentWinId),
         minimizeWindow: (winId: string) => minimizeWindow(winId), 
         maximizeWindow: (winId: string) => maximizeWindow(winId), 
+        snapWindow: (winId: string, target: SnapTarget) => snapWindow(winId, target),
+        setSnapPreview: (target: SnapTarget | null) => setSnapPreview(target),
+        setPeekWindow: (winId: string | null) => setPeekWindow(winId),
         togglePinApp: (id: string) => togglePinApp(id), 
         togglePinAppStart: (id: string) => togglePinAppStart(id),
         showSnippet: (id: string) => showSnippet(id),
         hideSnippet: (id: string) => hideSnippet(id),
         unmountSnippet: (id: string) => unmountSnippet(id),
         measure: <T>(id: string, fn: () => T | Promise<T>) => measure(id, fn),
-        updatePreviewImage: (winId: string) => updatePreviewImage(winId)
+        updatePreviewImage: (winId: string, force = false) => updatePreviewImage(winId, force),
+        lockSystem: () => useLockStore().lock(),
+        unlockSystem: () => useLockStore().unlock(),
+        updateAppPreferences: (appId: string, overrides: any) => updateAppPreferences(appId, overrides)
     }
 }
 

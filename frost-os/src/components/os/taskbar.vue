@@ -96,6 +96,12 @@ const handleMouseEnter = (appId: string, event: MouseEvent) => {
 
     // 2. Ejecutamos la lógica de previews
     const appWindows = os.state.windows.filter(w => w.appId === appId);
+    
+    // Evitar que el contenedor de preview se desborde fuera de la pantalla
+    const approxWidth = Math.max(1, appWindows.length) * 212;
+    const halfWidth = Math.max(110, approxWidth / 2);
+    const clampedLeft = Math.max(halfWidth + 12, Math.min(window.innerWidth - halfWidth - 12, centerLeft));
+
     appWindows.forEach(win => {
         os.updatePreviewImage(win.id);
     });
@@ -111,30 +117,95 @@ const handleMouseEnter = (appId: string, event: MouseEvent) => {
         // Si ya hay uno abierto, cambiamos al instante
         if (showTimeout) clearTimeout(showTimeout);
         
-        previewPositionStyle.value = { left: `${centerLeft}px` };
+        previewPositionStyle.value = { left: `${clampedLeft}px` };
         hoveredAppId.value = appId;
     } else {
-        // Si no hay nada abierto, iniciamos el delay
+        // Si no hay nada abierto, iniciamos el delay ágil estilo Windows 11 (180ms)
         if (showTimeout) clearTimeout(showTimeout);
         
         showTimeout = window.setTimeout(() => {
-            // Usamos la variable capturada arriba (centerLeft)
-            // Ya no dependemos de 'event' aquí adentro
-            previewPositionStyle.value = { left: `${centerLeft}px` };
+            previewPositionStyle.value = { left: `${clampedLeft}px` };
             hoveredAppId.value = appId;
-        }, 500);
+        }, 180);
+    }
+}
+
+let peekTimeout: number | null = null
+
+const handlePreviewItemMouseEnter = (winId: string) => {
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+
+    if (os.state.peekWindowId) {
+        os.setPeekWindow(winId)
+    } else {
+        peekTimeout = window.setTimeout(() => {
+            os.setPeekWindow(winId)
+        }, 60)
+    }
+}
+
+const handlePreviewItemMouseLeave = (winId: string) => {
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+
+    peekTimeout = window.setTimeout(() => {
+        if (os.state.peekWindowId === winId) {
+            os.setPeekWindow(null)
+        }
+    }, 50)
+}
+
+const closePreviewWindow = (winId: string) => {
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+    if (os.state.peekWindowId === winId) {
+        os.setPeekWindow(null)
+    }
+    os.closeWindow(winId)
+}
+
+const handlePreviewContainerEnter = () => {
+    if (hideTimeout) {
+        clearTimeout(hideTimeout)
+        hideTimeout = null
     }
 }
 
 const handleMouseLeave = () => {
     if (showTimeout) {
         clearTimeout(showTimeout)
-        showTimeout = null;
+        showTimeout = null
     }
 
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+    os.setPeekWindow(null)
+
     hideTimeout = window.setTimeout(() => {
-        hoveredAppId.value = null;
-    }, 150)
+        hoveredAppId.value = null
+        os.setPeekWindow(null)
+    }, 200)
+}
+
+const activatePreviewWindow = (winId: string) => {
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+    os.setPeekWindow(null)
+    hoveredAppId.value = null
+    if (showTimeout) clearTimeout(showTimeout)
+    if (hideTimeout) clearTimeout(hideTimeout)
+    os.bringToFront(winId)
 }
 
 const toggleStartMenu = () => {
@@ -159,6 +230,12 @@ onMounted(() => {
 })
 
 const onGlobalMouseDown = (e: MouseEvent) => {
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+    os.setPeekWindow(null)
+
     const isClickInsideMenu = (e.target as HTMLElement).closest('.start-menu')
     const isClickInsideAppFinder = (e.target as HTMLElement).closest('.app-finder')
     const isClickOnOrb = (e.target as HTMLElement).closest('.orb')
@@ -169,6 +246,8 @@ const onGlobalMouseDown = (e: MouseEvent) => {
 
 onUnmounted(() => {
     clearInterval(timer)
+    if (peekTimeout) clearTimeout(peekTimeout)
+    os.setPeekWindow(null)
     window.removeEventListener('mousedown', onGlobalMouseDown)
 })
 
@@ -179,6 +258,8 @@ const viewAppFinder = () => {
 
 const handleIconClick = (id: string) => {
     if (showTimeout) clearTimeout(showTimeout)
+    if (peekTimeout) clearTimeout(peekTimeout)
+    os.setPeekWindow(null)
     hoveredAppId.value = null
 
     // Buscamos todas las ventanas de esta app
@@ -281,7 +362,7 @@ const isAppFocused = (appId: string) => {
         <div
             v-if="hoveredAppId && hoveredAppWindows.length > 0"
             class="window-preview-container"
-            @mouseenter="handleMouseEnter(hoveredAppId, $event)"
+            @mouseenter="handlePreviewContainerEnter"
             @mouseleave="handleMouseLeave"
             :style="previewPositionStyle"
         >
@@ -289,15 +370,24 @@ const isAppFocused = (appId: string) => {
                 v-for="win in hoveredAppWindows" 
                 :key="win.id" 
                 class="window-preview-item"
+                :class="{ 'peeking': os.state.peekWindowId === win.id }"
+                @mouseenter="handlePreviewItemMouseEnter(win.id)"
+                @mouseleave="handlePreviewItemMouseLeave(win.id)"
             >
                 <div class="preview-title">
-                    <span>{{ win.title }}</span>
-                    <i class="close-icon bi-x-lg" @click.stop="os.closeWindow(win.id)"></i>
+                    <div class="preview-title-left">
+                        <IconManager :id="win.appId" class="preview-app-icon" />
+                        <span class="preview-title-text">{{ win.title }}</span>
+                    </div>
+                    <i class="close-icon bi-x-lg" title="Cerrar ventana" @click.stop="closePreviewWindow(win.id)"></i>
                 </div>
                 
-                <div class="preview-image" @click="os.bringToFront(win.id)">
-                    <img :src="win.previewImg" v-if="win.previewImg" />
-                    <div v-else class="preview-placeholder">No content</div>
+                <div class="preview-image" @click="activatePreviewWindow(win.id)">
+                    <img :src="win.previewImg" v-if="win.previewImg" alt="Vista previa" />
+                    <div v-else class="preview-placeholder">
+                        <IconManager :id="win.appId" class="placeholder-icon" />
+                        <span>{{ win.title }}</span>
+                    </div>
                 </div>
             </div>
         </div>

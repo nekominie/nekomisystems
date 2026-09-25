@@ -32,7 +32,14 @@ export type AppMenuContext =
   | 'window-titlebar'
 
 export type MenuItemDescriptor =
-  | { type: 'item'; id: string; label: string; icon?: string; order?: number; when?: MenuWhen }
+  | { 
+      type: 'item'; 
+      id: string; 
+      label: string | ((ctx: MenuResolveCtx) => string); 
+      icon?: string | ((ctx: MenuResolveCtx) => string); 
+      order?: number; 
+      when?: MenuWhen 
+    }
   | { type: 'separator'; order?: number }
 
 export type MenuWhen = (ctx: MenuResolveCtx) => boolean

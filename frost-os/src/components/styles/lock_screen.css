@@ -1,0 +1,422 @@
+/* --- Pantalla de Bloqueo Frost OS (Estilo Windows 11) --- */
+
+.frost-lock-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: #ffffff;
+  user-select: none;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+/* Capa de oscurecimiento sutil para legibilidad */
+.lock-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%);
+  pointer-events: none;
+  transition: backdrop-filter 0.4s ease, background 0.4s ease;
+}
+
+.lock-overlay.challenge-active {
+  backdrop-filter: blur(48px) saturate(140%) brightness(0.65);
+  -webkit-backdrop-filter: blur(48px) saturate(140%) brightness(0.65);
+  background: rgba(12, 16, 26, 0.65);
+}
+
+/* --- VISTA 1: RELOJ AMBIENTAL (GLANCE) --- */
+.lock-glance-view {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 60px 30px 40px 30px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.lock-clock-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 5vh;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+.lock-time {
+  font-size: clamp(64px, 11vw, 110px);
+  font-weight: 300;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.lock-date {
+  font-size: clamp(16px, 2.2vw, 24px);
+  font-weight: 400;
+  margin-top: 14px;
+  color: rgba(255, 255, 255, 0.92);
+  text-transform: capitalize;
+}
+
+.lock-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  font-weight: 400;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+  animation: promptPulse 2.5s infinite ease-in-out;
+}
+
+.lock-chevron {
+  font-size: 24px;
+  animation: bounceUp 1.8s infinite ease-in-out;
+}
+
+@keyframes bounceUp {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes promptPulse {
+  0%, 100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* --- VISTA 2: DESAFÍO / INICIO DE SESIÓN --- */
+.lock-challenge-view {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.challenge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 340px;
+  padding: 30px 24px;
+  box-sizing: border-box;
+}
+
+.user-avatar-wrapper {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  padding: 4px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.08) 100%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  margin-bottom: 18px;
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.challenge-username {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 22px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Formulario de PIN */
+.pin-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.pin-input-group {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  backdrop-filter: blur(16px);
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.pin-input-group:focus-within {
+  border-color: #64b5f6;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.25);
+}
+
+.pin-input {
+  width: 100%;
+  padding: 10px 42px 10px 14px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 16px;
+  outline: none;
+  font-family: inherit;
+  letter-spacing: 2px;
+}
+
+.pin-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: normal;
+  font-size: 14px;
+}
+
+.pin-action-btn {
+  position: absolute;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 18px;
+}
+
+.pin-action-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.pin-error-text {
+  font-size: 13px;
+  color: #ff6b6b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  animation: shake 0.4s ease;
+}
+
+/* Botón Simple Desbloquear (cuando no hay PIN) */
+.unlock-btn {
+  width: 100%;
+  padding: 11px 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.unlock-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.14) 100%);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.cancel-challenge-btn {
+  margin-top: 18px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.cancel-challenge-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* --- BARRA INFERIOR DE ACCIONES (WINDOWS 11 STYLE) --- */
+.lock-bottom-bar {
+  position: absolute;
+  bottom: 24px;
+  right: 28px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bottom-icon-item {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.power-menu-trigger {
+  position: relative;
+}
+
+.power-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.power-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: scale(1.05);
+}
+
+.power-dropdown {
+  position: absolute;
+  bottom: 46px;
+  right: 0;
+  width: 160px;
+  background: rgba(24, 28, 38, 0.85);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 20;
+}
+
+.power-dropdown button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.power-dropdown button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.power-dropdown button i {
+  font-size: 15px;
+}
+
+/* Animaciones y Transiciones */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.shake-animation {
+  animation: shake 0.4s ease;
+}
+
+/* Transición suave de desbloqueo (Slide up como Windows 11) */
+.lock-slide-enter-active,
+.lock-slide-leave-active {
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s ease;
+}
+
+.lock-slide-enter-from {
+  transform: translateY(-100%);
+  opacity: 0.8;
+}
+
+.lock-slide-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.lock-fade-enter-active,
+.lock-fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.lock-fade-enter-from {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.lock-fade-leave-to {
+  opacity: 0;
+  transform: scale(1.04);
+}

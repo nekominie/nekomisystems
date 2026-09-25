@@ -70,9 +70,11 @@ export function buildAppContextMenu(app: App, context: AppMenuContext, os: any) 
       if (d.type === 'separator') return { separator: true }
 
       const handler = AppActionHandlers[app.manifest.id]?.[d.id]
+      const label = typeof d.label === 'function' ? d.label(ctx) : d.label
+      const icon = typeof d.icon === 'function' ? d.icon(ctx) : d.icon
       return {
-        label: d.label,
-        icon: d.icon,
+        label,
+        icon,
         action: () => handler?.(ctx)
       }
     })
