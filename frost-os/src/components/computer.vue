@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import Boot from './os/boot.vue'
 import Kernel from './os/kernel.vue'
 import { useSettingsStore } from "../components/apps/coreapps/settings/store"
+import { useLockStore } from './os/lock/lock_store'
 
 const pcOn = ref(false);
 const loadedOs = ref(false);
@@ -29,7 +30,11 @@ onMounted(async () => {
     }
 
     const settings = useSettingsStore();
-    await settings.loadSettings();
+    const lockStore = useLockStore();
+    await Promise.all([
+        settings.loadSettings(),
+        lockStore.loadSettings()
+    ]);
 })
 
 const powerButtonClick = () => {
@@ -45,6 +50,7 @@ const powerButtonClick = () => {
     slideUp.value = true
 
     localStorage.setItem('pc_power_state', 'off');    
+    localStorage.setItem('frost_lock_state', 'locked'); // Al apagar, la próxima vez entra a la pantalla de bloqueo
 
     setTimeout(() => {
       shrink.value = true
@@ -64,6 +70,7 @@ const powerButtonClick = () => {
   }
   else{
     //ENCENDER
+    localStorage.setItem('frost_lock_state', 'locked'); // Al encender, enviar a pantalla de bloqueo
     buttonPressed.value = true;
     powerOnLed.value = true;
 
@@ -96,8 +103,17 @@ const powerButtonClick = () => {
 }
 
 const bootSuccess = () => {
+    localStorage.setItem('frost_lock_state', 'locked');
     loadedOs.value = true;
     startUp.value = true;
+}
+
+const handleRestart = () => {
+    localStorage.setItem('frost_lock_state', 'locked');
+    loadedOs.value = false;
+    startUp.value = true;
+    pcOn.value = true;
+    localStorage.setItem('pc_power_state', 'on');
 }
 
 </script>
@@ -195,6 +211,7 @@ const bootSuccess = () => {
     <Kernel v-if="loadedOs"
         :start-up="startUp"
         @shutdown="powerButtonClick"
+        @restart="handleRestart"
     />
   </div>
 </template>

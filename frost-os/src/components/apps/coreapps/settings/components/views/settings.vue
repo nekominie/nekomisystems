@@ -1,10 +1,12 @@
 <script lang="ts" setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useSettingsStore } from "../../store";
 import { useLockStore } from "../../../../../os/lock/lock_store";
+import { useWifiStore } from "../../../../../snippets/core_snippets/wifi/wifi_store";
 
 const settings = useSettingsStore();
 const lockStore = useLockStore();
+const wifiStore = useWifiStore();
 
 const newPinInput = ref("");
 const confirmPinInput = ref("");
@@ -31,8 +33,19 @@ const handleLockBgModeChange = async (mode: 'desktop' | 'custom') => {
 const handleCustomLockBgUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  const url = URL.createObjectURL(file);
-  await lockStore.saveSettings({ customBgUrl: url, lockBgMode: 'custom' });
+  try {
+    await lockStore.setCustomLockBg(file);
+  } catch (err) {
+    console.error("Error al guardar imagen de pantalla de bloqueo:", err);
+  }
+};
+
+const resetCustomLockBg = async () => {
+  try {
+    await lockStore.resetCustomLockBg();
+  } catch (err) {
+    console.error("Error al restaurar fondo de pantalla de bloqueo:", err);
+  }
 };
 
 const saveNewPin = async () => {
@@ -84,6 +97,53 @@ const restoreDefaultWallpaper = async () => {
   }
 };
 
+const accentPresets = [
+  { name: "Frost Blue", value: "#38bdf8" },
+  { name: "Sky Cyan", value: "#0ea5e9" },
+  { name: "Teal", value: "#14b8a6" },
+  { name: "Emerald", value: "#10b981" },
+  { name: "Purple", value: "#a855f7" },
+  { name: "Pink", value: "#ec4899" },
+  { name: "Rose", value: "#f43f5e" },
+  { name: "Orange", value: "#f97316" },
+  { name: "Amber", value: "#f59e0b" },
+  { name: "Indigo", value: "#6366f1" },
+];
+
+const blurPresets = [
+  { label: "0px (Off)", value: 0 },
+  { label: "10px (Sutil)", value: 10 },
+  { label: "24px (Normal)", value: 24 },
+  { label: "36px (Profundo)", value: 36 },
+  { label: "48px (Ultra)", value: 48 },
+];
+
+const selectAccentColor = (color: string) => {
+  settings.setAccentColor(color);
+};
+
+const handleCustomColorInput = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target?.value) {
+    settings.setAccentColor(target.value);
+  }
+};
+
+const handleBlurChange = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target) {
+    settings.setBlurIntensity(Number(target.value));
+  }
+};
+
+const selectBlurPreset = (val: number) => {
+  settings.setBlurIntensity(val);
+};
+
+const restoreDefaultTheme = async () => {
+  await settings.resetThemeToDefault();
+};
+
 type SettingsSection =
   | "system"
   | "bluetooth"
@@ -99,10 +159,22 @@ const searchQuery = ref("");
 const selectedWallpaper = ref("default");
 
 onMounted(() => {
+  if (settings.targetSection) {
+    activeSection.value = settings.targetSection as SettingsSection;
+  }
   if (settings.isCustomWallpaper) {
     selectedWallpaper.value = "custom";
   }
 });
+
+watch(
+  () => settings.targetSection,
+  (sec) => {
+    if (sec) {
+      activeSection.value = sec as SettingsSection;
+    }
+  }
+);
 
 const sections = [
   { id: "system", label: "Sistema", icon: "bi-display" },
@@ -213,16 +285,47 @@ const filteredSections = computed(() => {
       <section v-else-if="activeSection === 'network'" class="section-content">
         <div class="grid two">
           <article class="setting-card glass-card">
-            <h3><i class="bi bi-wifi"></i> Wi-Fi</h3>
-            <div class="option-row"><span>Wi-Fi</span><div class="fake-switch on"></div></div>
-            <div class="option-row"><span>Connected network: NekomiNet</span><span class="state-pill ok">Secured</span></div>
-            <div class="option-row"><span>Show available networks</span><i class="bi bi-chevron-right"></i></div>
+            <h3><i :class="wifiStore.wifiEnabled ? 'bi bi-wifi' : 'bi bi-ethernet'"></i> Red e Internet</h3>
+            <div class="option-row">
+              <div class="option-info">
+                <span>Wi-Fi</span>
+                <small class="option-desc">{{ wifiStore.wifiEnabled ? 'Activado' : 'Desactivado (Conexión Ethernet activa)' }}</small>
+              </div>
+              <div 
+                class="interactive-switch" 
+                :class="{ on: wifiStore.wifiEnabled }" 
+                @click="wifiStore.toggleWifi"
+              ></div>
+            </div>
+            <div class="option-row" v-if="wifiStore.wifiEnabled">
+              <div class="option-info">
+                <span>Red conectada</span>
+                <small class="option-desc">{{ wifiStore.connectedSsid || 'Sin conexión activa' }}</small>
+              </div>
+              <span class="state-pill" :class="{ ok: !!wifiStore.connectedSsid }">
+                {{ wifiStore.connectedSsid ? 'Conectado' : 'Desconectado' }}
+              </span>
+            </div>
+            <div class="option-row" v-else>
+              <div class="option-info">
+                <span>Conexión cableada Ethernet</span>
+                <small class="option-desc">Ethernet 1 • 1000/1000 (Mbps)</small>
+              </div>
+              <span class="state-pill ok">Conectado</span>
+            </div>
+            <div class="option-row">
+              <div class="option-info">
+                <span>Redes detectadas</span>
+                <small class="option-desc">{{ wifiStore.networks.length }} redes en el área</small>
+              </div>
+              <span class="state-pill">{{ wifiStore.networks.length }} disponibles</span>
+            </div>
           </article>
           <article class="setting-card glass-card">
             <h3><i class="bi bi-shield-lock"></i> VPN & Proxy</h3>
-            <div class="option-row"><span>VPN</span><span class="state-pill">Off</span></div>
-            <div class="option-row"><span>Manual proxy setup</span><span class="state-pill">Off</span></div>
-            <div class="option-row"><span>Metered connection</span><div class="fake-switch"></div></div>
+            <div class="option-row"><span>VPN</span><span class="state-pill">Desactivado</span></div>
+            <div class="option-row"><span>Configuración manual de proxy</span><span class="state-pill">Desactivado</span></div>
+            <div class="option-row"><span>Conexión de uso medido</span><div class="interactive-switch"></div></div>
           </article>
         </div>
       </section>
@@ -233,8 +336,26 @@ const filteredSections = computed(() => {
             <h3><i class="bi bi-image"></i>Wallpaper</h3>
             <p class="sub">Selecciona el fondo del escritorio</p>
 
-            <div class="wallpaper-preview-current" :style="{ backgroundImage: `url(${settings.wallpaperUrl})` }">
-              <span class="preview-label">Vista previa</span>
+            <div class="wallpaper-preview-wrap">
+              <div class="wallpaper-preview-current" :style="{ backgroundImage: `url(${settings.wallpaperUrl})` }">
+                <div class="preview-mock-window">
+                  <div class="mock-win-header">
+                    <span class="mock-dot red"></span>
+                    <span class="mock-dot yellow"></span>
+                    <span class="mock-dot green"></span>
+                  </div>
+                  <div class="mock-win-body">
+                    <div class="mock-line short"></div>
+                    <div class="mock-line long"></div>
+                  </div>
+                </div>
+                <div class="preview-mock-taskbar">
+                  <span class="mock-tb-icon"></span>
+                  <span class="mock-tb-icon"></span>
+                  <span class="mock-tb-icon"></span>
+                </div>
+                <span class="preview-label">Escritorio actual</span>
+              </div>
             </div>
 
             <div class="wallpaper-grid">
@@ -296,25 +417,139 @@ const filteredSections = computed(() => {
             </div>
           </article>
 
-          <article class="setting-card glass-card">
-            <h3><i class="bi bi-palette"></i>Tema</h3>
-            <div class="theme-swatches">
-              <button class="swatch sw1"></button>
-              <button class="swatch sw2"></button>
-              <button class="swatch sw3"></button>
-              <button class="swatch sw4"></button>
-              <button class="swatch sw5"></button>
+          <article class="setting-card glass-card theme-card">
+            <div class="theme-card-header">
+              <div class="theme-header-info">
+                <h3><i class="bi bi-palette-fill"></i>Tema del Sistema</h3>
+                <p class="sub">Personaliza el color de énfasis y la intensidad del desenfoque en todo el sistema</p>
+              </div>
+              <button
+                class="theme-reset-btn"
+                @click="restoreDefaultTheme"
+                title="Restablecer tema a los valores predeterminados"
+              >
+                <i class="bi bi-arrow-counterclockwise"></i>
+                <span>Restablecer predeterminado</span>
+              </button>
             </div>
 
-            <p class="sub">Color de interfaz</p>
+            <!-- Color de Énfasis -->
+            <div class="theme-section-block">
+              <div class="theme-section-header">
+                <div>
+                  <span class="theme-section-title">Color de énfasis</span>
+                  <small class="theme-section-desc">Color utilizado en selecciones, botones destacados e indicadores</small>
+                </div>
+                <div class="accent-color-badge" :style="{ backgroundColor: settings.accentColor }">
+                  <span>{{ settings.accentColor.toUpperCase() }}</span>
+                </div>
+              </div>
 
-            <input type="color" v-model="settings.themeColor">
+              <div class="accent-swatches-grid">
+                <button
+                  v-for="color in accentPresets"
+                  :key="color.value"
+                  class="accent-swatch"
+                  :class="{ selected: settings.accentColor.toLowerCase() === color.value.toLowerCase() }"
+                  :style="{ backgroundColor: color.value }"
+                  :title="color.name"
+                  @click="selectAccentColor(color.value)"
+                >
+                  <i v-if="settings.accentColor.toLowerCase() === color.value.toLowerCase()" class="bi bi-check-lg"></i>
+                </button>
 
-            <p class="sub">Intensidad del difuminado</p>
+                <label class="custom-color-picker-label" title="Seleccionar color personalizado">
+                  <input
+                    type="color"
+                    :value="settings.accentColor"
+                    @input="handleCustomColorInput"
+                  />
+                  <i class="bi bi-plus-circle"></i>
+                  <span>Personalizado</span>
+                </label>
+              </div>
+            </div>
 
-            <input type="range" v-model="settings.accentColor">
+            <!-- Intensidad de Blur -->
+            <div class="theme-section-block">
+              <div class="theme-section-header">
+                <div>
+                  <span class="theme-section-title">Intensidad del difuminado (Blur)</span>
+                  <small class="theme-section-desc">Nivel de desenfoque aplicado en ventanas y paneles de vidrio translúcido</small>
+                </div>
+                <span class="blur-val-pill">{{ settings.blurIntensity }}px</span>
+              </div>
 
+              <div class="blur-slider-row">
+                <i class="bi bi-droplet"></i>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  step="1"
+                  :value="settings.blurIntensity"
+                  @input="handleBlurChange"
+                  class="blur-slider"
+                />
+                <i class="bi bi-droplet-fill"></i>
+              </div>
 
+              <div class="blur-presets-container">
+                <button
+                  v-for="preset in blurPresets"
+                  :key="preset.value"
+                  class="blur-chip"
+                  :class="{ active: settings.blurIntensity === preset.value }"
+                  @click="selectBlurPreset(preset.value)"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Muestra / Vista Previa en Vivo -->
+            <div class="theme-live-preview">
+              <span class="preview-title-sm"><i class="bi bi-eye"></i> Vista previa en tiempo real</span>
+              <div
+                class="theme-preview-card"
+                :style="{
+                  backdropFilter: `blur(${settings.blurIntensity}px)`,
+                  WebkitBackdropFilter: `blur(${settings.blurIntensity}px)`
+                }"
+              >
+                <div class="preview-item">
+                  <span class="preview-item-label">Botón primario:</span>
+                  <button
+                    class="sample-accent-btn"
+                    :style="{
+                      backgroundColor: settings.accentColor,
+                      boxShadow: `0 4px 14px ${settings.accentColor}50`
+                    }"
+                  >
+                    <i class="bi bi-check2"></i> Acción activa
+                  </button>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-item-label">Interruptor activo:</span>
+                  <div class="sample-accent-switch" :style="{ backgroundColor: settings.accentColor }">
+                    <span class="sample-switch-thumb"></span>
+                  </div>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-item-label">Etiqueta de acento:</span>
+                  <span
+                    class="sample-accent-tag"
+                    :style="{
+                      borderColor: settings.accentColor,
+                      color: settings.accentColor,
+                      backgroundColor: `${settings.accentColor}18`
+                    }"
+                  >
+                    Frost-OS {{ settings.blurIntensity }}px
+                  </span>
+                </div>
+              </div>
+            </div>
           </article>
         </div>
       </section>
@@ -464,18 +699,35 @@ const filteredSections = computed(() => {
               </label>
             </div>
 
-            <div v-if="lockStore.lockBgMode === 'custom'" class="custom-lock-bg-controls" style="margin-top: 12px;">
-              <input 
-                id="custom-lock-upload" 
-                type="file" 
-                accept="image/*" 
-                @change="handleCustomLockBgUpload"
-                style="display: none;"
-              />
-              <label for="custom-lock-upload" class="wallpaper-upload-btn">
-                <i class="bi bi-upload"></i>
-                <span>Seleccionar imagen para pantalla de bloqueo</span>
-              </label>
+            <div v-if="lockStore.lockBgMode === 'custom'" class="custom-lock-bg-controls" style="margin-top: 14px;">
+              <div v-if="lockStore.customBgUrl" class="custom-lock-thumb-wrap">
+                <div class="custom-lock-thumb" :style="{ backgroundImage: `url(${lockStore.customBgUrl})` }">
+                  <span class="custom-lock-thumb-badge">Fondo de bloqueo activo</span>
+                </div>
+              </div>
+
+              <div class="custom-lock-actions">
+                <input 
+                  id="custom-lock-upload" 
+                  type="file" 
+                  accept="image/*" 
+                  @change="handleCustomLockBgUpload"
+                  style="display: none;"
+                />
+                <label for="custom-lock-upload" class="wallpaper-upload-btn">
+                  <i class="bi bi-upload"></i>
+                  <span>{{ lockStore.customBgUrl ? 'Cambiar imagen' : 'Seleccionar imagen para pantalla de bloqueo' }}</span>
+                </label>
+
+                <button 
+                  v-if="lockStore.customBgUrl" 
+                  class="wallpaper-reset-btn" 
+                  @click="resetCustomLockBg"
+                >
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                  <span>Restaurar al fondo de escritorio</span>
+                </button>
+              </div>
             </div>
           </article>
         </div>
@@ -539,29 +791,113 @@ const filteredSections = computed(() => {
   gap: 14px;
 }
 
-.wallpaper-preview-current {
+.wallpaper-preview-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 0 14px;
   width: 100%;
+}
+
+.wallpaper-preview-current {
+  width: 280px;
+  max-width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: 12px;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.preview-mock-window {
+  width: 110px;
+  height: 60px;
+  border-radius: 6px;
+  background: rgba(26, 30, 40, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.mock-win-header {
+  height: 13px;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 5px;
+}
+
+.mock-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+.mock-dot.red { background: #ef4444; }
+.mock-dot.yellow { background: #eab308; }
+.mock-dot.green { background: #22c55e; }
+
+.mock-win-body {
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mock-line {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.mock-line.short { width: 45%; background: var(--os-accent-color, #38bdf8); }
+.mock-line.long { width: 80%; }
+
+.preview-mock-taskbar {
+  align-self: center;
+  height: 15px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(18, 22, 32, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mock-tb-icon {
+  width: 5px;
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.75);
+}
+.mock-tb-icon:nth-child(2) {
+  background: var(--os-accent-color, #38bdf8);
 }
 
 .preview-label {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  font-size: 12px;
-  padding: 4px 10px;
+  bottom: 6px;
+  left: 6px;
+  font-size: 10px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(6px);
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.9);
+  pointer-events: none;
 }
 
 .wallpaper-actions {
@@ -929,37 +1265,335 @@ const filteredSections = computed(() => {
   border-color: rgba(156, 214, 255, 0.5);
 }
 
-.theme-swatches {
+/* --- Estilos de Tema y Apariencia --- */
+.theme-card {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.swatch {
-  width: 30px;
-  height: 30px;
+.theme-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.theme-header-info h3 {
+  margin: 0 0 4px;
+}
+
+.theme-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.theme-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+}
+
+.theme-reset-btn:active {
+  transform: translateY(1px);
+}
+
+.theme-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.theme-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-section-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.theme-section-desc {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 2px;
+}
+
+.accent-color-badge {
+  padding: 4px 10px;
   border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.accent-swatches-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.accent-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 16px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  padding: 0;
+}
+
+.accent-swatch:hover {
+  transform: scale(1.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.accent-swatch.selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 4px 10px rgba(0, 0, 0, 0.5);
+  transform: scale(1.08);
+}
+
+.custom-color-picker-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.custom-color-picker-label:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+}
+
+.custom-color-picker-label input[type="color"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   cursor: pointer;
 }
 
-.sw1 {
-  background: #4ca5ff;
+.blur-val-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
-.sw2 {
-  background: #8f63ff;
+.blur-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  color: rgba(255, 255, 255, 0.6);
 }
 
-.sw3 {
-  background: #08b08d;
+.blur-slider-row i {
+  font-size: 15px;
 }
 
-.sw4 {
-  background: #ff9b41;
+.blur-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+  outline: none;
+  cursor: pointer;
 }
 
-.sw5 {
-  background: #ec5d86;
+.blur-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--os-accent-color, #38bdf8);
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.blur-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.blur-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--os-accent-color, #38bdf8);
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.blur-presets-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.blur-chip {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.blur-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+.blur-chip.active {
+  background: rgba(var(--os-accent-rgb, 56, 189, 248), 0.25);
+  border-color: var(--os-accent-color, #38bdf8);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.theme-live-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.preview-title-sm {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-preview-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  transition: backdrop-filter 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.theme-preview-card .preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-preview-card .preview-item-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sample-accent-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: filter 0.15s ease;
+}
+
+.sample-accent-btn:hover {
+  filter: brightness(1.1);
+}
+
+.sample-accent-switch {
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  cursor: default;
+}
+
+.sample-switch-thumb {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.sample-accent-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid;
 }
 
 .cta {
@@ -1216,5 +1850,43 @@ const filteredSections = computed(() => {
 .lock-bg-radio .radio-content small {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.6);
+}
+
+.custom-lock-thumb-wrap {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.custom-lock-thumb {
+  width: 220px;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.custom-lock-thumb-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.custom-lock-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 </style>

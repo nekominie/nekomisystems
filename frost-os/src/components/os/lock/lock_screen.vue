@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../apps/coreapps/settings/store';
 
 const emit = defineEmits<{
   (e: 'shutdown'): void;
+  (e: 'restart'): void;
 }>();
 
 const lockStore = useLockStore();
@@ -38,7 +39,7 @@ const backgroundImageStyle = computed(() => {
     ? lockStore.customBgUrl
     : settingsStore.wallpaperUrl;
   return {
-    backgroundImage: `url(${url})`
+    backgroundImage: `url("${url}")`
   };
 });
 
@@ -110,15 +111,20 @@ const handlePowerAction = (action: 'shutdown' | 'restart') => {
   if (action === 'shutdown') {
     emit('shutdown');
   } else if (action === 'restart') {
-    window.location.reload();
+    emit('restart');
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   updateClock();
   timeTimer = window.setInterval(updateClock, 1000);
   window.addEventListener('keydown', handleGlobalKeyDown);
   window.addEventListener('wheel', handleWheel, { passive: true });
+
+  await Promise.all([
+    lockStore.loadSettings(),
+    settingsStore.loadSettings()
+  ]);
 });
 
 onUnmounted(() => {
@@ -131,108 +137,119 @@ onUnmounted(() => {
 <template>
   <div 
     class="frost-lock-screen"
-    :style="backgroundImageStyle"
     @click.self="!lockStore.isChallengeVisible ? onGlanceClick() : null"
   >
-    <!-- Capa de desenfoque / acrílico -->
+    <!-- Capa de Fondo (Wallpaper) con desenfoque / Acrylic animado nativo -->
+    <div 
+      class="lock-wallpaper-layer"
+      :style="backgroundImageStyle"
+      :class="{ 'is-blurred': lockStore.isChallengeVisible }"
+    ></div>
+
+    <!-- Capa de oscurecimiento y viñeta sutil para profundidad acrílica -->
     <div 
       class="lock-overlay" 
       :class="{ 'challenge-active': lockStore.isChallengeVisible }"
     ></div>
 
-    <!-- 1. VISTA AMBIENTAL (GLANCE CLOCK) -->
-    <div 
-      v-if="!lockStore.isChallengeVisible"
-      class="lock-glance-view"
-      @click="onGlanceClick"
-    >
-      <div class="lock-clock-container">
-        <div class="lock-time">{{ currentTime }}</div>
-        <div class="lock-date">{{ currentDate }}</div>
-      </div>
-
-      <div class="lock-prompt">
-        <i class="bi bi-chevron-compact-up lock-chevron"></i>
-        <span>Haz clic o presiona cualquier tecla para desbloquear</span>
-      </div>
-    </div>
-
-    <!-- 2. VISTA DE DESAFÍO / INICIO DE SESIÓN -->
-    <div 
-      v-else
-      class="lock-challenge-view"
-      @click.self="showPowerMenu = false"
-    >
-      <div class="challenge-card" :class="{ 'shake-animation': isShaking }">
-        <!-- Avatar de Usuario -->
-        <div class="user-avatar-wrapper">
-          <img 
-            v-if="lockStore.userAvatarUrl" 
-            :src="lockStore.userAvatarUrl" 
-            alt="Avatar de usuario" 
-            class="user-avatar-img"
-          />
-          <div v-else class="user-avatar-fallback">
-            <i class="bi bi-person-fill"></i>
-          </div>
+    <!-- Transición fluida entre Reloj Ambiental y Pantalla de Inicio de Sesión -->
+    <Transition name="lock-view-fade" mode="out-in">
+      <!-- 1. VISTA AMBIENTAL (GLANCE CLOCK) -->
+      <div 
+        v-if="!lockStore.isChallengeVisible"
+        key="glance"
+        class="lock-glance-view"
+        @click="onGlanceClick"
+      >
+        <div class="lock-clock-container">
+          <div class="lock-time">{{ currentTime }}</div>
+          <div class="lock-date">{{ currentDate }}</div>
         </div>
 
-        <div class="challenge-username">{{ lockStore.userName }}</div>
+        <div class="lock-prompt">
+          <i class="bi bi-chevron-compact-up lock-chevron"></i>
+          <span>Haz clic o presiona cualquier tecla para desbloquear</span>
+        </div>
+      </div>
 
-        <!-- Formulario con PIN requerido -->
-        <div v-if="lockStore.requirePin" class="pin-form">
-          <div class="pin-input-group">
-            <input 
-              ref="pinInputRef"
-              v-model="inputPin"
-              :type="showPassword ? 'text' : 'password'"
-              placeholder="PIN"
-              class="pin-input"
-              maxlength="20"
-              @keydown.enter.prevent="handleUnlockSubmit"
-              @input="errorMessage = ''"
+      <!-- 2. VISTA DE DESAFÍO / INICIO DE SESIÓN -->
+      <div 
+        v-else
+        key="challenge"
+        class="lock-challenge-view"
+        @click.self="showPowerMenu = false"
+      >
+        <div class="challenge-card" :class="{ 'shake-animation': isShaking }">
+          <!-- Avatar de Usuario -->
+          <div class="user-avatar-wrapper">
+            <img 
+              v-if="lockStore.userAvatarUrl" 
+              :src="lockStore.userAvatarUrl" 
+              alt="Avatar de usuario" 
+              class="user-avatar-img"
             />
-            <button 
-              type="button" 
-              class="pin-action-btn"
-              :title="showPassword ? 'Ocultar PIN' : 'Mostrar PIN'"
-              @click="showPassword = !showPassword"
-              style="right: 36px;"
-            >
-              <i :class="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
-            </button>
-            <button 
-              type="button" 
-              class="pin-action-btn" 
-              title="Desbloquear"
-              @click="handleUnlockSubmit"
-            >
-              <i class="bi bi-arrow-right-short"></i>
-            </button>
+            <div v-else class="user-avatar-fallback">
+              <i class="bi bi-person-fill"></i>
+            </div>
           </div>
 
-          <div v-if="errorMessage" class="pin-error-text">
-            <i class="bi bi-exclamation-circle"></i>
-            <span>{{ errorMessage }}</span>
+          <div class="challenge-username">{{ lockStore.userName }}</div>
+
+          <!-- Formulario con PIN requerido -->
+          <div v-if="lockStore.requirePin" class="pin-form">
+            <div class="pin-input-group">
+              <input 
+                ref="pinInputRef"
+                v-model="inputPin"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="PIN"
+                class="pin-input"
+                maxlength="20"
+                @keydown.enter.prevent="handleUnlockSubmit"
+                @input="errorMessage = ''"
+              />
+              <button 
+                type="button" 
+                class="pin-action-btn" 
+                :title="showPassword ? 'Ocultar PIN' : 'Mostrar PIN'"
+                @click="showPassword = !showPassword"
+                style="right: 36px;"
+              >
+                <i :class="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
+              </button>
+              <button 
+                type="button" 
+                class="pin-action-btn" 
+                title="Desbloquear"
+                @click="handleUnlockSubmit"
+              >
+                <i class="bi bi-arrow-right-short"></i>
+              </button>
+            </div>
+
+            <div v-if="errorMessage" class="pin-error-text">
+              <i class="bi bi-exclamation-circle"></i>
+              <span>{{ errorMessage }}</span>
+            </div>
           </div>
+
+          <!-- Botón Simple si no requiere PIN -->
+          <button 
+            v-else 
+            class="unlock-btn"
+            @click="handleUnlockSubmit"
+          >
+            <i class="bi bi-unlock-fill"></i>
+            <span>Iniciar sesión</span>
+          </button>
+
+          <button class="cancel-challenge-btn" @click="onCancelChallenge">
+            <i class="bi bi-arrow-left"></i>
+            <span>Volver al reloj</span>
+          </button>
         </div>
-
-        <!-- Botón Simple si no requiere PIN -->
-        <button 
-          v-else 
-          class="unlock-btn"
-          @click="handleUnlockSubmit"
-        >
-          <i class="bi bi-unlock-fill"></i>
-          <span>Iniciar sesión</span>
-        </button>
-
-        <button class="cancel-challenge-btn" @click="onCancelChallenge">
-          <i class="bi bi-arrow-left"></i>
-          <span>Volver al reloj</span>
-        </button>
       </div>
-    </div>
+    </Transition>
 
     <!-- Barra Inferior: Red, Batería y Opciones de Apagado -->
     <div class="lock-bottom-bar" @click.stop>

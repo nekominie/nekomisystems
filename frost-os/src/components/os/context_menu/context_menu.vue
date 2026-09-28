@@ -47,9 +47,10 @@ window.addEventListener('click', closeMenu);
 
     color: #d7d7d7;
     background-color: #0000007a;
-    backdrop-filter: blur(8px);
-    border: 0;
-    border-radius: 6px;
+    backdrop-filter: var(--os-blur, blur(16px));
+    -webkit-backdrop-filter: var(--os-blur, blur(16px));
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
     padding: 6px 8px;
     min-width: 180px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -66,13 +67,15 @@ window.addEventListener('click', closeMenu);
 }
 
 .menu-item{
-  padding: 4px 7px;
+  padding: 5px 8px;
   border-radius: 6px;
   cursor: default;
+  transition: background-color 0.1s ease;
 }
 
 .menu-item:hover{
-  background-color: rgba(0, 0, 0, 0.404);
+  background-color: rgba(var(--os-accent-rgb, 56, 189, 248), 0.25);
+  color: #ffffff;
 }
 
 /* Estado inicial (Entrada) / Estado final (Salida) */

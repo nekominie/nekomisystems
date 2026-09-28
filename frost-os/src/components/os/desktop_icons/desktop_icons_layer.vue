@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, ref, watch, onMounted, reactive, nextTick } from 'vue'
+import { inject, ref, watch, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import DesktopIcon from './desktop_icon.vue'
 import { useDesktopIcons } from './desktop_icons_manager.ts'
 import { App } from '../../data/app'
@@ -7,35 +7,33 @@ import { useContextMenu } from '../context_menu/context_menu.ts'
 import { OS_KEY } from '../../api/os_api'
 
 const os = inject(OS_KEY)
-if(!os) throw new Error('OS API not found')
+if (!os) throw new Error('OS API not found')
 
 const { openMenu } = useContextMenu()
 
 const contextMenuApps = (e: MouseEvent, app: App) => {
-    openMenu(e, [
-        { 
-            label: 'Abrir', icon: '', action: () => os.launchApp(app.manifest.id) 
-        },
-        {
-            label: 'Eliminar acceso directo', icon: 'bi-trash', action: () => os.togglePinAppDesktop(app.manifest.id)
-        }
-    ])
+  openMenu(e, [
+    {
+      label: 'Abrir',
+      icon: 'bi-box-arrow-up-right',
+      action: () => os.launchApp(app.manifest.id),
+    },
+    {
+      label: 'Eliminar acceso directo',
+      icon: 'bi-trash',
+      action: () => os.togglePinAppDesktop(app.manifest.id),
+    },
+  ])
 }
 
 const icons = useDesktopIcons({
   cellW: 110,
   cellH: 110,
   padding: 12,
-  storageKey: 'desktop_layout_v1',
+  storageKey: 'frost_desktop_icons_layout_v1',
 })
 
 const ready = ref(false)
-
-onMounted(async () => {
-  await nextTick()
-  await icons.loadFromDb()
-  ready.value = true
-})
 
 const props = defineProps<{
   pinnedApps: App[]
@@ -43,22 +41,36 @@ const props = defineProps<{
 
 const containerEl = icons.containerEl
 
+// iconRects en coordenadas relativas al desktop (para marquee)
+const iconRects = reactive<Record<string, { x: number; y: number; w: number; h: number }>>({})
+
+function rebuildIconRects() {
+  for (const app of props.pinnedApps) {
+    const cell = icons.layout[app.manifest.id]
+    if (!cell) continue
+    const pos = icons.cellToPx(cell)
+    iconRects[app.manifest.id] = { x: pos.x, y: pos.y, w: 80, h: 96 }
+  }
+}
+
 watch(
-  [() => ready.value, () => props.pinnedApps.map(a => a.manifest.id).join('|')],
+  [() => ready.value, () => props.pinnedApps.map((a) => a.manifest.id).join('|')],
   async ([isReady]) => {
     if (!isReady) return
-    await nextTick()
-
-    const ids = props.pinnedApps.map(a => a.manifest.id)
+    const ids = props.pinnedApps.map((a) => a.manifest.id)
+    if (ids.length === 0) return
 
     icons.syncLayoutWithPinned(ids)
 
-    // clamp por responsividad
+    // Limitar dentro de la pantalla sin resetear celdas
+    const maxC = Math.max(0, icons.cols.value - 1)
+    const maxR = Math.max(0, icons.rows.value - 1)
     for (const id of ids) {
       const cell = icons.layout[id]
       if (!cell) continue
-      if (cell.col >= icons.cols.value || cell.row >= icons.rows.value) {
-        icons.layout[id] = icons.findFirstFreeCell(id)
+      if (cell.col > maxC || cell.row > maxR) {
+        cell.col = Math.min(cell.col, maxC)
+        cell.row = Math.min(cell.row, maxR)
       }
     }
 
@@ -68,24 +80,24 @@ watch(
   { immediate: true }
 )
 
-window.addEventListener('resize', () => {
-  const ids = props.pinnedApps.map(a => a.manifest.id)
+const handleResize = () => {
+  const ids = props.pinnedApps.map((a) => a.manifest.id)
+  if (ids.length === 0) return
   icons.syncLayoutWithPinned(ids)
+  rebuildIconRects()
   icons.saveToDb().catch(console.error)
+}
+
+onMounted(async () => {
+  window.addEventListener('resize', handleResize)
+  await icons.loadFromDb()
+  ready.value = true
+  rebuildIconRects()
 })
 
-// iconRects en coords relativas al desktop (para marquee)
-const iconRects = reactive<Record<string, { x: number; y: number; w: number; h: number }>>({})
-
-function rebuildIconRects() {
-  // rect basado en celda (rápido y suficiente)
-  for (const app of props.pinnedApps) {
-    const cell = icons.layout[app.manifest.id]
-    if (!cell) continue
-    const pos = icons.cellToPx(cell)
-    iconRects[app.manifest.id] = { x: pos.x, y: pos.y, w: 80, h: 96 } // aprox: icon width + label
-  }
-}
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+})
 
 const handleDesktopMove = (e: PointerEvent) => {
   icons.onDesktopPointerMove(e, iconRects)
@@ -99,16 +111,18 @@ const styleFor = (id: string) => {
   const cell = icons.layout[id]
   const base = icons.cellToPx(cell ?? { col: 0, row: 0 })
 
-  const isDragging = icons.draggingId.value === id
-  const dx = isDragging ? icons.dragOffsetPx.x : 0
-  const dy = isDragging ? icons.dragOffsetPx.y : 0
+  const isDraggingThis = icons.isIconDragged(id)
+  const dx = isDraggingThis ? icons.dragOffsetPx.x : 0
+  const dy = isDraggingThis ? icons.dragOffsetPx.y : 0
 
-  // transform para drag suave sin recalcular top/left
   return {
     left: `${base.x}px`,
     top: `${base.y}px`,
-    transform: `translate(${dx}px, ${dy}px)`,
-    zIndex: isDragging ? 9999 : 1,
+    transform: `translate3d(${dx}px, ${dy}px, 0)`,
+    zIndex: isDraggingThis ? 9999 : 1,
+    transition: isDraggingThis
+      ? 'none'
+      : 'transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2), left 0.16s ease, top 0.16s ease',
   }
 }
 
@@ -116,15 +130,16 @@ const onDblClick = (id: string) => os.launchApp(id)
 </script>
 
 <template>
-  <!-- OJO: este div ES el fondo para marquee: ref + handlers -->
   <div
     ref="containerEl"
     class="desktop-icons-layer"
+    :class="{ 'is-dragging-layer': icons.isDragging.value }"
     @pointerdown="icons.onDesktopPointerDown"
     @pointermove="handleDesktopMove"
     @pointerup="handleDesktopUp"
     @pointercancel="handleDesktopUp"
   >
+    <!-- Marco de selección rectangular (Marquee) -->
     <div
       v-if="icons.marqueeActive"
       class="marquee"
@@ -136,14 +151,17 @@ const onDblClick = (id: string) => os.launchApp(id)
       }"
     />
 
+    <!-- Iconos del escritorio -->
     <div
       v-for="app in props.pinnedApps"
       :key="app.manifest.id"
       class="icon-wrap"
+      :class="{ 'is-dragged': icons.isIconDragged(app.manifest.id) }"
       :style="styleFor(app.manifest.id)"
-      @pointerdown="(e) => { icons.onIconPointerDown(e, app.manifest.id) }"
+      @pointerdown="(e) => icons.onIconPointerDown(e, app.manifest.id)"
       @pointermove="icons.onIconPointerMove"
       @pointerup="(e) => { icons.onIconPointerUp(e); rebuildIconRects() }"
+      @pointercancel="(e) => { icons.onIconPointerUp(e); rebuildIconRects() }"
       @dblclick="() => onDblClick(app.manifest.id)"
       @contextmenu.stop.prevent="(e) => contextMenuApps(e, app)"
     >
@@ -158,32 +176,36 @@ const onDblClick = (id: string) => os.launchApp(id)
 </template>
 
 <style scoped>
-.desktop-icons-layer{
+.desktop-icons-layer {
   position: absolute;
   inset: 0;
-  /* por defecto debajo de ventanas; si lo quieres arriba cambia z-index */
   z-index: 0;
+  user-select: none;
 }
 
-.icon-wrap{
+.desktop-icons-layer.is-dragging-layer,
+.desktop-icons-layer.is-dragging-layer * {
+  cursor: grabbing !important;
+}
+
+.icon-wrap {
   position: absolute;
   width: 80px;
-  will-change: transform;
+  will-change: transform, left, top;
+  touch-action: none;
 }
 
-.marquee{
+.icon-wrap.is-dragged {
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+
+.marquee {
   position: absolute;
   pointer-events: none;
   z-index: 2;
-
-  /*background: rgba(0, 120, 215, 0.15);
-  border: 1px solid rgba(0, 120, 215, 0.55);*/
-
-  background: rgb(125 214 255 / 31%);
-  border: 1px solid rgb(58 118 177 / 68%);
-  /*border-radius: 8px;*/
-  backdrop-filter: blur(2px);
-  /*box-shadow: 0 0 10px white;*/
-
+  background: rgba(125, 214, 255, 0.28);
+  border: 1px solid rgba(58, 118, 177, 0.75);
+  border-radius: 2px;
+  backdrop-filter: blur(1.5px);
 }
 </style>

@@ -4,6 +4,7 @@
     flex-direction: column;
     overflow: hidden;
     border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
 
     box-shadow: 0px 5px 5px 0px #0000006b;
     background: transparent;
@@ -172,7 +173,8 @@ iframe{
 }
 
 .focused{
-    box-shadow: 0px 8px 10px 2px #00000070;
+    border-color: rgba(var(--os-accent-rgb, 56, 189, 248), 0.5);
+    box-shadow: 0px 8px 16px 2px #00000070, 0 0 10px rgba(var(--os-accent-rgb, 56, 189, 248), 0.2);
 }
 
 .maximized .window-header{
@@ -180,7 +182,8 @@ iframe{
 }
 
 .maximized.window-frame, .maximized.focused{
-    box-shadow:  0 0 0 0 !important
+    box-shadow: 0 0 0 0 !important;
+    border: none !important;
 }
 
 .maximized.window-frame{

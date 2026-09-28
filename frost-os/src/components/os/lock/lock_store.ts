@@ -8,6 +8,7 @@ export interface LockSettings {
   pin: string;
   timeoutMinutes: number;
   lockBgMode: 'desktop' | 'custom';
+  customBgAssetId?: string;
   customBgUrl: string;
 }
 
@@ -16,7 +17,7 @@ export const useLockStore = defineStore('lock', () => {
   const savedState = localStorage.getItem('frost_lock_state');
   const savedLockOnStartup = localStorage.getItem('frost_lock_on_startup') === 'true';
 
-  const isLocked = ref<boolean>(savedState === 'locked' || savedLockOnStartup);
+  const isLocked = ref<boolean>(savedState === 'locked' || savedLockOnStartup || !savedState);
   const isChallengeVisible = ref<boolean>(false);
 
   // Configuraciones de bloqueo
@@ -25,7 +26,12 @@ export const useLockStore = defineStore('lock', () => {
   const pin = ref<string>(localStorage.getItem('frost_lock_pin') || '1234');
   const timeoutMinutes = ref<number>(Number(localStorage.getItem('frost_lock_timeout') || '0'));
   const lockBgMode = ref<'desktop' | 'custom'>((localStorage.getItem('frost_lock_bg_mode') as any) || 'desktop');
-  const customBgUrl = ref<string>(localStorage.getItem('frost_lock_custom_bg') || '');
+  const customBgAssetId = ref<string>(localStorage.getItem('frost_lock_custom_bg_id') || '');
+  const customBgUrl = ref<string>(
+    localStorage.getItem('frost_lock_custom_bg') && !localStorage.getItem('frost_lock_custom_bg')?.startsWith('blob:')
+      ? localStorage.getItem('frost_lock_custom_bg')!
+      : ''
+  );
 
   // Datos del usuario para la pantalla de inicio de sesión
   const userName = ref<string>('Nekomi User');
@@ -94,7 +100,27 @@ export const useLockStore = defineStore('lock', () => {
         if (v.pin) pin.value = v.pin;
         if (typeof v.timeoutMinutes === 'number') timeoutMinutes.value = v.timeoutMinutes;
         if (v.lockBgMode) lockBgMode.value = v.lockBgMode;
-        if (v.customBgUrl) customBgUrl.value = v.customBgUrl;
+        if (v.customBgAssetId) customBgAssetId.value = v.customBgAssetId;
+        if (v.customBgUrl && !v.customBgUrl.startsWith('blob:')) {
+          customBgUrl.value = v.customBgUrl;
+        }
+      }
+
+      // Cargar la imagen real (Blob) desde Dexie si hay un assetId guardado
+      const assetIdToLoad = customBgAssetId.value || localStorage.getItem('frost_lock_custom_bg_id');
+      if (assetIdToLoad) {
+        const asset = await db.assets.get(assetIdToLoad);
+        if (asset && asset.data) {
+          if (customBgUrl.value && customBgUrl.value.startsWith('blob:')) {
+            URL.revokeObjectURL(customBgUrl.value);
+          }
+          customBgUrl.value = URL.createObjectURL(asset.data);
+          customBgAssetId.value = assetIdToLoad;
+        } else {
+          // El asset ya no existe en Dexie
+          customBgAssetId.value = '';
+          customBgUrl.value = '';
+        }
       }
     } catch (e) {
       console.warn('No se pudieron leer los ajustes de bloqueo de DB:', e);
@@ -125,9 +151,21 @@ export const useLockStore = defineStore('lock', () => {
       lockBgMode.value = newSettings.lockBgMode;
       localStorage.setItem('frost_lock_bg_mode', newSettings.lockBgMode);
     }
+    if (newSettings.customBgAssetId !== undefined) {
+      customBgAssetId.value = newSettings.customBgAssetId;
+      if (newSettings.customBgAssetId) {
+        localStorage.setItem('frost_lock_custom_bg_id', newSettings.customBgAssetId);
+      } else {
+        localStorage.removeItem('frost_lock_custom_bg_id');
+      }
+    }
     if (newSettings.customBgUrl !== undefined) {
       customBgUrl.value = newSettings.customBgUrl;
-      localStorage.setItem('frost_lock_custom_bg', newSettings.customBgUrl);
+      if (newSettings.customBgUrl && !newSettings.customBgUrl.startsWith('blob:')) {
+        localStorage.setItem('frost_lock_custom_bg', newSettings.customBgUrl);
+      } else {
+        localStorage.removeItem('frost_lock_custom_bg');
+      }
     }
 
     try {
@@ -139,13 +177,87 @@ export const useLockStore = defineStore('lock', () => {
           pin: pin.value,
           timeoutMinutes: timeoutMinutes.value,
           lockBgMode: lockBgMode.value,
-          customBgUrl: customBgUrl.value
+          customBgAssetId: customBgAssetId.value,
+          customBgUrl: customBgUrl.value && !customBgUrl.value.startsWith('blob:') ? customBgUrl.value : ''
         }
       });
     } catch (e) {
       console.error('Error guardando ajustes de bloqueo en DB:', e);
     }
   }
+
+  async function setCustomLockBg(file: File) {
+    const assetId = `lock-bg-${Date.now()}`;
+
+    // 1. Guardar el archivo real (Blob) en Dexie assets
+    await db.assets.put({
+      id: assetId,
+      name: file.name,
+      data: file,
+      type: 'lock_wallpaper'
+    });
+
+    // 2. Limpiar asset anterior de bloqueo si existía
+    if (customBgAssetId.value && customBgAssetId.value.startsWith('lock-bg-')) {
+      try {
+        await db.assets.delete(customBgAssetId.value);
+      } catch (e) {
+        console.warn('Error eliminando asset anterior de bloqueo:', e);
+      }
+    }
+
+    // 3. Revocar URL anterior si era blob
+    if (customBgUrl.value && customBgUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(customBgUrl.value);
+    }
+
+    // 4. Crear nueva URL reactiva para la interfaz
+    const objectUrl = URL.createObjectURL(file);
+    customBgUrl.value = objectUrl;
+    customBgAssetId.value = assetId;
+    lockBgMode.value = 'custom';
+
+    localStorage.setItem('frost_lock_bg_mode', 'custom');
+    localStorage.setItem('frost_lock_custom_bg_id', assetId);
+
+    // 5. Guardar configuración en DB
+    await saveSettings({
+      lockBgMode: 'custom',
+      customBgAssetId: assetId,
+      customBgUrl: objectUrl
+    });
+  }
+
+  async function resetCustomLockBg() {
+    if (customBgAssetId.value && customBgAssetId.value.startsWith('lock-bg-')) {
+      try {
+        await db.assets.delete(customBgAssetId.value);
+      } catch (e) {
+        console.warn('Error eliminando asset de bloqueo:', e);
+      }
+    }
+
+    if (customBgUrl.value && customBgUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(customBgUrl.value);
+    }
+
+    customBgUrl.value = '';
+    customBgAssetId.value = '';
+    lockBgMode.value = 'desktop';
+
+    localStorage.setItem('frost_lock_bg_mode', 'desktop');
+    localStorage.removeItem('frost_lock_custom_bg_id');
+    localStorage.removeItem('frost_lock_custom_bg');
+
+    await saveSettings({
+      lockBgMode: 'desktop',
+      customBgAssetId: '',
+      customBgUrl: ''
+    });
+  }
+
+  // Cargar inmediatamente desde DB
+  loadSettings();
 
   function lock() {
     isLocked.value = true;
@@ -188,6 +300,7 @@ export const useLockStore = defineStore('lock', () => {
     pin,
     timeoutMinutes,
     lockBgMode,
+    customBgAssetId,
     customBgUrl,
     userName,
     userAvatarUrl,
@@ -198,6 +311,8 @@ export const useLockStore = defineStore('lock', () => {
     validatePin,
     loadSettings,
     saveSettings,
+    setCustomLockBg,
+    resetCustomLockBg,
     loadUserProfile
   };
 });

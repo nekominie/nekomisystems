@@ -18,6 +18,34 @@ export const InstalledApps: Manifest[] = [
     {
         id: 'explorer',
         name: 'Archivos',
+        window: {
+            defaultSize: { width: 980, height: 640 },
+            minSize: { width: 620, height: 420 },
+            surface: {
+                mode: 'os-glass',
+                os: {
+                    frameBg: 'rgba(20, 24, 34, 0.45)',
+                    frameBlur: 'blur(30px)',
+                    contentBg: 'transparent'
+                }
+            }
+        }
+    },
+    {
+        id: 'photos',
+        name: 'Fotos',
+        window: {
+            defaultSize: { width: 940, height: 620 },
+            minSize: { width: 540, height: 420 },
+            surface: {
+                mode: 'os-glass',
+                os: {
+                    frameBg: 'rgba(18, 22, 30, 0.45)',
+                    frameBlur: 'blur(30px)',
+                    contentBg: 'transparent'
+                }
+            }
+        }
     },
     {
         id: 'music',

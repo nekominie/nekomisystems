@@ -11,6 +11,7 @@ import { buildAppContextMenu } from './context_menu/context_menu.ts'
 import type { App } from '../data/app'
 import { AppActionHandlers } from '../data/app_actions_registry.ts'
 import { SnippetActionHandlers } from '../data/snippet_actions_registry.ts'
+import { useSettingsStore } from '../apps/coreapps/settings/store.ts'
 
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
@@ -53,6 +54,7 @@ const trayApps = computed(() => os.state.apps.filter(app =>
 
 const emit = defineEmits<{
     (e: 'shutdown'): void
+    (e: 'restart'): void
 }>()
 
 const currentTime = ref('')
@@ -291,13 +293,31 @@ const taskbarAppClosed = (id: string) => {
 
 const onRightClickTrayIcon = (e: MouseEvent, id: string) => {
     const app = os.state.apps.find(app => app.manifest.id === id)
-    if (!app) return
+    if (app) {
+        openMenu(e, buildAppContextMenu(app, 'tray', os))
+        return
+    }
 
-    openMenu(e, buildAppContextMenu(app, 'tray', os))
+    const snippet = os.state.snippets.find(s => s.manifest.id === id)
+    if (snippet) {
+        if (id === 'wifi') {
+            openMenu(e, [
+                {
+                    label: 'Ir a Configuración de Red',
+                    icon: 'bi-gear-fill',
+                    action: () => {
+                        const settingsStore = useSettingsStore()
+                        settingsStore.setTargetSection('network')
+                        os.launchApp('settings')
+                    }
+                }
+            ])
+            return
+        }
+    }
 }
 
 const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
-    
     console.log('onLeftClickTrayIcon', id)
 
     const repo = 
@@ -308,18 +328,29 @@ const onLeftClickTrayIcon = (e: MouseEvent, id: string, isSnippet: boolean) => {
     const app = repo.find(app => app.manifest.id === id)
     if (!app) return
 
+    if (isSnippet) {
+        if (app.runtime.isVisible) {
+            os.hideSnippet(id)
+        } else {
+            // Cerrar otros flyouts abiertos para evitar solapamientos
+            os.state.snippets.forEach(s => {
+                if (s.manifest.id !== id && s.runtime.isVisible && s.manifest.snippet?.kind === 'flyout') {
+                    os.hideSnippet(s.manifest.id)
+                }
+            })
+            os.showSnippet(id)
+        }
+        return
+    }
+
     const actionId = app.manifest.capabilities?.tray?.defaultAction ?? 'open'
 
-    const handler = 
-        isSnippet ? 
-        SnippetActionHandlers[app.manifest.id]?.[actionId] : 
-        AppActionHandlers[app.manifest.id]?.[actionId]
+    const handler = AppActionHandlers[app.manifest.id]?.[actionId]
 
-    if(handler){
+    if (handler) {
         handler({ app, context: 'tray', os })
-    }
-    else{
-        isSnippet == true ? os.showSnippet(id) : os.launchApp(id)
+    } else {
+        os.launchApp(id)
     }
 }
 
@@ -344,6 +375,7 @@ const isAppFocused = (appId: string) => {
             v-show="showingStartMenu"
             :pinned-apps="pinnedStartApps"
             @shutdown="$emit('shutdown')"
+            @restart="emit('restart')"
             @close-startmenu="toggleStartMenu"
             @view-app-finder="viewAppFinder"
         />

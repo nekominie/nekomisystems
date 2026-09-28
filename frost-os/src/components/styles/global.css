@@ -1,4 +1,14 @@
 :root{
+    --os-accent-color: #38bdf8;
+    --os-accent-rgb: 56, 189, 248;
+    --os-accent-dark: #0284c7;
+    --os-accent-light: #7dd3fc;
+    --os-blur-val: 24px;
+    --os-blur: blur(24px);
+    --os-blur-heavy: blur(36px);
+    --os-blur-light: blur(10px);
+    --os-frame-blur: blur(24px);
+
     --frst-bg-light: rgba(0, 0, 0, 0.233);
     --frst-bg-normal: rgb(156 156 156 / 31%);
     --frst-bg-dark: rgba(51, 51, 51, 0.411);
@@ -20,7 +30,7 @@
     --frst-font-light: rgba(255, 255, 255, 0.637);
 
     --frst-blur-light: blur(6px);
-    --frst-blur-normal: blur(16px);
+    --frst-blur-normal: var(--os-blur, blur(24px));
     --frst-blur-dark: 40px;
     --frst-blur-pitch-black: 20px;
 
@@ -136,4 +146,9 @@
 
 *:focus{
   outline: none;
+}
+
+::selection {
+  background-color: rgba(var(--os-accent-rgb, 56, 189, 248), 0.38);
+  color: #ffffff;
 }

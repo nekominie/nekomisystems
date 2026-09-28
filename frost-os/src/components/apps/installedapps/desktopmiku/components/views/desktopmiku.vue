@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, inject } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import MikuViewer from './MikuViewer.vue';
-import { useDesktopMikuStore } from '../../store';
+import { useDesktopMikuStore, type MikuAction } from '../../store';
 import { OS_KEY } from '../../../../../api/os_api';
 import { AppStorage } from '../../../../../../database/app_storage';
 
@@ -9,76 +9,189 @@ const os = inject(OS_KEY);
 const mikuStore = useDesktopMikuStore();
 const storage = new AppStorage('desktopmiku');
 
-type Action = "idle" | "greeting" | "thinking";
+// Opciones de escalado / resize
+const SCALE_OPTIONS = [
+  { value: 0.75, label: '75% (S)' },
+  { value: 1.0, label: '100% (M)' },
+  { value: 1.25, label: '125% (L)' },
+  { value: 1.5, label: '150% (XL)' }
+];
+const currentScale = ref(1.0);
+const scaleLabel = computed(() => {
+  const found = SCALE_OPTIONS.find(s => s.value === currentScale.value);
+  return found ? found.label : `${Math.round(currentScale.value * 100)}%`;
+});
 
-type MikuAction = {
-  gif: string;
+async function cycleNextScale() {
+  const currentIndex = SCALE_OPTIONS.findIndex(s => s.value === currentScale.value);
+  const nextIndex = (currentIndex + 1) % SCALE_OPTIONS.length;
+  await setScale(SCALE_OPTIONS[nextIndex].value);
+}
+
+async function setScale(newScale: number) {
+  currentScale.value = newScale;
+  mikuStore.setScale(newScale);
+
+  const maxX = Math.max(0, window.innerWidth - Math.round(300 * newScale));
+  if (posX.value > maxX) {
+    posX.value = maxX;
+  }
+
+  try {
+    await storage.set('mikuScale', newScale);
+    await storage.set('mikuPosition', { x: Math.round(posX.value) });
+  } catch (err) {
+    console.error("Error guardando escala de Miku:", err);
+  }
+
+  mikuStore.setSpeech(`¡Tamaño cambiado a ${scaleLabel.value}! (◕‿◕)✿`);
+}
+
+type ActionConfig = {
   time: number;
   weight: number;
   cooldown?: number;
-  class?: string;
+  speech?: string;
 };
 
-const animations: Record<Action, MikuAction> = {
-  idle: {
-    gif: "/desktopmiku/idle.gif",
-    time: 5000,
-    weight: 75,
-    class: "idle"
-  },
-  greeting: {
-    gif: "/desktopmiku/greeting.gif",
-    time: 5000,
-    weight: 10,
-    cooldown: 15000,
-    class: "greeting"
-  },
-  thinking: {
-    gif: "/desktopmiku/thinking.gif",
-    time: 5000,
-    weight: 15,
-    cooldown: 10000,
-    class: "thinking"
-  },
+// Acciones con animaciones 3D reales
+const actionPool: Record<MikuAction, ActionConfig> = {
+  idle: { time: 6000, weight: 35, speech: '♪ (◕‿◕)✿' },
+  walking: { time: 5500, weight: 30, speech: '¡Paseando por el escritorio! ₍ᐢ.ˬ.⑅ᐢ₎' },
+  quick_walk: { time: 4000, weight: 15, cooldown: 12000, speech: '¡Voy de prisa! (ง •̀_•́)ง' },
+  running: { time: 3500, weight: 10, cooldown: 15000, speech: '¡Waaaa, carrera! 🏃‍♀️💨' },
+  dance_groove: { time: 6500, weight: 15, cooldown: 20000, speech: '¡Siente el ritmo! ٩(ˊᗜˋ*)و 🎵' },
+  dance_shake: { time: 7000, weight: 12, cooldown: 20000, speech: 'Shake it off! (≧◡≦)♡ 🎶' },
+  chat: { time: 6000, weight: 20, speech: '¿Cómo va tu día hoy? (⌒▽⌒)☆' },
+  scheming: { time: 5000, weight: 10, cooldown: 15000, speech: 'Jejeje... pensando algo divertido. (¬‿¬)' },
+  fist_pump: { time: 4500, weight: 10, cooldown: 15000, speech: '¡Vamos con todo! ¡Ánimo! (•̀o•́)ง' },
+  handstand: { time: 5500, weight: 8, cooldown: 25000, speech: '¡Mira este truco con una mano! 🤸‍♀️✨' },
+  sit_drink: { time: 7000, weight: 12, cooldown: 18000, speech: 'Pausa para beber algo rico... 🍵' },
+  sit_doze: { time: 7500, weight: 10, cooldown: 22000, speech: 'Mmm... qué sueñito... (˘◡˘) zZ' },
+  sleep: { time: 8000, weight: 8, cooldown: 30000, speech: 'zzZ... descansando un ratito... 🌙' },
+  wake_up: { time: 5000, weight: 10, cooldown: 25000, speech: '¡Buenos días de nuevo! (⊙‿⊙) ☀️' },
+  stand_up: { time: 4000, weight: 10, cooldown: 20000, speech: '¡De pie con energía! (≧◡≦)' },
+  sliding_roll: { time: 4500, weight: 8, cooldown: 25000, speech: '¡Vuelta acrobática! 🌀' },
+  pole_balance: { time: 5500, weight: 8, cooldown: 25000, speech: '¡Equilibrio perfecto! 🎪' },
+  red_carpet: { time: 5500, weight: 10, cooldown: 20000, speech: '¡Modo pasarela de diva! 💅✨' },
+  fall_backward: { time: 4000, weight: 5, cooldown: 30000, speech: '¡Ouch, un tropiezo! (｡•́︿•̀｡)' },
+  fall_shot: { time: 4000, weight: 5, cooldown: 30000, speech: '¡Teatralidad dramática! 🎭' },
+  // Compatibilidad
+  greeting: { time: 6000, weight: 15, speech: '¡Konnichiwa! (◕‿◕)ノ♪' },
+  thinking: { time: 5000, weight: 12, speech: 'Hmm... pensando en nuevas canciones... (¬_¬)' },
 };
 
-const accionActual = ref<Action>("idle");
-const actions: Action[] = ["idle", "greeting", "thinking"];
-const lastUsed = new Map<Action, number>();
-let timeoutId: ReturnType<typeof setTimeout> | null = null;
+const accionActual = ref<MikuAction>('chat');
+const isFacingLeft = ref(false);
+const lastUsed = new Map<MikuAction, number>();
+let actionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-function canUseAction(action: Action): boolean {
-  const cooldown = animations[action].cooldown;
-  if (!cooldown) return true;
+// Caminata autónoma por la pantalla
+let walkIntervalId: ReturnType<typeof setInterval> | null = null;
+let walkDirection = 1; // 1 = derecha, -1 = izquierda
+let walkSpeed = 65; // px por segundo
+
+function canUseAction(action: MikuAction): boolean {
+  const cfg = actionPool[action];
+  if (!cfg?.cooldown) return true;
   const lastTime = lastUsed.get(action) ?? 0;
-  return Date.now() - lastTime >= cooldown;
+  return Date.now() - lastTime >= cfg.cooldown;
 }
 
-function getRandomAction(): Action {
-  const availableActions = actions.filter(canUseAction);
-  const totalWeight = availableActions.reduce((total, action) => total + animations[action].weight, 0);
-  let random = Math.random() * totalWeight;
+function pickRandomAction(): MikuAction {
+  const candidateKeys = (Object.keys(actionPool) as MikuAction[]).filter(canUseAction);
+  const totalWeight = candidateKeys.reduce((acc, k) => acc + (actionPool[k]?.weight || 10), 0);
+  let r = Math.random() * totalWeight;
 
-  for (const action of availableActions) {
-    random -= animations[action].weight;
-    if (random <= 0) return action;
+  for (const k of candidateKeys) {
+    r -= actionPool[k]?.weight || 10;
+    if (r <= 0) return k;
   }
-  return "idle";
+  return 'idle';
 }
 
-function runNextAction() {
-  const nextAction = accionActual.value === "idle" ? getRandomAction() : "idle";
-  accionActual.value = nextAction;
-  lastUsed.set(nextAction, Date.now());
+function startWalking() {
+  if (walkIntervalId) clearInterval(walkIntervalId);
 
-  const duration = animations[nextAction].time;
-  timeoutId = setTimeout(() => {
-    runNextAction();
-  }, duration);
+  // Escoger dirección de caminata
+  const maxX = Math.max(0, window.innerWidth - Math.round(300 * currentScale.value));
+  if (posX.value >= maxX - 50) {
+    walkDirection = -1;
+  } else if (posX.value <= 60) {
+    walkDirection = 1;
+  } else {
+    walkDirection = Math.random() > 0.5 ? 1 : -1;
+  }
+
+  isFacingLeft.value = walkDirection === -1;
+
+  const intervalMs = 25;
+  walkIntervalId = setInterval(() => {
+    if (isDragging.value || isFalling.value) return;
+
+    const currentMaxX = Math.max(0, window.innerWidth - Math.round(300 * currentScale.value));
+    const step = (walkSpeed * (intervalMs / 1000)) * walkDirection;
+    const nextX = posX.value + step;
+
+    if (nextX <= 20) {
+      walkDirection = 1;
+      isFacingLeft.value = false;
+      posX.value = 20;
+    } else if (nextX >= currentMaxX) {
+      walkDirection = -1;
+      isFacingLeft.value = true;
+      posX.value = currentMaxX;
+    } else {
+      posX.value = nextX;
+    }
+  }, intervalMs);
+}
+
+function stopWalking() {
+  if (walkIntervalId) {
+    clearInterval(walkIntervalId);
+    walkIntervalId = null;
+    savePosition();
+  }
+}
+
+function executeAction(action: MikuAction) {
+  accionActual.value = action;
+  lastUsed.set(action, Date.now());
+
+  const cfg = actionPool[action] || { time: 5000 };
+
+  if (cfg.speech) {
+    mikuStore.setSpeech(cfg.speech);
+  }
+
+  // Si la acción es de movimiento, activar la caminata en pantalla
+  if (action === 'walking' || action === 'quick_walk' || action === 'running' || action === 'red_carpet') {
+    walkSpeed = action === 'running' ? 140 : action === 'quick_walk' ? 95 : 65;
+    startWalking();
+  } else {
+    stopWalking();
+  }
+
+  if (actionTimeoutId) clearTimeout(actionTimeoutId);
+  actionTimeoutId = setTimeout(() => {
+    runNextScheduledCycle();
+  }, cfg.time);
+}
+
+function runNextScheduledCycle() {
+  // Si está descansando o caminando, alternar fluidamente
+  if (isDragging.value || isFalling.value) {
+    actionTimeoutId = setTimeout(runNextScheduledCycle, 2000);
+    return;
+  }
+
+  const next = pickRandomAction();
+  executeAction(next);
 }
 
 // ----------------- FÍSICA, ARRASTRE Y GRAVEDAD -----------------
-const FLOOR_Y = 42; // Altura del suelo (justo sobre la barra de tareas de 41px)
+const FLOOR_Y = 42; // Altura de la barra de tareas
 const posX = ref(300);
 const posY = ref(FLOOR_Y);
 
@@ -92,8 +205,8 @@ let startMouseY = 0;
 let initialMikuX = 0;
 let initialMikuY = 0;
 
-let vy = 0; // Velocidad vertical de caída (px/s)
-const GRAVITY = 3400; // Aceleración de gravedad rápida y caricaturesca (px/s²)
+let vy = 0;
+const GRAVITY = 3400;
 let lastFrameTime = performance.now();
 let animFrameId: number | null = null;
 
@@ -119,7 +232,7 @@ function startGravityFall() {
   function step(now: number) {
     if (isDragging.value) return;
 
-    const dt = Math.min((now - lastFrameTime) / 1000, 0.05); // Límite de 50ms por cuadro
+    const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
     lastFrameTime = now;
 
     vy += GRAVITY * dt;
@@ -128,14 +241,12 @@ function startGravityFall() {
     if (posY.value <= FLOOR_Y) {
       posY.value = FLOOR_Y;
 
-      // Rebote caricaturesco si venía con suficiente velocidad
       if (Math.abs(vy) > 420) {
         vy = -vy * 0.26;
         triggerSquash();
         animFrameId = requestAnimationFrame(step);
         return;
       } else {
-        // Aterrizaje completado
         vy = 0;
         isFalling.value = false;
         triggerSquash();
@@ -159,15 +270,15 @@ async function savePosition() {
   }
 }
 
-// Eventos de arrastre con Mouse
 function onMouseDown(e: MouseEvent) {
-  if (e.button !== 0) return; // Solo clic izquierdo
+  if (e.button !== 0) return;
   isMouseDown.value = true;
   startMouseX = e.clientX;
   startMouseY = e.clientY;
   initialMikuX = posX.value;
   initialMikuY = posY.value;
 
+  stopWalking();
   if (animFrameId) cancelAnimationFrame(animFrameId);
   isFalling.value = false;
 
@@ -183,15 +294,14 @@ function onMouseMove(e: MouseEvent) {
 
   if (!isDragging.value && Math.hypot(dx, dy) > 4) {
     isDragging.value = true;
+    stopWalking();
   }
 
   if (isDragging.value) {
-    const maxX = Math.max(0, window.innerWidth - 180);
-    const maxY = Math.max(FLOOR_Y, window.innerHeight - 280);
+    const maxX = Math.max(0, window.innerWidth - Math.round(280 * currentScale.value));
+    const maxY = Math.max(FLOOR_Y, window.innerHeight - Math.round(280 * currentScale.value));
 
-    // X se mueve con deltaX
     posX.value = Math.max(10, Math.min(maxX, initialMikuX + dx));
-    // Y se invierte porque posY es desde el fondo (bottom)
     posY.value = Math.max(FLOOR_Y, Math.min(maxY, initialMikuY - dy));
   }
 }
@@ -208,7 +318,6 @@ function onMouseUp() {
   }
 }
 
-// Soporte para pantallas táctiles (Touch)
 function onTouchStart(e: TouchEvent) {
   if (e.touches.length !== 1) return;
   const touch = e.touches[0];
@@ -218,6 +327,7 @@ function onTouchStart(e: TouchEvent) {
   initialMikuX = posX.value;
   initialMikuY = posY.value;
 
+  stopWalking();
   if (animFrameId) cancelAnimationFrame(animFrameId);
   isFalling.value = false;
 
@@ -233,12 +343,13 @@ function onTouchMove(e: TouchEvent) {
 
   if (!isDragging.value && Math.hypot(dx, dy) > 5) {
     isDragging.value = true;
+    stopWalking();
   }
 
   if (isDragging.value) {
     e.preventDefault();
-    const maxX = Math.max(0, window.innerWidth - 180);
-    const maxY = Math.max(FLOOR_Y, window.innerHeight - 280);
+    const maxX = Math.max(0, window.innerWidth - Math.round(280 * currentScale.value));
+    const maxY = Math.max(FLOOR_Y, window.innerHeight - Math.round(280 * currentScale.value));
 
     posX.value = Math.max(10, Math.min(maxX, initialMikuX + dx));
     posY.value = Math.max(FLOOR_Y, Math.min(maxY, initialMikuY - dy));
@@ -258,7 +369,7 @@ function onTouchEnd() {
 }
 
 function onWindowResize() {
-  const maxX = Math.max(0, window.innerWidth - 180);
+  const maxX = Math.max(0, window.innerWidth - Math.round(280 * currentScale.value));
   if (posX.value > maxX) {
     posX.value = maxX;
     savePosition();
@@ -278,8 +389,8 @@ function openConfigWindow() {
     title: 'Desktop Miku • Configuración',
     isMaximized: false,
     params: {
-      width: 480,
-      height: 640
+      width: 500,
+      height: 680
     }
   });
 }
@@ -290,66 +401,218 @@ function closeDesktopMiku() {
 }
 
 function quickGreeting() {
-  mikuStore.triggerAction('greeting');
+  executeAction('dance_groove');
 }
 
-// Ciclo de vida y watchers
 onMounted(async () => {
-  runNextAction();
+  executeAction('chat');
 
-  // Cargar posición persistente desde AppStorage (Dexie IndexedDB)
+  try {
+    const savedScale = await storage.get('mikuScale');
+    if (typeof savedScale === 'number' && savedScale >= 0.5 && savedScale <= 2.5) {
+      currentScale.value = savedScale;
+      mikuStore.setScale(savedScale);
+    }
+  } catch (err) {
+    console.error("Error cargando escala de Miku:", err);
+  }
+
   try {
     const saved = await storage.get('mikuPosition');
     if (saved && typeof saved.x === 'number') {
-      const maxX = Math.max(0, window.innerWidth - 180);
+      const maxX = Math.max(0, window.innerWidth - Math.round(280 * currentScale.value));
       posX.value = Math.max(15, Math.min(maxX, saved.x));
     } else {
-      posX.value = Math.max(20, window.innerWidth - 240);
+      posX.value = Math.max(20, window.innerWidth - Math.round(300 * currentScale.value));
     }
   } catch {
-    posX.value = Math.max(20, window.innerWidth - 240);
+    posX.value = Math.max(20, window.innerWidth - Math.round(300 * currentScale.value));
   }
   posY.value = FLOOR_Y;
 
   window.addEventListener('resize', onWindowResize);
+  window.addEventListener('pointermove', onWindowPointerMove);
 });
 
 onUnmounted(() => {
-  if (timeoutId) clearTimeout(timeoutId);
+  stopWalking();
+  if (actionTimeoutId) clearTimeout(actionTimeoutId);
   if (animFrameId) cancelAnimationFrame(animFrameId);
   window.removeEventListener('resize', onWindowResize);
+  window.removeEventListener('pointermove', onWindowPointerMove);
   window.removeEventListener('mousemove', onMouseMove);
   window.removeEventListener('mouseup', onMouseUp);
   window.removeEventListener('touchmove', onTouchMove);
   window.removeEventListener('touchend', onTouchEnd);
 });
 
+const viewerKey = ref(0);
+
 watch(() => mikuStore.actionTriggerTimestamp, () => {
   const act = mikuStore.currentAction;
-  if (act && animations[act]) {
-    accionActual.value = act;
-    lastUsed.set(act, Date.now());
-    if (timeoutId) clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      runNextAction();
-    }, animations[act].time);
+  if (act && actionPool[act]) {
+    executeAction(act);
   }
 });
+
+watch(() => mikuStore.resetTriggerTimestamp, () => {
+  stopWalking();
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  isDragging.value = false;
+  isFalling.value = false;
+  isSquashing.value = false;
+  vy = 0;
+
+  posY.value = FLOOR_Y;
+  posX.value = Math.max(20, window.innerWidth - 320);
+  savePosition();
+
+  accionActual.value = 'chat';
+  // Recrear MikuViewer para resetear por completo el contexto 3D WebGL
+  viewerKey.value++;
+
+  if (actionTimeoutId) clearTimeout(actionTimeoutId);
+  actionTimeoutId = setTimeout(() => {
+    runNextScheduledCycle();
+  }, 6000);
+});
+
+watch(() => mikuStore.currentScale, (newScale) => {
+  if (typeof newScale === 'number' && newScale !== currentScale.value) {
+    currentScale.value = newScale;
+    const maxX = Math.max(0, window.innerWidth - Math.round(300 * newScale));
+    if (posX.value > maxX) {
+      posX.value = maxX;
+      savePosition();
+    }
+  }
+});
+
+const isRagdollGrabbing = ref(false);
+// true mientras la simulación física del ragdoll está corriendo (agarrado O
+// todavía cayendo/asentándose tras soltarlo). Mientras esto sea true, la
+// posición real de Miku en pantalla puede diferir mucho de `posX`/`posY`,
+// así que el menú flotante debe permanecer oculto para evitar que aparezca
+// superpuesto sobre el personaje en vez de a su lado.
+const isRagdollPhysicsActive = ref(false);
+const isNearMiku = ref(false);
+
+function onWindowPointerMove(e: PointerEvent) {
+  if (isRagdollGrabbing.value || isRagdollPhysicsActive.value || isDragging.value || isFalling.value) {
+    isNearMiku.value = false;
+    return;
+  }
+  // Coordenadas del centro de Miku en pantalla
+  const mikuScreenCenterX = posX.value;
+  const mikuScreenCenterY = window.innerHeight - (posY.value + 160 * currentScale.value);
+  const dist = Math.hypot(e.clientX - mikuScreenCenterX, e.clientY - mikuScreenCenterY);
+  isNearMiku.value = dist < 220;
+}
+
+const floatingToolsLeft = computed(() => {
+  const desiredX = posX.value + 40;
+  if (desiredX + 70 > window.innerWidth) {
+    return Math.max(12, posX.value - 90);
+  }
+  return desiredX;
+});
+
+const floatingToolsBottom = computed(() => {
+  return posY.value + 120 * currentScale.value;
+});
+
+function onUpdatePosition(screenX: number, screenY?: number) {
+  posX.value = Math.max(20, Math.min(window.innerWidth - 60, Math.round(screenX)));
+  // La Y solo llega mientras el ragdoll está activo (agarrado o cayendo).
+  // La guardamos para que el menú flotante sepa dónde está realmente Miku,
+  // pero NO persistimos en storage en cada frame para evitar escrituras
+  // excesivas: eso se hace una sola vez cuando la física se asienta.
+  if (typeof screenY === 'number' && Number.isFinite(screenY)) {
+    posY.value = Math.max(FLOOR_Y, Math.round(screenY));
+  }
+}
+
+function onRagdollPhysicsChange(active: boolean) {
+  isRagdollPhysicsActive.value = active;
+  if (!active) {
+    // La física ya terminó de asentarse y Miku volvió a su pose de pie:
+    // ahora sí persistimos la posición final real.
+    savePosition();
+  }
+}
+
+function onRagdollGrab(grabbing: boolean, boneName?: string, _clientX?: number, _clientY?: number) {
+  isRagdollGrabbing.value = grabbing;
+  if (grabbing) {
+    stopWalking();
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    isFalling.value = false;
+    vy = 0;
+    if (actionTimeoutId) clearTimeout(actionTimeoutId);
+
+    const boneSpanish: Record<string, string> = {
+      Head: '¡Mi cabeza!',
+      LeftHand: '¡Mi mano izquierda!',
+      RightHand: '¡Mi mano derecha!',
+      LeftArm: '¡Mi brazo!',
+      RightArm: '¡Mi brazo!',
+      LeftFoot: '¡Mi pie izquierdo!',
+      RightFoot: '¡Mi pie derecho!',
+      Hips: '¡Waaah, no me levantes así!',
+      Spine: '¡Kyaaa!',
+      Spine2: '¡Oye!'
+    };
+    const part = boneName ? (boneSpanish[boneName] || '¡Kyaaa!') : '¡Waaah!';
+    mikuStore.setSpeech(`${part} ¡Físicas de muñeca de trapo! (＞﹏＜)✿`);
+  } else {
+    // No forzamos posY a FLOOR_Y aquí: Miku puede seguir cayendo/rebotando
+    // durante unos instantes más tras soltarla. La posición real se sigue
+    // sincronizando cuadro a cuadro vía onUpdatePosition hasta que
+    // onRagdollPhysicsChange(false) confirme que ya se asentó.
+    mikuStore.setSpeech('¡Ufff, de vuelta de pie! (•̀o•́)ง✨');
+    if (actionTimeoutId) clearTimeout(actionTimeoutId);
+    actionTimeoutId = setTimeout(() => {
+      runNextScheduledCycle();
+    }, 3000);
+  }
+}
+
+function onRagdollDrag(_clientX: number, _clientY: number) {
+  // Las físicas corren a pantalla completa en MikuRagdoll y MikuViewer.
+}
 </script>
 
 <template>
-  <div
-    class="miku-pet-container"
-    :class="{ 'is-dragging': isDragging, 'is-falling': isFalling }"
-    :style="{
-      left: `${posX}px`,
-      bottom: `${posY}px`
-    }"
-    @mousedown="onMouseDown"
-    @touchstart="onTouchStart"
-  >
-    <!-- BOTONES FLOTANTES AL HACER HOVER (Estilo cómic Hatsune Miku) -->
-    <div class="miku-floating-tools" @mousedown.stop @touchstart.stop>
+  <div class="miku-desktop-layer">
+    <!-- VISOR 3D WEBGL PANTALLA COMPLETA: Físicas de ragdoll y animación por todo el monitor -->
+    <MikuViewer
+      :key="viewerKey"
+      :action="accionActual"
+      :facing-left="isFacingLeft"
+      :scale="currentScale"
+      :miku-x="posX"
+      :miku-y="posY"
+      @ragdoll-grab="onRagdollGrab"
+      @ragdoll-drag="onRagdollDrag"
+      @ragdoll-physics="onRagdollPhysicsChange"
+      @update-position="onUpdatePosition"
+    />
+
+    <!-- BOTONES FLOTANTES AL HACER HOVER CERCA DE MIKU (Estilo cómic Hatsune Miku) -->
+    <div
+      class="miku-floating-tools"
+      :class="{
+        'is-visible': isNearMiku && !isRagdollGrabbing && !isRagdollPhysicsActive && !isDragging && !isFalling,
+        'is-dragging': isDragging
+      }"
+      :style="{
+        left: `${floatingToolsLeft}px`,
+        bottom: `${floatingToolsBottom}px`
+      }"
+      @mouseenter="isNearMiku = true"
+      @mousedown.stop
+      @touchstart.stop
+    >
       <!-- Botón de configuración -->
       <button
         class="floating-btn config-btn"
@@ -361,15 +624,38 @@ watch(() => mikuStore.actionTriggerTimestamp, () => {
         <span class="btn-bubble-tip">Ajustes</span>
       </button>
 
+      <!-- Botón de reposicionar / grabber (Arrastrar para mover por la pantalla) -->
+      <button
+        class="floating-btn grabber-btn"
+        type="button"
+        title="Mover a Miku (Mantén presionado y arrastra)"
+        @mousedown.stop="onMouseDown"
+        @touchstart.stop="onTouchStart"
+      >
+        <i class="bi bi-arrows-move"></i>
+        <span class="btn-bubble-tip">Mover</span>
+      </button>
+
+      <!-- Botón de cambiar tamaño (Resize) -->
+      <button
+        class="floating-btn resize-btn"
+        type="button"
+        :title="`Cambiar tamaño (Actual: ${scaleLabel})`"
+        @click.stop="cycleNextScale"
+      >
+        <i class="bi bi-arrows-angle-expand"></i>
+        <span class="btn-bubble-tip">Tamaño: {{ scaleLabel }}</span>
+      </button>
+
       <!-- Botón de interacción rápida -->
       <button
         class="floating-btn wave-btn"
         type="button"
-        title="¡Saludar a Miku!"
+        title="¡Bailar con Miku!"
         @click.stop="quickGreeting"
       >
         <i class="bi bi-music-note-beamed"></i>
-        <span class="btn-bubble-tip">¡Saludar!</span>
+        <span class="btn-bubble-tip">¡Bailar!</span>
       </button>
 
       <!-- Botón de cerrar mascota -->
@@ -383,72 +669,38 @@ watch(() => mikuStore.actionTriggerTimestamp, () => {
         <span class="btn-bubble-tip">Cerrar</span>
       </button>
     </div>
-
-    <!-- MODELO ANIMADO DE MIKU -->
-    <div
-      class="miku-char"
-      :class="[
-        animations[accionActual].class,
-        {
-          'char-falling': isFalling || isDragging,
-          'char-squash': isSquashing
-        }
-      ]"
-    >
-      <MikuViewer />
-    </div>
   </div>
 </template>
 
 <style scoped>
-.miku-pet-container {
-  height: 30rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+.miku-desktop-layer {
   position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
   z-index: 10000;
-  cursor: grab;
+  overflow: hidden;
   user-select: none;
-  touch-action: none;
-  transition: transform 0.08s ease;
 }
 
-
-.miku-pet-container.is-dragging {
-  cursor: grabbing !important;
-  transition: none !important;
-}
-
-/* BOTONES FLOTANTES AL HACER HOVER */
+/* BOTONES FLOTANTES AL HACER HOVER CERCA DE MIKU */
 .miku-floating-tools {
-  position: absolute;
-  top: 18%;
-  right: -36px;
+  position: fixed;
   display: flex;
   flex-direction: column;
   gap: 10px;
   z-index: 10002;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-12px) scale(0.85);
-  transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: translateX(-10px) scale(0.88);
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Al pasar el mouse por encima de Miku, aparecen las opciones flotantes solo cuando está detenida */
-.miku-pet-container:not(.is-dragging):not(.is-falling):hover .miku-floating-tools,
-.miku-pet-container:not(.is-dragging):not(.is-falling) .miku-floating-tools:hover {
+.miku-floating-tools.is-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0) scale(1);
-}
-
-/* Forzar ocultamiento durante arrastre o caída */
-.miku-pet-container.is-dragging .miku-floating-tools,
-.miku-pet-container.is-falling .miku-floating-tools {
-  opacity: 0 !important;
-  pointer-events: none !important;
-  transform: translateX(-12px) scale(0.85) !important;
 }
 
 .floating-btn {
@@ -465,6 +717,7 @@ watch(() => mikuStore.actionTriggerTimestamp, () => {
   position: relative;
   transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   outline: none;
+  pointer-events: auto;
 }
 
 .floating-btn:hover {
@@ -485,6 +738,31 @@ watch(() => mikuStore.actionTriggerTimestamp, () => {
 
 .floating-btn.config-btn:hover {
   background: #00f2fe;
+}
+
+/* Botón Reposicionar / Grabber (Miku Orange / Move) */
+.floating-btn.grabber-btn {
+  background: #ff9f1c;
+  color: #0e1017;
+  cursor: grab;
+}
+
+.floating-btn.grabber-btn:hover {
+  background: #ffb703;
+}
+
+.floating-btn.grabber-btn:active {
+  cursor: grabbing;
+}
+
+/* Botón Cambiar tamaño (Miku Purple / Violet) */
+.floating-btn.resize-btn {
+  background: #9d4edd;
+  color: #ffffff;
+}
+
+.floating-btn.resize-btn:hover {
+  background: #b5179e;
 }
 
 /* Botón Interacción rápida (Miku Lime/Yellow) */
@@ -529,37 +807,5 @@ watch(() => mikuStore.actionTriggerTimestamp, () => {
 .floating-btn:hover .btn-bubble-tip {
   opacity: 1;
   transform: translateX(0);
-}
-
-/* CONTENEDOR DEL MODELO 3D */
-.miku-char {
-  width: 200px;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-
-/* Reflejo horizontal en reposo como en el diseño original */
-.idle {
-  transform: scaleX(-1);
-}
-
-/* Efectos caricaturescos de física */
-.char-falling {
-  transform: scale(0.96, 1.05);
-}
-
-.idle.char-falling {
-  transform: scaleX(-1) scale(0.96, 1.05);
-}
-
-.char-squash {
-  transform: scale(1.08, 0.88);
-}
-
-.idle.char-squash {
-  transform: scaleX(-1) scale(1.08, 0.88);
 }
 </style>

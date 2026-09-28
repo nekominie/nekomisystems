@@ -1,4 +1,4 @@
-/* --- Pantalla de Bloqueo Frost OS (Estilo Windows 11) --- */
+/* --- Pantalla de Bloqueo Frost OS (Estilo Windows 11 Fluent) --- */
 
 .frost-lock-screen {
   position: fixed;
@@ -9,34 +9,54 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-color: #0c101a;
   color: #ffffff;
   user-select: none;
   overflow: hidden;
   font-family: inherit;
 }
 
-/* Capa de oscurecimiento sutil para legibilidad */
+/* Capa de imagen de fondo con blur nativo GPU de alta fidelidad */
+.lock-wallpaper-layer {
+  position: absolute;
+  top: -40px;
+  left: -40px;
+  right: -40px;
+  bottom: -40px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(0px) brightness(1) saturate(100%);
+  transform: scale(1);
+  transition: filter 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: filter, transform;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.lock-wallpaper-layer.is-blurred {
+  filter: blur(var(--os-blur-val, 34px)) brightness(0.82) saturate(130%);
+  transform: scale(1.06);
+}
+
+/* Capa de oscurecimiento / viñeta para legibilidad y profundidad acrílica */
 .lock-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.6) 100%);
+  z-index: 2;
+  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.5) 100%);
   pointer-events: none;
-  transition: backdrop-filter 0.4s ease, background 0.4s ease;
+  transition: background 0.5s ease;
 }
 
 .lock-overlay.challenge-active {
-  backdrop-filter: blur(48px) saturate(140%) brightness(0.65);
-  -webkit-backdrop-filter: blur(48px) saturate(140%) brightness(0.65);
-  background: rgba(12, 16, 26, 0.65);
+  background: radial-gradient(circle at center, rgba(12, 16, 26, 0.35) 0%, rgba(8, 12, 20, 0.65) 100%);
 }
 
 /* --- VISTA 1: RELOJ AMBIENTAL (GLANCE) --- */
 .lock-glance-view {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   width: 100%;
   height: 100%;
   display: flex;
@@ -110,7 +130,7 @@
 /* --- VISTA 2: DESAFÍO / INICIO DE SESIÓN --- */
 .lock-challenge-view {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   width: 100%;
   height: 100%;
   display: flex;
@@ -124,9 +144,15 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  max-width: 340px;
-  padding: 30px 24px;
+  max-width: 360px;
+  padding: 34px 28px 28px 28px;
   box-sizing: border-box;
+  background: rgba(18, 24, 38, 0.48);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .user-avatar-wrapper {
@@ -182,23 +208,24 @@
   width: 100%;
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 8px;
-  backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: all 0.2s ease;
   overflow: hidden;
 }
 
 .pin-input-group:focus-within {
-  border-color: #64b5f6;
-  background: rgba(255, 255, 255, 0.16);
-  box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.25);
+  border-color: var(--os-accent-color, #38bdf8);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 3px rgba(var(--os-accent-rgb, 56, 189, 248), 0.3);
 }
 
 .pin-input {
   width: 100%;
-  padding: 10px 42px 10px 14px;
+  padding: 11px 44px 11px 16px;
   background: transparent;
   border: none;
   color: #ffffff;
@@ -209,7 +236,7 @@
 }
 
 .pin-input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.45);
   letter-spacing: normal;
   font-size: 14px;
 }
@@ -217,8 +244,8 @@
 .pin-action-btn {
   position: absolute;
   right: 6px;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,7 +265,7 @@
 
 .pin-error-text {
   font-size: 13px;
-  color: #ff6b6b;
+  color: #f87171;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -250,47 +277,51 @@
 .unlock-btn {
   width: 100%;
   padding: 11px 20px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.3) 0%, rgba(2, 132, 199, 0.2) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 10px;
   color: #ffffff;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: all 0.2s ease;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.25);
 }
 
 .unlock-btn:hover {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.14) 100%);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.45) 0%, rgba(2, 132, 199, 0.35) 100%);
+  border-color: rgba(56, 189, 248, 0.7);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
 }
 
 .cancel-challenge-btn {
   margin-top: 18px;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12.5px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: all 0.15s ease;
 }
 
 .cancel-challenge-btn:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 /* --- BARRA INFERIOR DE ACCIONES (WINDOWS 11 STYLE) --- */
@@ -343,11 +374,12 @@
   bottom: 46px;
   right: 0;
   width: 160px;
-  background: rgba(24, 28, 38, 0.85);
-  backdrop-filter: blur(24px);
+  background: rgba(18, 22, 32, 0.75);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -372,11 +404,27 @@
 }
 
 .power-dropdown button:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .power-dropdown button i {
   font-size: 15px;
+}
+
+/* Transición fluida entre Reloj y Desafío (Glance <-> Challenge) */
+.lock-view-fade-enter-active,
+.lock-view-fade-leave-active {
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.lock-view-fade-enter-from {
+  opacity: 0;
+  transform: translateY(24px) scale(0.97);
+}
+
+.lock-view-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-24px) scale(1.02);
 }
 
 /* Animaciones y Transiciones */

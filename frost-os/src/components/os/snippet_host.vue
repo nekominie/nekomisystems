@@ -38,7 +38,7 @@ const emit = defineEmits<{
   /* global: snippet_transitions.css o un css global de snippets */
   .snippet-host{
     position: absolute;
-    right: 10px;
+    right: 12px;
     bottom: 60px;
-    z-index: 999; /* lo que necesites */
+    z-index: 99999;
 }</style>

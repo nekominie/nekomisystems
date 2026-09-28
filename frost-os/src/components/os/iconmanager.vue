@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { icons } from '../data/icons.ts';
+import { useWifiStore } from '../snippets/core_snippets/wifi/wifi_store';
 
 const props = defineProps<{
   id: string
 }>();
 
+const wifiStore = useWifiStore();
+
 const currentIcon = computed(() => {
-  return icons.find(app => app.id === props.id);
+  let targetId = props.id;
+  if (props.id === 'wifi') {
+    targetId = wifiStore.wifiEnabled ? 'wifi' : 'ethernet';
+  }
+  return icons.find(app => app.id === targetId) || icons.find(app => app.id === props.id);
 });
 
 const isImage = (iconString: string) => {

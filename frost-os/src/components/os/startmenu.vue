@@ -23,6 +23,7 @@ const emit = defineEmits<{
     (e: 'view-app-finder'): void,
     (e: 'view-start-settings'): void,
     (e: 'shutdown'): void,
+    (e: 'restart'): void,
     (e: 'close-startmenu'): void
 }>()
 
@@ -76,6 +77,11 @@ const lockSystem = () => {
     lockStore.lock()
 }
 
+const restartSystem = () => {
+    emit('close-startmenu')
+    emit('restart')
+}
+
 </script>
 
 <style scoped>
@@ -109,6 +115,12 @@ const lockSystem = () => {
                     >
                         <i class="bi-lock" style="display: flex; font-size: 16px; margin-right: 5px;"></i>
                         Bloquear
+                    </button>
+                    <button class="start-menu-button" style="border-radius: 4px; width: 100%; height: 28px;"
+                    @click="restartSystem"
+                    >
+                        <i class="bi-arrow-clockwise" style="display: flex; font-size: 16px; margin-right: 5px;"></i>
+                        Reiniciar
                     </button>
                     <button class="start-menu-button" style="border-radius: 4px; width: 100%; height: 28px;"
                     @click="emit('shutdown')"

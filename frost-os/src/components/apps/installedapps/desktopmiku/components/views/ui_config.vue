@@ -1,16 +1,48 @@
 <script setup lang="ts">
-import { inject, onMounted, reactive, ref } from 'vue'
+import { inject, onMounted, reactive, ref, computed, watch } from 'vue'
 import { OS_KEY } from '../../../../../api/os_api'
 import { useDesktopMikuStore, type MikuAction } from '../../store'
+import { AppStorage } from '../../../../../../database/app_storage'
 
 const os = inject(OS_KEY)
 const mikuStore = useDesktopMikuStore()
+const storage = new AppStorage('desktopmiku')
+
+// Pestañas del panel de configuración
+type ConfigTab = 'general' | 'poses'
+const activeTab = ref<ConfigTab>('general')
 
 // Preferencias de arranque y persistencia
 const prefs = reactive({
   startOnBoot: true,
   startInTray: true,
   closeToTray: true,
+})
+
+// Tamaño y escala de Miku
+const currentScale = ref(mikuStore.currentScale || 1.0)
+const SCALE_OPTIONS = [
+  { value: 0.75, label: '75%', name: 'Compacto', icon: '🔍' },
+  { value: 1.0, label: '100%', name: 'Normal', icon: '👤' },
+  { value: 1.25, label: '125%', name: 'Grande', icon: '✨' },
+  { value: 1.5, label: '150%', name: 'Extra', icon: '🌟' }
+]
+
+async function selectScale(val: number) {
+  currentScale.value = val
+  mikuStore.setScale(val)
+  try {
+    await storage.set('mikuScale', val)
+  } catch (err) {
+    console.error('Error guardando escala:', err)
+  }
+  showBubble(`¡Tamaño de Miku ajustado a ${Math.round(val * 100)}%! (◕‿◕)✿`)
+}
+
+watch(() => mikuStore.currentScale, (val) => {
+  if (typeof val === 'number') {
+    currentScale.value = val
+  }
 })
 
 // Citas interactivas de Miku
@@ -43,8 +75,17 @@ function loadPreferences() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadPreferences()
+  try {
+    const savedScale = await storage.get('mikuScale')
+    if (typeof savedScale === 'number' && savedScale >= 0.5 && savedScale <= 2.5) {
+      currentScale.value = savedScale
+      mikuStore.setScale(savedScale)
+    }
+  } catch (err) {
+    console.error('Error leyendo escala en config:', err)
+  }
 })
 
 // Toggles de arranque con persistencia en Dexie IndexedDB
@@ -75,16 +116,76 @@ async function toggleCloseToTray() {
   )
 }
 
+// ---------------- REPOSITORIO DE ANIMACIONES ----------------
+export type AnimationCategory = 'all' | 'walk' | 'dance' | 'chat' | 'acro' | 'rest';
+
+export type RepoItem = {
+  id: MikuAction;
+  name: string;
+  category: 'walk' | 'dance' | 'chat' | 'acro' | 'rest';
+  categoryLabel: string;
+  icon: string;
+  desc: string;
+};
+
+const repoCategoryFilter = ref<AnimationCategory>('all');
+const searchQuery = ref('');
+
+const animationRepo: RepoItem[] = [
+  // Locomoción / Paseo
+  { id: 'walking', name: 'Caminata Normal', category: 'walk', categoryLabel: 'Paseo', icon: '🚶‍♀️', desc: 'Paseo continuo por el escritorio' },
+  { id: 'quick_walk', name: 'Paso Rápido', category: 'walk', categoryLabel: 'Paseo', icon: '⚡', desc: 'Caminata acelerada con prisa' },
+  { id: 'running', name: 'Carrera Sprint', category: 'walk', categoryLabel: 'Paseo', icon: '🏃‍♀️', desc: 'Carrera veloz llena de vitalidad' },
+  { id: 'red_carpet', name: 'Pasarela Glamour', category: 'walk', categoryLabel: 'Paseo', icon: '👠', desc: 'Desfile como en alfombra roja' },
+
+  // Baile & Ritmo
+  { id: 'dance_groove', name: 'OMG Groove', category: 'dance', categoryLabel: 'Baile', icon: '💃', desc: 'Coreografía pop enérgica y alegre' },
+  { id: 'dance_shake', name: 'Shake It Off', category: 'dance', categoryLabel: 'Baile', icon: '🎵', desc: 'Divertido baile al estilo Vocaloid' },
+
+  // Expresión & Diálogo
+  { id: 'chat', name: 'Charla & Saludo', category: 'chat', categoryLabel: 'Social', icon: '💬', desc: 'Gestos amigables de conversación' },
+  { id: 'scheming', name: 'Maquinando Ideas', category: 'chat', categoryLabel: 'Social', icon: '💡', desc: 'Frotando manos pensando planes' },
+  { id: 'fist_pump', name: '¡Victoria / Ánimo!', category: 'chat', categoryLabel: 'Social', icon: '✊', desc: 'Celebración festiva con puño arriba' },
+
+  // Acrobacias
+  { id: 'handstand', name: 'Parada a Una Mano', category: 'acro', categoryLabel: 'Acrobacia', icon: '🤸‍♀️', desc: 'Equilibrio sobre un solo brazo' },
+  { id: 'sliding_roll', name: 'Voltereta Rodante', category: 'acro', categoryLabel: 'Acrobacia', icon: '🌀', desc: 'Giro acrobático sobre el suelo' },
+  { id: 'pole_balance', name: 'Equilibrista', category: 'acro', categoryLabel: 'Acrobacia', icon: '🎪', desc: 'Equilibrio concentrado' },
+  { id: 'fall_backward', name: 'Tropiezo Cómico', category: 'acro', categoryLabel: 'Acrobacia', icon: '💥', desc: 'Caída cómica hacia atrás' },
+  { id: 'fall_shot', name: 'Caída Dramática', category: 'acro', categoryLabel: 'Acrobacia', icon: '🎭', desc: 'Reacción dramática teatral' },
+
+  // Descanso & Relax
+  { id: 'sit_drink', name: 'Hora del Té', category: 'rest', categoryLabel: 'Relax', icon: '🍵', desc: 'Sentada disfrutando una bebida' },
+  { id: 'sit_doze', name: 'Dormitando', category: 'rest', categoryLabel: 'Relax', icon: '🥱', desc: 'Sentada cabeceando de sueño' },
+  { id: 'sleep', name: 'Siesta Profunda', category: 'rest', categoryLabel: 'Relax', icon: '🌙', desc: 'Descanso tendida en el escritorio' },
+  { id: 'wake_up', name: 'Despertar', category: 'rest', categoryLabel: 'Relax', icon: '☀️', desc: 'Estirándose al despertar' },
+  { id: 'stand_up', name: 'Ponerse de Pie', category: 'rest', categoryLabel: 'Relax', icon: '✨', desc: 'Levantándose con decisión' },
+  { id: 'idle', name: 'Reposo Base', category: 'rest', categoryLabel: 'Relax', icon: '🎀', desc: 'Postura neutra y serena' },
+];
+
+const filteredAnimations = computed(() => {
+  return animationRepo.filter(item => {
+    const matchCat = repoCategoryFilter.value === 'all' || item.category === repoCategoryFilter.value;
+    const matchQuery = !searchQuery.value ||
+      item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+      item.desc.toLowerCase().includes(searchQuery.value.toLowerCase());
+    return matchCat && matchQuery;
+  });
+});
+
 // Disparadores de animación en tiempo real
 function triggerMikuAnimation(action: MikuAction) {
-  mikuStore.triggerAction(action)
-  if (action === 'greeting') {
-    showBubble("¡Konnichiwa! ¡Hola a todos! (◕‿◕)ノ♪")
-  } else if (action === 'thinking') {
-    showBubble("Hmm... ¿Qué canción deberíamos cantar ahora? (¬_¬)💭")
-  } else {
-    showBubble("Ah~ ¡Un merecido descansito relajante! (˘◡˘) zZ")
+  mikuStore.triggerAction(action);
+  const found = animationRepo.find(a => a.id === action);
+  if (found) {
+    showBubble(`¡Reproduciendo: ${found.name}! ٩(ˊᗜˋ*)و ✨`);
   }
+}
+
+// ---------------- RESET DEL MODELO ----------------
+function triggerResetModel() {
+  mikuStore.resetModel();
+  showBubble("¡Modelo 3D y entorno restaurados! (⌒▽⌒)☆ Contexto WebGL reiniciado a cero.");
 }
 
 // Alternar visibilidad de la mascota en el escritorio
@@ -153,6 +254,30 @@ function togglePetVisibility() {
         <div class="bubble-tail"></div>
       </div>
 
+      <!-- PESTAÑAS PRINCIPALES DEL PANEL -->
+      <div class="miku-main-tabs">
+        <button
+          class="miku-main-tab-btn"
+          :class="{ active: activeTab === 'general' }"
+          type="button"
+          @click="activeTab = 'general'"
+        >
+          <i class="bi bi-sliders"></i>
+          <span>General</span>
+        </button>
+        <button
+          class="miku-main-tab-btn"
+          :class="{ active: activeTab === 'poses' }"
+          type="button"
+          @click="activeTab = 'poses'"
+        >
+          <i class="bi bi-collection-play-fill"></i>
+          <span>Poses</span>
+          <span class="tab-count-badge">{{ animationRepo.length }}</span>
+        </button>
+      </div>
+
+      <template v-if="activeTab === 'general'">
       <!-- TARJETA 1: OPCIONES DE ARRANQUE -->
       <div class="miku-card">
         <div class="miku-card-title">
@@ -232,28 +357,46 @@ function togglePetVisibility() {
           <button
             class="miku-action-btn teal"
             type="button"
-            @click="triggerMikuAnimation('greeting')"
+            @click="triggerMikuAnimation('walking')"
           >
-            <span class="btn-icon">🎵</span>
-            <span class="btn-label">¡Saludar!</span>
+            <span class="btn-icon">🚶‍♀️</span>
+            <span class="btn-label">¡Caminar!</span>
           </button>
 
           <button
             class="miku-action-btn pink"
             type="button"
-            @click="triggerMikuAnimation('thinking')"
+            @click="triggerMikuAnimation('dance_groove')"
           >
-            <span class="btn-icon">💡</span>
-            <span class="btn-label">¡Pensar!</span>
+            <span class="btn-icon">💃</span>
+            <span class="btn-label">¡Bailar!</span>
           </button>
 
           <button
             class="miku-action-btn yellow"
             type="button"
-            @click="triggerMikuAnimation('idle')"
+            @click="triggerMikuAnimation('chat')"
           >
-            <span class="btn-icon">✨</span>
-            <span class="btn-label">¡Reposo!</span>
+            <span class="btn-icon">💬</span>
+            <span class="btn-label">¡Charlar!</span>
+          </button>
+
+          <button
+            class="miku-action-btn teal"
+            type="button"
+            @click="triggerMikuAnimation('handstand')"
+          >
+            <span class="btn-icon">🤸‍♀️</span>
+            <span class="btn-label">¡Acrobacia!</span>
+          </button>
+
+          <button
+            class="miku-action-btn yellow"
+            type="button"
+            @click="triggerMikuAnimation('sit_drink')"
+          >
+            <span class="btn-icon">🍵</span>
+            <span class="btn-label">¡Tomar té!</span>
           </button>
 
           <button
@@ -267,6 +410,173 @@ function togglePetVisibility() {
         </div>
       </div>
 
+      <!-- TARJETA: TAMAÑO Y ESCALA DE MIKU -->
+      <div class="miku-card size-card">
+        <div class="miku-card-title">
+          <span class="card-icon-badge size-badge">📐</span>
+          <div>
+            <div class="title-main">Tamaño y Escala de Miku</div>
+            <div class="title-sub">Ajusta el tamaño del modelo 3D en tu pantalla</div>
+          </div>
+        </div>
+
+        <div class="miku-size-grid">
+          <button
+            v-for="opt in SCALE_OPTIONS"
+            :key="opt.value"
+            class="miku-size-btn"
+            :class="{ active: Math.abs(currentScale - opt.value) < 0.01 }"
+            type="button"
+            :title="`Ajustar tamaño a ${opt.label}`"
+            @click="selectScale(opt.value)"
+          >
+            <span class="size-icon">{{ opt.icon }}</span>
+            <div class="size-info">
+              <span class="size-pct">{{ opt.label }}</span>
+              <span class="size-name">{{ opt.name }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- TARJETA: MANTENIMIENTO & RECUPERACIÓN (RESET) -->
+      <div class="miku-card reset-card">
+        <div class="miku-card-title">
+          <span class="card-icon-badge wrench">🛠️</span>
+          <div>
+            <div class="title-main">Mantenimiento & Recuperación</div>
+            <div class="title-sub">Recupera la mascota si ocurre algún desfase o bug visual</div>
+          </div>
+        </div>
+
+        <div class="reset-box">
+          <div class="reset-desc">
+            Si notas que las texturas no cargan, el modelo se desfasó de la pantalla o Three.js sufrió un glitch, presiona este botón para reiniciar el contexto WebGL, física y posición a su estado original.
+          </div>
+          <button
+            class="miku-reset-btn"
+            type="button"
+            title="Reiniciar y regenerar el modelo 3D de Miku"
+            @click="triggerResetModel"
+          >
+            <i class="bi bi-arrow-clockwise reset-spin-icon"></i>
+            <span>Resetear Modelo 3D</span>
+          </button>
+        </div>
+      </div>
+      </template>
+
+      <template v-if="activeTab === 'poses'">
+      <!-- TARJETA: REPOSITORIO DE ANIMACIONES 3D -->
+      <div class="miku-card repo-card">
+        <div class="miku-card-title">
+          <span class="card-icon-badge anim-repo">🎬</span>
+          <div class="repo-title-wrap">
+            <div class="title-main">Repositorio de Animaciones 3D</div>
+            <div class="title-sub">{{ animationRepo.length }} animaciones capturadas y riggeadas</div>
+          </div>
+        </div>
+
+        <!-- Barra de filtros y búsqueda -->
+        <div class="repo-filter-bar">
+          <div class="repo-tabs">
+            <button
+              class="repo-tab-btn"
+              :class="{ active: repoCategoryFilter === 'all' }"
+              type="button"
+              @click="repoCategoryFilter = 'all'"
+            >
+              Todas ({{ animationRepo.length }})
+            </button>
+            <button
+              class="repo-tab-btn"
+              :class="{ active: repoCategoryFilter === 'walk' }"
+              type="button"
+              @click="repoCategoryFilter = 'walk'"
+            >
+              🚶‍♀️ Paseo
+            </button>
+            <button
+              class="repo-tab-btn"
+              :class="{ active: repoCategoryFilter === 'dance' }"
+              type="button"
+              @click="repoCategoryFilter = 'dance'"
+            >
+              💃 Baile
+            </button>
+            <button
+              class="repo-tab-btn"
+              :class="{ active: repoCategoryFilter === 'chat' }"
+              type="button"
+              @click="repoCategoryFilter = 'chat'"
+            >
+              💬 Social
+            </button>
+            <button
+              class="repo-tab-btn"
+              :class="{ active: repoCategoryFilter === 'acro' }"
+              type="button"
+              @click="repoCategoryFilter = 'acro'"
+            >
+              🤸‍♀️ Acrobacia
+            </button>
+            <button
+              class="repo-tab-btn"
+              :class="{ active: repoCategoryFilter === 'rest' }"
+              type="button"
+              @click="repoCategoryFilter = 'rest'"
+            >
+              🍵 Relax
+            </button>
+          </div>
+
+          <div class="repo-search-box">
+            <i class="bi bi-search search-icon"></i>
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="repo-search-input"
+              placeholder="Buscar animación..."
+            />
+          </div>
+        </div>
+
+        <!-- Lista scrollable del repositorio -->
+        <div class="repo-list">
+          <div
+            v-for="item in filteredAnimations"
+            :key="item.id"
+            class="repo-item"
+            :class="{ active: mikuStore.currentAction === item.id }"
+            @click="triggerMikuAnimation(item.id)"
+          >
+            <div class="repo-item-icon">{{ item.icon }}</div>
+            <div class="repo-item-content">
+              <div class="repo-item-header">
+                <span class="repo-item-name">{{ item.name }}</span>
+                <span class="repo-category-pill" :class="item.category">{{ item.categoryLabel }}</span>
+              </div>
+              <div class="repo-item-desc">{{ item.desc }}</div>
+            </div>
+            <button
+              class="repo-play-btn"
+              :class="{ active: mikuStore.currentAction === item.id }"
+              type="button"
+              :title="`Reproducir ${item.name}`"
+            >
+              <i v-if="mikuStore.currentAction === item.id" class="bi bi-check2-circle"></i>
+              <i v-else class="bi bi-play-fill"></i>
+            </button>
+          </div>
+
+          <div v-if="filteredAnimations.length === 0" class="repo-empty">
+            No se encontraron animaciones con esa búsqueda.
+          </div>
+        </div>
+      </div>
+      </template>
+
+      <template v-if="activeTab === 'general'">
       <!-- TARJETA 3: VOCALOID PROFILE STICKER -->
       <div class="miku-card sticker-card">
         <div class="sticker-header">
@@ -292,6 +602,7 @@ function togglePetVisibility() {
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- PIE DE VENTANA CARTOON -->
@@ -515,6 +826,62 @@ function togglePetVisibility() {
   margin-left: 32px;
 }
 
+/* PESTAÑAS PRINCIPALES DEL PANEL */
+.miku-main-tabs {
+  display: flex;
+  gap: 8px;
+  background: #12141c;
+  border: 2px solid #0e1017;
+  border-radius: 12px;
+  padding: 5px;
+  box-shadow: 3px 3px 0px #0e1017;
+}
+
+.miku-main-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: #9aa5b6;
+  font-weight: 800;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  outline: none;
+}
+
+.miku-main-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.miku-main-tab-btn.active {
+  background: linear-gradient(135deg, #39c5bb 0%, #00b4d8 100%);
+  color: #0e1017;
+  box-shadow: 2px 2px 0px #0e1017;
+}
+
+.tab-count-badge {
+  background: #0e1017;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 1px 6px;
+  border-radius: 999px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.miku-main-tab-btn.active .tab-count-badge {
+  background: #ff2a85;
+  color: #ffffff;
+}
+
 /* TARJETAS CARTOON */
 .miku-card {
   background: #202532;
@@ -550,6 +917,8 @@ function togglePetVisibility() {
 
 .card-icon-badge.rocket { background: #39c5bb; }
 .card-icon-badge.music { background: #ff2a85; }
+.card-icon-badge.wrench { background: #ffaa00; }
+.card-icon-badge.anim-repo { background: #9d4edd; }
 
 .title-main {
   font-size: 13.5px;
@@ -774,6 +1143,337 @@ function togglePetVisibility() {
   background: #39c5bb;
   border: 1.5px solid #0e1017;
   display: inline-block;
+}
+
+/* TAMAÑO Y ESCALA DE MIKU */
+.size-card {
+  border-color: #9d4edd;
+}
+
+.card-icon-badge.size-badge {
+  background: #9d4edd;
+}
+
+.miku-size-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.miku-size-btn {
+  background: #181c25;
+  border: 2px solid #0e1017;
+  border-radius: 10px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px #0e1017;
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  outline: none;
+}
+
+.miku-size-btn:hover {
+  transform: translateY(-2px);
+  background: #252b3b;
+  border-color: #9d4edd;
+  box-shadow: 3px 3px 0px #0e1017;
+}
+
+.miku-size-btn.active {
+  background: linear-gradient(135deg, #9d4edd 0%, #7b2cbf 100%);
+  border-color: #0e1017;
+  box-shadow: 3px 3px 0px #0e1017;
+  transform: translateY(-2px);
+}
+
+.size-icon {
+  font-size: 18px;
+}
+
+.size-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.size-pct {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.size-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a0aec0;
+}
+
+.miku-size-btn.active .size-name {
+  color: #e0aaff;
+}
+
+/* RESET & RECUPERACIÓN */
+.reset-card {
+  border-color: #ffaa00;
+}
+
+.reset-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reset-desc {
+  font-size: 11.5px;
+  color: #a4b0c0;
+  line-height: 1.4;
+}
+
+.miku-reset-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ffaa00 0%, #ff5500 100%);
+  color: #0e1017;
+  font-weight: 900;
+  font-size: 13px;
+  border: 2.5px solid #0e1017;
+  box-shadow: 3px 3px 0px #0e1017;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  outline: none;
+}
+
+.miku-reset-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 4px 4px 0px #0e1017;
+}
+
+.miku-reset-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #0e1017;
+}
+
+.reset-spin-icon {
+  font-size: 16px;
+  transition: transform 0.4s ease;
+}
+
+.miku-reset-btn:hover .reset-spin-icon {
+  transform: rotate(180deg);
+}
+
+/* REPOSITORIO DE ANIMACIONES */
+.repo-card {
+  border-color: #9d4edd;
+}
+
+.repo-title-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.repo-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.repo-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.repo-tab-btn {
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: #181c25;
+  color: #9aa5b6;
+  border: 1.5px solid #0e1017;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.repo-tab-btn:hover {
+  background: #242a38;
+  color: #ffffff;
+}
+
+.repo-tab-btn.active {
+  background: #9d4edd;
+  color: #ffffff;
+  border-color: #0e1017;
+  box-shadow: 2px 2px 0px #0e1017;
+}
+
+.repo-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #181c25;
+  border: 1.5px solid #0e1017;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.search-icon {
+  color: #7d899d;
+  font-size: 12px;
+}
+
+.repo-search-input {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+}
+
+.repo-search-input::placeholder {
+  color: #5d6778;
+}
+
+/* LISTA DE ITEMS */
+.repo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.repo-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.repo-list::-webkit-scrollbar-thumb {
+  background: #9d4edd;
+  border-radius: 6px;
+}
+
+.repo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #181c25;
+  border: 1.5px solid #0e1017;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.repo-item:hover {
+  background: #222836;
+  border-color: #39c5bb;
+  transform: translateX(2px);
+}
+
+.repo-item.active {
+  background: #1f2738;
+  border-color: #39c5bb;
+  box-shadow: 0 0 10px rgba(57, 197, 187, 0.25), 2px 2px 0px #0e1017;
+}
+
+.repo-item-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10131a;
+  border-radius: 8px;
+  border: 1px solid #0e1017;
+}
+
+.repo-item-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.repo-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.repo-item-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.repo-category-pill {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid #0e1017;
+}
+
+.repo-category-pill.walk { background: #39c5bb; color: #0e1017; }
+.repo-category-pill.dance { background: #ff2a85; color: #ffffff; }
+.repo-category-pill.chat { background: #d4ff00; color: #0e1017; }
+.repo-category-pill.acro { background: #ffaa00; color: #0e1017; }
+.repo-category-pill.rest { background: #00b4d8; color: #ffffff; }
+
+.repo-item-desc {
+  font-size: 10.5px;
+  color: #8b97a8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repo-play-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid #0e1017;
+  background: #252d3d;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+
+.repo-play-btn:hover {
+  background: #39c5bb;
+  color: #0e1017;
+  transform: scale(1.1);
+}
+
+.repo-play-btn.active {
+  background: #39c5bb;
+  color: #0e1017;
+}
+
+.repo-empty {
+  font-size: 11px;
+  color: #7d899d;
+  text-align: center;
+  padding: 14px 0;
 }
 
 /* PIE DE VENTANA */

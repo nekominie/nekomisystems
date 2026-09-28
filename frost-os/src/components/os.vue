@@ -12,6 +12,7 @@ import { useLockStore } from './os/lock/lock_store'
 
 const emit = defineEmits<{
     (e: 'shutdown'): void
+    (e: 'restart'): void
 }>()
 
 const os = processInstructions()
@@ -62,6 +63,7 @@ onUnmounted(() => {
 
         <Taskbar
             @shutdown="emit('shutdown')"
+            @restart="emit('restart')"
         />
 
         <ContextMenu />
@@ -70,6 +72,7 @@ onUnmounted(() => {
             <LockScreen
                 v-if="lockStore.isLocked"
                 @shutdown="emit('shutdown')"
+                @restart="emit('restart')"
             />
         </Transition>
     </div>

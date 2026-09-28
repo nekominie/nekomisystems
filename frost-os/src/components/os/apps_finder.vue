@@ -130,7 +130,9 @@ const runApp = (id: string) => {
     left: 50%;
     transform: translate(-50%, -52%);
     background-color: #00000066;
-    backdrop-filter: blur(38px);
+    backdrop-filter: var(--os-blur-heavy, blur(36px));
+    -webkit-backdrop-filter: var(--os-blur-heavy, blur(36px));
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 15px;
     z-index: 1000;
     color: rgba(255, 255, 255, 0.708);

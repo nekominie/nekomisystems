@@ -6,6 +6,7 @@ import WelcomeSetup from './welcome_setup.vue'
 
 const emit = defineEmits<{
     (e: 'shutdown'): void
+    (e: 'restart'): void
 }>()
 
 const props = defineProps<{ 
@@ -52,6 +53,15 @@ const acpiHandler = () => {
     }, 800);
 
 }
+
+const restartHandler = () => {
+    runShutdown.value = true;
+    localStorage.setItem('frost_lock_state', 'locked');
+
+    setTimeout(() => {
+        emit('restart');
+    }, 800);
+}
 </script>
 
 <template>
@@ -62,6 +72,7 @@ const acpiHandler = () => {
 
     <OperatingSystem v-if="doneLoading && !showSetup" :class="{ 'shutdown-run': runShutdown }"
         @shutdown="acpiHandler"
+        @restart="restartHandler"
     />
 
     <div v-if="!doneLoading" class="loading-os-container" >

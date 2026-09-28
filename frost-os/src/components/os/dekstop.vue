@@ -20,10 +20,9 @@ const settings = useSettingsStore();
 const desktopStyle = computed(() => {
   if (settings.wallpaperUrl) {
     return {
-      backgroundImage: `url(${settings.wallpaperUrl})`
+      backgroundImage: `url("${settings.wallpaperUrl}")`
     };
   }
-  // Si no hay wallpaper en el store, el CSS por defecto de la clase .desktop tomará el mando
   return {};
 });
 
@@ -81,14 +80,45 @@ const handleGlobalPointerDown = (e: PointerEvent) => {
     // si el click fue dentro, no lo cierres
     if (el.contains(target)) continue
 
+    // si el click fue en el tray, permitimos que el tray gestione el toggle
+    if ((target as HTMLElement).closest?.('.tray-root')) continue
+
     // click afuera => hide (dispara transición)
     os.hideSnippet(s.manifest.id)
   }
 }
 
 const handleContextMenu = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null
+    if (!target) return
+
+    // Asegurar que el click derecho fue estrictamente sobre el fondo del escritorio
+    // (el elemento .desktop o el área vacía de .desktop-icons-layer) y NO dentro de ventanas,
+    // snippets, iconos u otros componentes.
+    const isDesktopDirect = target === e.currentTarget || 
+                            target.classList.contains('desktop-icons-layer') || 
+                            target.classList.contains('desktop')
+
+    const isInsideOtherElement = target.closest('.window-frame') || 
+                                 target.closest('.snippet-host') || 
+                                 target.closest('.icon-wrap') ||
+                                 target.closest('.context-menu') ||
+                                 target.closest('.taskbar') ||
+                                 target.closest('.start-menu')
+
+    if (!isDesktopDirect || isInsideOtherElement) {
+        return
+    }
+
     openMenu(e, [
-        { label: 'Personalizar', icon: 'bi-brush-fill', action: () => os.launchApp('settings') }
+        { 
+            label: 'Personalizar', 
+            icon: 'bi-brush-fill', 
+            action: () => {
+                settings.setTargetSection('personalization')
+                os.launchApp('settings')
+            } 
+        }
     ])
 }
 

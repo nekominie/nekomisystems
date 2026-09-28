@@ -4,7 +4,7 @@ import { db } from '../../../database/db.ts'
 export type DesktopCell = { col: number; row: number }
 export type DesktopIconLayout = Record<string, DesktopCell>
 
-type Rect = { x: number; y: number; w: number; h: number }
+export type Rect = { x: number; y: number; w: number; h: number }
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -26,38 +26,70 @@ export function useDesktopIcons(options: {
   padding?: number
   storageKey?: string
 }) {
-  const cellW = options.cellW ?? 96
-  const cellH = options.cellH ?? 96
+  const cellW = options.cellW ?? 110
+  const cellH = options.cellH ?? 110
   const padding = options.padding ?? 12
-  const storageKey = options.storageKey ?? 'desktop_layout_v1'
+  const storageKey = options.storageKey ?? 'frost_desktop_icons_layout_v1'
 
   const containerEl = ref<HTMLElement | null>(null)
 
   // Layout: appId -> cell
   const layout = reactive<DesktopIconLayout>({})
 
-  // UI state
+  // Carga síncrona inmediata desde localStorage para evitar flashes y reseteos
+  function loadFromStorage() {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object') {
+          for (const [id, cell] of Object.entries(parsed)) {
+            const c = cell as DesktopCell
+            if (typeof c.col === 'number' && typeof c.row === 'number') {
+              layout[id] = { col: c.col, row: c.row }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[DesktopIcons] Error al cargar layout desde localStorage:', err)
+    }
+  }
+
+  // Cargar inmediatamente
+  loadFromStorage()
+
+  // Estado de selección
   const selected = reactive(new Set<string>())
+
+  // Estado de arrastre (compatible con arrastre múltiple en grupo)
+  const isDragging = ref(false)
   const draggingId = ref<string | null>(null)
+  const draggedIds = ref<string[]>([])
   const dragOffsetPx = reactive({ x: 0, y: 0 })
   const dragStart = reactive({ x: 0, y: 0 })
-  const dragStartCell = reactive<DesktopCell>({ col: 0, row: 0 })
+  const initialCells = new Map<string, DesktopCell>()
 
+  let capturedEl: HTMLElement | null = null
+  let capturedPointerId: number | null = null
+
+  // Estado de selección rectangular (marquee)
   const marqueeActive = ref(false)
   const marquee = reactive<Rect>({ x: 0, y: 0, w: 0, h: 0 })
   const marqueeStart = reactive({ x: 0, y: 0 })
-  const marqueeAdditive = ref(false) // ctrl/meta mientras marquee
+  const marqueeAdditive = ref(false)
 
+  // Columnas y filas dinámicas con fallback a dimensiones de ventana
   const cols = computed(() => {
     const el = containerEl.value
-    if (!el) return 1
-    return Math.max(1, Math.floor((el.clientWidth - padding * 2) / cellW))
+    const width = el && el.clientWidth > 0 ? el.clientWidth : window.innerWidth
+    return Math.max(1, Math.floor((width - padding * 2) / cellW))
   })
 
   const rows = computed(() => {
     const el = containerEl.value
-    if (!el) return 1
-    return Math.max(1, Math.floor((el.clientHeight - padding * 2) / cellH))
+    const height = el && el.clientHeight > 0 ? el.clientHeight : Math.max(200, window.innerHeight - 48)
+    return Math.max(1, Math.floor((height - padding * 2) / cellH))
   })
 
   function cellToPx(cell: DesktopCell) {
@@ -68,58 +100,72 @@ export function useDesktopIcons(options: {
   }
 
   function pxToCell(clientX: number, clientY: number) {
-  const el = containerEl.value
-    if (!el) return { col: 0, row: 0 }
-    const r = el.getBoundingClientRect()
+    const el = containerEl.value
+    const r = el ? el.getBoundingClientRect() : { left: 0, top: 0 }
 
-    // posición del puntero relativa al desktop
     const localX = clientX - r.left - padding
     const localY = clientY - r.top - padding
 
-    // HOTSPOT: centro del icono (ajusta 40/48 según tu icon size real)
-    const hotspotX = localX + 1
-    const hotspotY = localY + 1
-
-    const col = clamp(Math.floor(hotspotX / cellW), 0, cols.value - 1)
-    const row = clamp(Math.floor(hotspotY / cellH), 0, rows.value - 1)
+    const col = clamp(Math.floor(localX / cellW), 0, cols.value - 1)
+    const row = clamp(Math.floor(localY / cellH), 0, rows.value - 1)
     return { col, row }
   }
 
-  function isCellTaken(col: number, row: number, ignoreId?: string) {
-    return Object.entries(layout).some(([id, c]) => id !== ignoreId && c.col === col && c.row === row)
+  function isCellTaken(col: number, row: number, ignoreIds: string[] = []) {
+    const ignoreSet = new Set(ignoreIds)
+    return Object.entries(layout).some(([id, c]) => !ignoreSet.has(id) && c.col === col && c.row === row)
   }
 
-  function findNearestFreeCell(target: DesktopCell, ignoreId?: string): DesktopCell {
-    if (!isCellTaken(target.col, target.row, ignoreId)) return target
+  function findNearestFreeCellForSet(target: DesktopCell, occupiedSet: Set<string>): DesktopCell {
+    const key = `${target.col},${target.row}`
+    if (!occupiedSet.has(key)) return target
+
+    const maxC = Math.max(0, cols.value - 1)
+    const maxR = Math.max(0, rows.value - 1)
+    const maxRadius = Math.max(maxC, maxR)
 
     let best = target
     let bestScore = Infinity
 
-    const maxC = cols.value - 1
-    const maxR = rows.value - 1
-    const radius = 6
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+          if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue
+          const col = clamp(target.col + dc, 0, maxC)
+          const row = clamp(target.row + dr, 0, maxR)
+          const testKey = `${col},${row}`
+          if (occupiedSet.has(testKey)) continue
 
-    for (let dc = -radius; dc <= radius; dc++) {
-      for (let dr = -radius; dr <= radius; dr++) {
-        const col = clamp(target.col + dc, 0, maxC)
-        const row = clamp(target.row + dr, 0, maxR)
-        if (isCellTaken(col, row, ignoreId)) continue
+          const score = dc * dc + dr * dr
+          if (score < bestScore) {
+            bestScore = score
+            best = { col, row }
+          }
+        }
+      }
+      if (bestScore < Infinity) {
+        return best
+      }
+    }
 
-        const score = dc * dc + dr * dr
-        if (score < bestScore) {
-          bestScore = score
-          best = { col, row }
+    // Fallback: primera celda libre
+    for (let c = 0; c <= maxC; c++) {
+      for (let r = 0; r <= maxR; r++) {
+        if (!occupiedSet.has(`${c},${r}`)) {
+          return { col: c, row: r }
         }
       }
     }
 
-    return best
+    return target
   }
 
   function findFirstFreeCell(ignoreId?: string): DesktopCell {
-    for (let col = 0; col < cols.value; col++) {
-      for (let row = 0; row < rows.value; row++) {
-        if (!isCellTaken(col, row, ignoreId)) return { col, row }
+    const maxC = Math.max(0, cols.value - 1)
+    const maxR = Math.max(0, rows.value - 1)
+    for (let col = 0; col <= maxC; col++) {
+      for (let row = 0; row <= maxR; row++) {
+        if (!isCellTaken(col, row, ignoreId ? [ignoreId] : [])) return { col, row }
       }
     }
     return { col: 0, row: 0 }
@@ -131,22 +177,41 @@ export function useDesktopIcons(options: {
       layout[id] = findFirstFreeCell(id)
     }
   }
+
   async function loadFromDb() {
-    const rows = await db.desktopIcons.toArray()
-    for (const k of Object.keys(layout)) delete layout[k]
-    for (const r of rows) {
-      layout[r.id] = { col: r.col, row: r.row }
+    loadFromStorage()
+    try {
+      const rowsDb = await db.desktopIcons.toArray()
+      if (rowsDb.length > 0) {
+        for (const r of rowsDb) {
+          layout[r.id] = { col: r.col, row: r.row }
+        }
+        localStorage.setItem(storageKey, JSON.stringify(layout))
+      } else if (Object.keys(layout).length > 0) {
+        await saveToDb()
+      }
+    } catch (err) {
+      console.warn('[DesktopIcons] Error al cargar desde IndexedDB:', err)
     }
   }
 
   async function saveToDb() {
-    // upsert por id (bulkPut)
-    const payload = Object.entries(layout).map(([id, cell]) => ({
-      id,
-      col: cell.col,
-      row: cell.row,
-    }))
-    await db.desktopIcons.bulkPut(payload)
+    try {
+      // 1. Guardar síncronamente en localStorage
+      localStorage.setItem(storageKey, JSON.stringify(layout))
+
+      // 2. Guardar en IndexedDB
+      const payload = Object.entries(layout).map(([id, cell]) => ({
+        id,
+        col: cell.col,
+        row: cell.row,
+      }))
+      if (payload.length > 0) {
+        await db.desktopIcons.bulkPut(payload)
+      }
+    } catch (err) {
+      console.error('[DesktopIcons] Error al guardar layout en DB:', err)
+    }
   }
 
   function clearSelection() {
@@ -163,60 +228,172 @@ export function useDesktopIcons(options: {
     else selected.add(id)
   }
 
-  // --- Icon pointer handlers ---
+  function isIconDragged(id: string): boolean {
+    return isDragging.value && (draggedIds.value.includes(id) || draggingId.value === id)
+  }
+
+  // --- Handlers de puntero sobre iconos ---
   function onIconPointerDown(e: PointerEvent, id: string) {
-    if(e.button !== 0) return
-    // que no dispare marquee del fondo:
+    if (e.button !== 0) return
     e.stopPropagation()
 
-    const additive = e.ctrlKey || e.metaKey
-    if (additive) toggleSelect(id)
-    else if (!selected.has(id)) selectOne(id)
+    const additive = e.ctrlKey || e.metaKey || e.shiftKey
+    if (additive) {
+      toggleSelect(id)
+    } else if (!selected.has(id)) {
+      selectOne(id)
+    }
 
     draggingId.value = id
+    isDragging.value = false
     dragOffsetPx.x = 0
     dragOffsetPx.y = 0
     dragStart.x = e.clientX
     dragStart.y = e.clientY
-    dragStartCell.col = layout[id]?.col ?? 0
-    dragStartCell.row = layout[id]?.row ?? 0
 
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    // Si el icono tocado forma parte de la selección múltiple, mover toda la selección junta
+    if (selected.has(id)) {
+      draggedIds.value = Array.from(selected)
+    } else {
+      draggedIds.value = [id]
+    }
+
+    // Guardar las celdas iniciales de todos los iconos arrastrados
+    initialCells.clear()
+    for (const appId of draggedIds.value) {
+      const c = layout[appId]
+      initialCells.set(appId, c ? { col: c.col, row: c.row } : { col: 0, row: 0 })
+    }
+
+    try {
+      capturedEl = e.currentTarget as HTMLElement
+      capturedPointerId = e.pointerId
+      capturedEl.setPointerCapture(e.pointerId)
+    } catch {
+      /* noop */
+    }
   }
 
   function onIconPointerMove(e: PointerEvent) {
     if (!draggingId.value) return
-    dragOffsetPx.x = e.clientX - dragStart.x
-    dragOffsetPx.y = e.clientY - dragStart.y
+    const dx = e.clientX - dragStart.x
+    const dy = e.clientY - dragStart.y
+    dragOffsetPx.x = dx
+    dragOffsetPx.y = dy
+
+    if (!isDragging.value && Math.hypot(dx, dy) >= 4) {
+      isDragging.value = true
+    }
   }
 
   function onIconPointerUp(e: PointerEvent) {
-    const id = draggingId.value
-    if (!id) return
+    if (!draggingId.value) return
 
-    // Commit snap
-    const target = pxToCell(e.clientX, e.clientY)
-    const free = findNearestFreeCell(target, id)
-    layout[id] = free
-    saveToDb().catch(console.error)
+    try {
+      if (capturedEl && capturedPointerId !== null) {
+        capturedEl.releasePointerCapture(capturedPointerId)
+      }
+    } catch {
+      /* noop */
+    }
+    capturedEl = null
+    capturedPointerId = null
 
+    const didDrag = isDragging.value && Math.hypot(dragOffsetPx.x, dragOffsetPx.y) >= 4
+    const additive = e.ctrlKey || e.metaKey || e.shiftKey
+
+    if (!didDrag) {
+      // Si fue solo un clic sin arrastrar sobre un elemento que ya estaba seleccionado
+      if (!additive && selected.size > 1) {
+        selectOne(draggingId.value)
+      }
+    } else {
+      // Se realizó un arrastre: calcular desplazamiento de celda (col, row)
+      const dCol = Math.round(dragOffsetPx.x / cellW)
+      const dRow = Math.round(dragOffsetPx.y / cellH)
+
+      if (dCol !== 0 || dRow !== 0) {
+        let deltaCol = dCol
+        let deltaRow = dRow
+
+        let minCol = Infinity
+        let maxCol = -Infinity
+        let minRow = Infinity
+        let maxRow = -Infinity
+
+        for (const appId of draggedIds.value) {
+          const init = initialCells.get(appId)
+          if (!init) continue
+          const tc = init.col + deltaCol
+          const tr = init.row + deltaRow
+          if (tc < minCol) minCol = tc
+          if (tc > maxCol) maxCol = tc
+          if (tr < minRow) minRow = tr
+          if (tr > maxRow) maxRow = tr
+        }
+
+        const maxAllowedCol = Math.max(0, cols.value - 1)
+        const maxAllowedRow = Math.max(0, rows.value - 1)
+
+        // Limitar dentro de la pantalla manteniendo la forma del grupo
+        if (minCol < 0) {
+          deltaCol += -minCol
+        }
+        const proposedMaxCol = maxCol + (minCol < 0 ? -minCol : 0)
+        if (proposedMaxCol > maxAllowedCol) {
+          deltaCol -= (proposedMaxCol - maxAllowedCol)
+        }
+
+        if (minRow < 0) {
+          deltaRow += -minRow
+        }
+        const proposedMaxRow = maxRow + (minRow < 0 ? -minRow : 0)
+        if (proposedMaxRow > maxAllowedRow) {
+          deltaRow -= (proposedMaxRow - maxAllowedRow)
+        }
+
+        // Celdas ocupadas por iconos que no se movieron
+        const occupied = new Set<string>()
+        for (const [appId, cell] of Object.entries(layout)) {
+          if (!draggedIds.value.includes(appId)) {
+            occupied.add(`${cell.col},${cell.row}`)
+          }
+        }
+
+        // Asignar nuevas posiciones a los iconos arrastrados
+        for (const appId of draggedIds.value) {
+          const init = initialCells.get(appId)
+          if (!init) continue
+          const targetCol = clamp(init.col + deltaCol, 0, maxAllowedCol)
+          const targetRow = clamp(init.row + deltaRow, 0, maxAllowedRow)
+          const resolved = findNearestFreeCellForSet({ col: targetCol, row: targetRow }, occupied)
+          layout[appId] = resolved
+          occupied.add(`${resolved.col},${resolved.row}`)
+        }
+
+        saveToDb().catch(console.error)
+      }
+    }
+
+    isDragging.value = false
     draggingId.value = null
+    draggedIds.value = []
     dragOffsetPx.x = 0
     dragOffsetPx.y = 0
+    initialCells.clear()
   }
 
-  // --- Desktop (background) marquee selection ---
+  // --- Handlers de selección rectangular en el fondo ---
   function onDesktopPointerDown(e: PointerEvent) {
-     if (e.button !== 0) return
-     
-    // solo fondo
+    if (e.button !== 0) return
+
     const el = containerEl.value
     if (!el) return
-    // si diste click en algo que no sea el fondo:
-    if (e.target !== el) return
+    const target = e.target as HTMLElement | null
+    if (target && target.closest('.icon-wrap')) return
 
     marqueeActive.value = true
-    marqueeAdditive.value = e.ctrlKey || e.metaKey
+    marqueeAdditive.value = e.ctrlKey || e.metaKey || e.shiftKey
 
     const r = el.getBoundingClientRect()
     marqueeStart.x = e.clientX - r.left
@@ -226,7 +403,11 @@ export function useDesktopIcons(options: {
 
     if (!marqueeAdditive.value) selected.clear()
 
-    el.setPointerCapture(e.pointerId)
+    try {
+      el.setPointerCapture(e.pointerId)
+    } catch {
+      /* noop */
+    }
   }
 
   function onDesktopPointerMove(e: PointerEvent, iconRects: Record<string, Rect>) {
@@ -236,7 +417,6 @@ export function useDesktopIcons(options: {
     const y2 = e.clientY - r.top
     Object.assign(marquee, normalizeRect(marqueeStart.x, marqueeStart.y, x2, y2))
 
-    // seleccionar por intersección
     for (const [id, rect] of Object.entries(iconRects)) {
       if (rectsIntersect(marquee, rect)) selected.add(id)
       else if (!marqueeAdditive.value) selected.delete(id)
@@ -250,29 +430,34 @@ export function useDesktopIcons(options: {
   }
 
   function syncLayoutWithPinned(pinnedIds: string[]) {
-  const pinnedSet = new Set(pinnedIds)
+    if (!pinnedIds || pinnedIds.length === 0) return
 
-  // 1) elimina fantasmas
-  for (const id of Object.keys(layout)) {
-    if (!pinnedSet.has(id)) delete layout[id]
-  }
+    const pinnedSet = new Set(pinnedIds)
 
-  // 2) reubica colisiones (dos en misma celda) y agrega faltantes
-  const seen = new Set<string>() // key "c,r"
-
-  for (const id of pinnedIds) {
-    if (!layout[id]) {
-      layout[id] = findFirstFreeCell(id)
+    // 1) Eliminar apps desancladas
+    for (const id of Object.keys(layout)) {
+      if (!pinnedSet.has(id)) delete layout[id]
     }
 
-    const c = layout[id]
-    const key = `${c.col},${c.row}`
+    // 2) Reubicar colisiones y asegurar ubicación para todas las apps ancladas
+    const seen = new Set<string>()
 
-    if (seen.has(key)) {
-      layout[id] = findFirstFreeCell(id)
+    for (const id of pinnedIds) {
+      if (!layout[id]) continue
+      const c = layout[id]
+      const key = `${c.col},${c.row}`
+      if (seen.has(key)) {
+        layout[id] = findFirstFreeCell(id)
+      }
+      seen.add(`${layout[id].col},${layout[id].row}`)
     }
-    seen.add(`${layout[id].col},${layout[id].row}`)
-  }
+
+    for (const id of pinnedIds) {
+      if (!layout[id]) {
+        layout[id] = findFirstFreeCell(id)
+        seen.add(`${layout[id].col},${layout[id].row}`)
+      }
+    }
   }
 
   onMounted(() => {
@@ -281,35 +466,42 @@ export function useDesktopIcons(options: {
 
   return {
     containerEl,
-    cellW, cellH, padding,
+    cellW,
+    cellH,
+    padding,
     layout,
     selected,
-    cols, rows,
+    cols,
+    rows,
     cellToPx,
+    pxToCell,
     ensureInitialPlacement,
     saveToDb,
     syncLayoutWithPinned,
     findFirstFreeCell,
 
-    // drag
+    // Arrastre simple y múltiple
+    isDragging,
     draggingId,
+    draggedIds,
     dragOffsetPx,
+    isIconDragged,
     onIconPointerDown,
     onIconPointerMove,
     onIconPointerUp,
 
-    // marquee
+    // Selección por marco (Marquee)
     marqueeActive,
     marquee,
     onDesktopPointerDown,
     onDesktopPointerMove,
     onDesktopPointerUp,
 
-    // selection helpers
+    // Helpers de selección
     clearSelection,
     selectOne,
     toggleSelect,
 
-    loadFromDb
+    loadFromDb,
   }
 }
