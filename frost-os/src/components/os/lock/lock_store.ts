@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { db } from '../../../database/db';
+import { getUserProfile } from '../../../database/user_profile';
 
 export interface LockSettings {
   lockOnStartup: boolean;
@@ -62,19 +63,7 @@ export const useLockStore = defineStore('lock', () => {
 
   async function loadUserProfile() {
     try {
-      const profile = await new Promise<any>((resolve) => {
-        const req = indexedDB.open('NekomiOS_DB', 1);
-        req.onsuccess = (e: any) => {
-          const idb = e.target.result;
-          if (!idb.objectStoreNames.contains('user_data')) return resolve(null);
-          const tx = idb.transaction('user_data', 'readonly');
-          const store = tx.objectStore('user_data');
-          const getReq = store.get('profile');
-          getReq.onsuccess = () => resolve(getReq.result || null);
-          getReq.onerror = () => resolve(null);
-        };
-        req.onerror = () => resolve(null);
-      });
+      const profile = await getUserProfile();
 
       if (profile) {
         if (profile.name) userName.value = profile.name;
