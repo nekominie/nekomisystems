@@ -16,7 +16,7 @@ import { useSettingsStore } from '../apps/coreapps/settings/store.ts'
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
 
-const { openMenu } = useContextMenu()
+const { openMenu, contextMenuState } = useContextMenu()
 
 const taskBarApps = computed(() => {
     return os.state.apps.filter(app => {
@@ -71,8 +71,27 @@ const hoveredAppWindows = computed(() => {
 
 let showTimeout: number | null = null
 let hideTimeout: number | null = null
+let peekTimeout: number | null = null
+
+const hidePreviewsImmediately = () => {
+    if (showTimeout) {
+        clearTimeout(showTimeout)
+        showTimeout = null
+    }
+    if (hideTimeout) {
+        clearTimeout(hideTimeout)
+        hideTimeout = null
+    }
+    if (peekTimeout) {
+        clearTimeout(peekTimeout)
+        peekTimeout = null
+    }
+    hoveredAppId.value = null
+    os.setPeekWindow(null)
+}
 
 const contextMenuApps = (e: MouseEvent) => {
+    hidePreviewsImmediately()
     openMenu(e, [
         { 
             label: 'Supervisor de tareas',
@@ -83,13 +102,63 @@ const contextMenuApps = (e: MouseEvent) => {
 }
 
 const onIconRightCLick = (e: MouseEvent, app: App) => {
-    openMenu(e, buildAppContextMenu(app, 'taskbar', os))
+    hidePreviewsImmediately()
+
+    const menuItems: any[] = []
+
+    // 1. Acciones principales / personalizadas de la app
+    if (app.manifest.menus?.taskbar && app.manifest.menus.taskbar.length > 0) {
+        const customItems = buildAppContextMenu(app, 'taskbar', os)
+        menuItems.push(...customItems)
+    } else {
+        menuItems.push({
+            label: app.manifest.name,
+            icon: 'bi-box-arrow-up-right',
+            action: () => os.launchApp(app.manifest.id)
+        })
+    }
+
+    menuItems.push({ separator: true })
+
+    // 2. Anclar o desanclar de la barra de tareas
+    menuItems.push({
+        label: app.user.isPinned ? 'Desanclar de la barra de tareas' : 'Anclar a la barra de tareas',
+        icon: app.user.isPinned ? 'bi-pin-angle-fill' : 'bi-pin-fill',
+        action: () => os.togglePinApp(app.manifest.id)
+    })
+
+    // 3. Opciones de ventanas abiertas
+    const appWindows = os.state.windows.filter(w => w.appId === app.manifest.id)
+    if (appWindows.length > 0) {
+        menuItems.push({ separator: true })
+        if (appWindows.length === 1) {
+            menuItems.push({
+                label: 'Cerrar ventana',
+                icon: 'bi-x-lg text-danger',
+                action: () => os.closeWindow(appWindows[0].id)
+            })
+        } else {
+            menuItems.push({
+                label: 'Cerrar todas las ventanas',
+                icon: 'bi-x-lg text-danger',
+                action: () => {
+                    const winIds = appWindows.map(w => w.id)
+                    winIds.forEach(id => os.closeWindow(id))
+                }
+            })
+        }
+    }
+
+    openMenu(e, menuItems)
 }
 
 const previewPositionStyle = ref({ left: '0px' })
 
 // En Taskbar.vue
 const handleMouseEnter = (appId: string, event: MouseEvent) => {
+    // Si el menú contextual está desplegado, no mostrar previews para no estorbar
+    if (contextMenuState.isOpen) return;
+
     // 1. Calculamos la posición inmediatamente (Sincrónico)
     // Esto es seguro porque el evento está ocurriendo en este milisegundo
     const target = event.currentTarget as HTMLElement;
@@ -131,8 +200,6 @@ const handleMouseEnter = (appId: string, event: MouseEvent) => {
         }, 180);
     }
 }
-
-let peekTimeout: number | null = null
 
 const handlePreviewItemMouseEnter = (winId: string) => {
     if (peekTimeout) {

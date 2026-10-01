@@ -75,7 +75,13 @@ export function buildAppContextMenu(app: App, context: AppMenuContext, os: any) 
       return {
         label,
         icon,
-        action: () => handler?.(ctx)
+        action: () => {
+          if (handler) {
+            handler(ctx)
+          } else if (d.id === 'open' || d.id === 'new-window') {
+            os.launchApp(app.manifest.id)
+          }
+        }
       }
     })
 

@@ -37,7 +37,7 @@ export interface FileItem {
   id: string;
   name: string;
   parentId: string;
-  type: 'file' | 'folder';
+  type: 'file' | 'folder' | 'shortcut';
   extension?: string;
   size: number;
   mimeType?: string;
@@ -46,6 +46,12 @@ export interface FileItem {
   createdAt: number;
   updatedAt: number;
   isSystem?: boolean;
+  shortcutTarget?: {
+    type: 'app' | 'file';
+    appId?: string;
+    targetId?: string;
+  };
+  appId?: string;
 }
 
 export class TheOSDatabase extends Dexie {

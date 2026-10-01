@@ -13,7 +13,7 @@ import { AppStorage } from "../../database/app_storage.ts"
 
 import { startStatsSampler, measureCpu } from './process_stats'
 
-import { db } from '../../database/db.ts'
+import { db, type FileItem } from '../../database/db.ts'
 import html2canvas from 'html2canvas';
 
 import { useSettingsStore } from '../apps/coreapps/settings/store.ts'
@@ -35,7 +35,18 @@ async function init() {
     if (initialized) return
     initialized = true
 
-    const manifests: Manifest[] = [...CoreApps, ...InstalledApps]
+    let uninstalledSet = new Set<string>()
+    try {
+        const uninstalledRec = await db.systemSettings.get('system:uninstalled_apps')
+        if (Array.isArray(uninstalledRec?.value)) {
+            uninstalledSet = new Set(uninstalledRec.value)
+        }
+    } catch (e) {
+        console.error('Error cargando apps desinstaladas:', e)
+    }
+
+    const availableInstalled = InstalledApps.filter(m => !uninstalledSet.has(m.id))
+    const manifests: Manifest[] = [...CoreApps, ...availableInstalled]
     const snippets: Manifest[] = [...CoreSnippets, ...InstalledSnippets]
 
     const userMap = await loadUserSettingsMap()
@@ -212,6 +223,159 @@ const togglePinAppStart = async (id: string) => {
                 overrides: app.user.overrides ? { ...app.user.overrides } : undefined
             })
         }
+}
+
+const togglePinAppDesktop = async (id: string) => {
+        const app = state.apps.find(a => a.manifest.id === id)
+        if(app){
+            app.user.isPinnedDesktop = !app.user.isPinnedDesktop
+            await db.appSettings.put({ 
+                id: id, 
+                isPinned: app.user.isPinned,
+                isPinnedStart: app.user.isPinnedStart,
+                isPinnedDesktop: app.user.isPinnedDesktop,
+                overrides: app.user.overrides ? { ...app.user.overrides } : undefined
+            })
+
+            // Sincronizar archivo de acceso directo en db.files con parentId: 'desktop'
+            if (app.user.isPinnedDesktop) {
+                const shortcutFile: FileItem = {
+                    id: `shortcut-${app.manifest.id}`,
+                    name: `${app.manifest.name}.lnk`,
+                    parentId: 'desktop',
+                    type: 'shortcut',
+                    extension: 'lnk',
+                    size: 1024,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    shortcutTarget: { type: 'app', appId: app.manifest.id },
+                    appId: app.manifest.id,
+                };
+                await db.files.put(shortcutFile);
+            } else {
+                const existing = await db.files.where('parentId').equals('desktop').filter(f => f.appId === app.manifest.id || f.id === `shortcut-${app.manifest.id}`).toArray();
+                for (const item of existing) {
+                    await db.files.delete(item.id);
+                }
+                await db.desktopIcons.delete(`shortcut-${app.manifest.id}`);
+                await db.desktopIcons.delete(app.manifest.id);
+            }
+
+            try {
+                const { useFileSystemStore } = await import('../apps/installedapps/explorer/file_system_store');
+                await useFileSystemStore().loadAllFiles();
+            } catch (e) {}
+        }
+}
+
+const uninstallApp = async (appId: string): Promise<boolean> => {
+        // 1. Proteger aplicaciones de sistema
+        const isCore = CoreApps.some(c => c.id === appId);
+        if (isCore) {
+            console.warn(`No se puede desinstalar una app de sistema: ${appId}`);
+            return false;
+        }
+
+        // 2. Cerrar ventanas abiertas de la app
+        const appWindows = state.windows.filter(w => w.appId === appId);
+        appWindows.forEach(w => closeWindow(w.id));
+
+        // 3. Terminar proceso y limpiar runtime
+        closeApp(appId);
+
+        // 4. Quitar de la lista reactiva de apps activas
+        const appIndex = state.apps.findIndex(a => a.manifest.id === appId);
+        if (appIndex !== -1) {
+            state.apps.splice(appIndex, 1);
+        }
+
+        // 5. Limpiar datos persistentes asociados a la app
+        try {
+            await db.appSettings.delete(appId);
+            await db.desktopIcons.delete(appId);
+            await db.desktopIcons.delete(`shortcut-${appId}`);
+
+            const shortcutFiles = await db.files.where('parentId').equals('desktop').filter(f => f.appId === appId || f.id === `shortcut-${appId}`).toArray();
+            for (const sf of shortcutFiles) {
+                await db.files.delete(sf.id);
+            }
+
+            try {
+                const { useFileSystemStore } = await import('../apps/installedapps/explorer/file_system_store');
+                await useFileSystemStore().loadAllFiles();
+            } catch (e) {}
+
+            await db.systemSettings.where('key').startsWith(`app:${appId}:`).delete();
+
+            // Limpieza de claves localStorage
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (key && (key.includes(appId) || key.startsWith(`frost_${appId}`))) {
+                    localStorage.removeItem(key);
+                }
+            }
+        } catch (err) {
+            console.error(`Error limpiando datos de ${appId}:`, err);
+        }
+
+        // 6. Registrar en system:uninstalled_apps en la base de datos
+        try {
+            const record = await db.systemSettings.get('system:uninstalled_apps');
+            const uninstalledIds: string[] = Array.isArray(record?.value) ? record.value : [];
+            if (!uninstalledIds.includes(appId)) {
+                uninstalledIds.push(appId);
+                await db.systemSettings.put({ key: 'system:uninstalled_apps', value: uninstalledIds });
+            }
+        } catch (err) {
+            console.error(`Error guardando estado desinstalado para ${appId}:`, err);
+        }
+
+        return true;
+}
+
+const installApp = async (appId: string): Promise<boolean> => {
+        const manifest = InstalledApps.find(m => m.id === appId);
+        if (!manifest) {
+            console.warn(`Manifest no encontrado para app: ${appId}`);
+            return false;
+        }
+
+        // Si ya está instalada, no duplicar
+        if (state.apps.some(a => a.manifest.id === appId)) {
+            return true;
+        }
+
+        // Crear instancia limpia de la app
+        const newApp = createApp(manifest, {
+            isPinned: false,
+            isPinnedStart: true,
+            isPinnedDesktop: true
+        });
+        state.apps.push(newApp);
+
+        // Guardar ajustes iniciales en IndexedDB
+        try {
+            await db.appSettings.put({
+                id: appId,
+                isPinned: false,
+                isPinnedStart: true,
+                isPinnedDesktop: true
+            });
+
+            // Remover de la lista de apps desinstaladas
+            const record = await db.systemSettings.get('system:uninstalled_apps');
+            let uninstalledIds: string[] = Array.isArray(record?.value) ? record.value : [];
+            uninstalledIds = uninstalledIds.filter(id => id !== appId);
+            await db.systemSettings.put({ key: 'system:uninstalled_apps', value: uninstalledIds });
+        } catch (err) {
+            console.error(`Error guardando instalación de ${appId}:`, err);
+        }
+
+        return true;
+}
+
+const isAppInstalled = (appId: string): boolean => {
+        return state.apps.some(a => a.manifest.id === appId);
 }
 
 const updateAppPreferences = async (appId: string, overrides: Partial<NonNullable<UserSettings['overrides']>>) => {
@@ -552,6 +716,10 @@ export const processInstructions = () => {
         setPeekWindow: (winId: string | null) => setPeekWindow(winId),
         togglePinApp: (id: string) => togglePinApp(id), 
         togglePinAppStart: (id: string) => togglePinAppStart(id),
+        togglePinAppDesktop: (id: string) => togglePinAppDesktop(id),
+        uninstallApp: (id: string) => uninstallApp(id),
+        installApp: (id: string) => installApp(id),
+        isAppInstalled: (id: string) => isAppInstalled(id),
         showSnippet: (id: string) => showSnippet(id),
         hideSnippet: (id: string) => hideSnippet(id),
         unmountSnippet: (id: string) => unmountSnippet(id),

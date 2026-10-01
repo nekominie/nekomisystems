@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { db, type FileItem, type Asset } from '../../../../database/db';
 import { isImageFile, resolveSystemImageUrl, SYSTEM_WALLPAPERS_MAP } from './thumbnail_utils';
+import { CoreApps } from '../../../data/core_apps';
+import { InstalledApps } from '../../../data/installedapps';
 
 export interface BreadcrumbItem {
   id: string;
@@ -242,7 +244,62 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
           await db.files.bulkPut(extraPics);
           items = await db.files.toArray();
         }
+
+        // Asegurar que exista el Manual de Usuario en PDF en Documentos
+        const hasManualPdf = items.some((i) => i.name === 'Manual_de_Usuario_FrostOS.pdf');
+        if (!hasManualPdf) {
+          const now = Date.now();
+          const manualPdf: FileItem = {
+            id: 'file-manual-pdf',
+            name: 'Manual_de_Usuario_FrostOS.pdf',
+            parentId: 'documents',
+            type: 'file',
+            extension: 'pdf',
+            size: 1468006,
+            mimeType: 'application/pdf',
+            textContent: `Manual de Usuario de Frost OS - Versión 2.5\nSistema Operativo Web con arquitectura moderna y cristal acrílico.`,
+            createdAt: now - 3600000,
+            updatedAt: now - 3600000,
+          };
+          await db.files.put(manualPdf);
+          items = await db.files.toArray();
+        }
       }
+
+      // Sincronizar accesos directos de apps ancladas al escritorio
+      try {
+        const appSettingsRows = await db.appSettings.toArray();
+        const allManifests = [...CoreApps, ...InstalledApps];
+
+        for (const manifest of allManifests) {
+          const setting = appSettingsRows.find((r) => r.id === manifest.id);
+          const isPinned = setting ? setting.isPinnedDesktop : true;
+          if (isPinned) {
+            const hasShortcut = items.some(
+              (i) => i.parentId === 'desktop' && (i.appId === manifest.id || i.id === `shortcut-${manifest.id}`)
+            );
+            if (!hasShortcut) {
+              const shortcutFile: FileItem = {
+                id: `shortcut-${manifest.id}`,
+                name: `${manifest.name}.lnk`,
+                parentId: 'desktop',
+                type: 'shortcut',
+                extension: 'lnk',
+                size: 1024,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                shortcutTarget: { type: 'app', appId: manifest.id },
+                appId: manifest.id,
+              };
+              await db.files.put(shortcutFile);
+              items.push(shortcutFile);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error sincronizando accesos directos del escritorio:', e);
+      }
+
       allItems.value = items;
       loadThumbnailsForItems(items);
     } catch (err) {
@@ -302,6 +359,18 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
         textContent: `Ideas para las próximas actualizaciones:\n1. Reproductor de música integrado en la barra.\n2. Lector de PDFs interactivo.\n3. Temas de color personalizables avanzados.\n4. Integración de nube NekomiDrive.`,
         createdAt: now - 43200000,
         updatedAt: now - 43200000,
+      },
+      {
+        id: 'file-manual-pdf',
+        name: 'Manual_de_Usuario_FrostOS.pdf',
+        parentId: 'documents',
+        type: 'file',
+        extension: 'pdf',
+        size: 1468006,
+        mimeType: 'application/pdf',
+        textContent: `Manual de Usuario de Frost OS - Versión 2.5\nSistema Operativo Web con arquitectura moderna y cristal acrílico.`,
+        createdAt: now - 3600000,
+        updatedAt: now - 3600000,
       },
 
       // Archivos en Imágenes
@@ -654,8 +723,8 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
   }
 
   // Operaciones de Archivos: Crear Carpeta
-  async function createFolder(customName?: string) {
-    const parent = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+  async function createFolder(customName?: string, targetFolderId?: string) {
+    const parent = targetFolderId || (currentFolderId.value === 'root' ? 'documents' : currentFolderId.value);
     let baseName = customName || 'Nueva carpeta';
     let finalName = baseName;
     let count = 1;
@@ -682,8 +751,8 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
   }
 
   // Operaciones de Archivos: Crear Archivo de Texto
-  async function createTextFile(customName?: string, content = '') {
-    const parent = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+  async function createTextFile(customName?: string, content = '', targetFolderId?: string) {
+    const parent = targetFolderId || (currentFolderId.value === 'root' ? 'documents' : currentFolderId.value);
     let baseName = customName || 'Nuevo documento de texto';
     let extension = 'txt';
     let finalName = `${baseName}.${extension}`;
@@ -711,6 +780,40 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
     await loadAllFiles();
     selectedIds.value = [newFile.id];
     return newFile;
+  }
+
+  // Operaciones de Archivos: Crear Acceso Directo
+  async function createShortcut(appId: string, customName?: string, targetFolderId = 'desktop') {
+    const parent = targetFolderId;
+    let baseName = customName;
+    if (!baseName) {
+      const allManifests = [...CoreApps, ...InstalledApps];
+      const manifest = allManifests.find((m) => m.id === appId);
+      baseName = manifest ? manifest.name : appId;
+    }
+    const finalName = `${baseName}.lnk`;
+
+    const existing = allItems.value.find(
+      (i) => i.parentId === parent && (i.appId === appId || i.id === `shortcut-${appId}`)
+    );
+    if (existing) return existing;
+
+    const newShortcut: FileItem = {
+      id: `shortcut-${appId}`,
+      name: finalName,
+      parentId: parent,
+      type: 'shortcut',
+      extension: 'lnk',
+      size: 1024,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      shortcutTarget: { type: 'app', appId },
+      appId,
+    };
+
+    await db.files.put(newShortcut);
+    await loadAllFiles();
+    return newShortcut;
   }
 
   // Carga de Archivos desde el Navegador (Upload)
@@ -841,9 +944,20 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
       }
     }
 
-    // Eliminar assets y thumbnails asociados
+    // Eliminar assets y thumbnails asociados, y sincronizar accesos directos
     for (const delId of toDeleteIds) {
       const item = allItems.value.find((i) => i.id === delId);
+      if (item?.appId) {
+        try {
+          const appRec = await db.appSettings.get(item.appId);
+          if (appRec) {
+            appRec.isPinnedDesktop = false;
+            await db.appSettings.put(appRec);
+          }
+        } catch (e) {
+          console.error('Error desmarcando isPinnedDesktop:', e);
+        }
+      }
       if (item?.assetId) {
         await db.assets.delete(item.assetId);
       }
@@ -856,6 +970,7 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
     }
 
     await db.files.bulkDelete(Array.from(toDeleteIds));
+    await db.desktopIcons.bulkDelete(Array.from(toDeleteIds));
     selectedIds.value = [];
     await loadAllFiles();
   }
@@ -1020,7 +1135,23 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
       return;
     }
 
-    // 2. Texto o Código
+    // 2. Documento PDF
+    const isPdf =
+      item.extension?.toLowerCase() === 'pdf' ||
+      /\.pdf$/i.test(item.name) ||
+      item.mimeType === 'application/pdf';
+
+    if (isPdf) {
+      try {
+        const { usePdfViewerStore } = await import('../pdf_viewer/pdf_viewer_store');
+        await usePdfViewerStore().openPdfFromFile(item);
+      } catch (err) {
+        console.error('Error abriendo PDF en visor:', err);
+      }
+      return;
+    }
+
+    // 3. Texto o Código
     const isText =
       item.mimeType?.startsWith('text/') ||
       /\.(txt|md|json|js|ts|html|css|csv|xml|log|py|vue|yaml|yml|sql|sh)$/i.test(item.name);
@@ -1101,6 +1232,10 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
   }
 
   function getFileIcon(item: FileItem): string {
+    if (item.type === 'shortcut' || item.extension === 'lnk' || item.appId) {
+      return 'bi-arrow-up-right-square-fill text-primary';
+    }
+
     if (item.type === 'folder') {
       if (item.isSystem) {
         if (item.id === 'desktop') return 'bi-display text-primary';
@@ -1189,6 +1324,7 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
     selectAll,
     createFolder,
     createTextFile,
+    createShortcut,
     uploadFiles,
     renameItem,
     deleteItems,

@@ -9,6 +9,7 @@ import SnippetHost from './snippet_host.vue'
 import DesktopIconsLayer from './desktop_icons/desktop_icons_layer.vue'
 import SnapPreview from './snap_preview.vue'
 import { useSettingsStore } from "../apps/coreapps/settings/store.ts"
+import { useFileSystemStore } from '../apps/installedapps/explorer/file_system_store'
 
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
@@ -16,6 +17,7 @@ if(!os) throw new Error('OS API not found')
 const { openMenu } = useContextMenu()
 
 const settings = useSettingsStore();
+const fs = useFileSystemStore();
 
 const desktopStyle = computed(() => {
   if (settings.wallpaperUrl) {
@@ -111,6 +113,30 @@ const handleContextMenu = (e: MouseEvent) => {
     }
 
     openMenu(e, [
+        {
+            label: 'Abrir en Explorador',
+            icon: 'bi-folder2-open',
+            action: () => {
+                fs.navigateTo('desktop')
+                os.launchApp('explorer')
+            }
+        },
+        { separator: true },
+        {
+            label: 'Nueva carpeta',
+            icon: 'bi-folder-plus',
+            action: async () => {
+                await fs.createFolder(undefined, 'desktop')
+            }
+        },
+        {
+            label: 'Nuevo documento de texto',
+            icon: 'bi-file-earmark-plus',
+            action: async () => {
+                await fs.createTextFile(undefined, '', 'desktop')
+            }
+        },
+        { separator: true },
         { 
             label: 'Personalizar', 
             icon: 'bi-brush-fill', 
@@ -138,9 +164,7 @@ const handleContextMenu = (e: MouseEvent) => {
         :style="desktopStyle"
         @contextmenu="handleContextMenu"
     >
-        <DesktopIconsLayer 
-            :pinnedApps="pinnedDesktopApps" 
-        />
+        <DesktopIconsLayer />
 
         <SnippetHost
             v-for="snippet in mountedSnippets"

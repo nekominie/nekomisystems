@@ -83,7 +83,7 @@ export type ProcessGroup = {
   windows: WindowItem[]
 }
 
-const CORE_APP_IDS = ['task_supervisor', 'settings', 'run']
+const CORE_APP_IDS = ['task_supervisor', 'settings', 'run', 'store', 'console']
 
 // Procesos y snippets unificados
 const processGroups = computed<ProcessGroup[]>(() => {

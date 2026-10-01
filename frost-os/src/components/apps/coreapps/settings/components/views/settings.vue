@@ -165,6 +165,7 @@ onMounted(() => {
   if (settings.isCustomWallpaper) {
     selectedWallpaper.value = "custom";
   }
+  lockStore.loadUserProfile();
 });
 
 watch(
@@ -209,12 +210,15 @@ const filteredSections = computed(() => {
   <div class="settings-shell frst-bg-dark">
     <aside class="sidebar">
       <div class="profile-card glass-card">
-        <div class="avatar">
-          <i class="bi bi-person-fill"></i>
+        <div 
+          class="avatar"
+          :style="lockStore.userAvatarUrl ? { backgroundImage: `url(${lockStore.userAvatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"
+        >
+          <i v-if="!lockStore.userAvatarUrl" class="bi bi-person-fill"></i>
         </div>
         <div class="profile-meta">
-          <strong>Nekomi User</strong>
-          <small>Local account</small>
+          <strong>{{ lockStore.userName || 'Usuario' }}</strong>
+          <small>Cuenta local</small>
         </div>
       </div>
 
@@ -753,15 +757,29 @@ const filteredSections = computed(() => {
       <section v-else-if="activeSection === 'accounts'" class="section-content">
         <div class="grid two">
           <article class="setting-card glass-card">
-            <h3><i class="bi bi-person-badge"></i> Your info</h3>
-            <div class="option-row"><span>Name: Nekomi User</span><i class="bi bi-pencil-square"></i></div>
-            <div class="option-row"><span>Password</span><i class="bi bi-chevron-right"></i></div>
-            <div class="option-row"><span>Security options</span><i class="bi bi-chevron-right"></i></div>
+            <h3><i class="bi bi-person-badge"></i> Tu información</h3>
+            
+            <div class="user-account-header">
+              <div 
+                class="account-large-avatar" 
+                :style="lockStore.userAvatarUrl ? { backgroundImage: `url(${lockStore.userAvatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"
+              >
+                <i v-if="!lockStore.userAvatarUrl" class="bi bi-person-fill"></i>
+              </div>
+              <div class="account-large-info">
+                <h4>{{ lockStore.userName || 'Usuario' }}</h4>
+                <span class="account-type-badge">Cuenta de usuario local • Administrador</span>
+              </div>
+            </div>
+
+            <div class="option-row"><span>Nombre de usuario: {{ lockStore.userName || 'Usuario' }}</span><i class="bi bi-person-check-fill text-success"></i></div>
+            <div class="option-row"><span>Estado de sesión</span><span class="state-pill ok">Activa</span></div>
+            <div class="option-row"><span>Opciones de seguridad y PIN</span><i class="bi bi-shield-lock-fill"></i></div>
           </article>
           <article class="setting-card glass-card">
-            <h3><i class="bi bi-people"></i> Family & other users</h3>
-            <div class="option-row"><span>Add account</span><i class="bi bi-plus-circle"></i></div>
-            <div class="option-row"><span>Sync settings</span><div class="fake-switch on"></div></div>
+            <h3><i class="bi bi-people"></i> Familia y otros usuarios</h3>
+            <div class="option-row"><span>Agregar cuenta</span><i class="bi bi-plus-circle"></i></div>
+            <div class="option-row"><span>Sincronizar configuración</span><div class="fake-switch on"></div></div>
           </article>
         </div>
       </section>
@@ -990,19 +1008,75 @@ const filteredSections = computed(() => {
   background: linear-gradient(140deg, rgba(102, 189, 255, 0.65), rgba(132, 109, 255, 0.72));
   display: grid;
   place-items: center;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
 }
 
 .profile-meta {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .profile-meta strong {
   font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .profile-meta small {
   color: rgba(255, 255, 255, 0.7);
+}
+
+.user-account-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+
+.account-large-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.5), rgba(99, 102, 241, 0.6));
+  background-size: cover;
+  background-position: center;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 26px;
+}
+
+.account-large-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.account-large-info h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.account-type-badge {
+  font-size: 12px;
+  color: var(--os-accent-light, #7dd3fc);
 }
 
 .search-box {

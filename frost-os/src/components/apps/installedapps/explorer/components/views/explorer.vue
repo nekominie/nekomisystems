@@ -3,12 +3,15 @@ import { ref, computed, onMounted, onUnmounted, inject } from 'vue';
 import { useFileSystemStore } from '../../file_system_store';
 import { useContextMenu } from '../../../../../os/context_menu/context_menu';
 import { usePhotosStore } from '../../../photos/photos_store';
+import { usePdfViewerStore } from '../../../pdf_viewer/pdf_viewer_store';
 import { OS_KEY } from '../../../../../api/os_api';
+import IconManager from '../../../../../os/iconmanager.vue';
 import type { FileItem } from '../../../../../../database/db';
 
 const fs = useFileSystemStore();
 const os = inject(OS_KEY);
 const photosStore = usePhotosStore();
+const pdfViewerStore = usePdfViewerStore();
 const { openMenu } = useContextMenu();
 
 // Referencias del DOM
@@ -169,12 +172,35 @@ function isImageFile(item: FileItem): boolean {
   );
 }
 
+function isPdfFile(item: FileItem): boolean {
+  return (
+    item.type === 'file' &&
+    (item.extension?.toLowerCase() === 'pdf' ||
+      /\.pdf$/i.test(item.name) ||
+      item.mimeType === 'application/pdf')
+  );
+}
+
 function onItemDblClick(item: FileItem) {
   if (renamingItemId.value) return;
+
+  if (item.type === 'shortcut' || item.extension === 'lnk' || item.appId || item.shortcutTarget?.appId) {
+    const appId = item.appId || item.shortcutTarget?.appId;
+    if (appId && os) {
+      os.launchApp(appId);
+      return;
+    }
+  }
 
   if (isImageFile(item)) {
     photosStore.openPhotoFromFile(item);
     if (os) os.launchApp('photos');
+    return;
+  }
+
+  if (isPdfFile(item)) {
+    pdfViewerStore.openPdfFromFile(item);
+    if (os) os.launchApp('pdf_viewer');
     return;
   }
 
@@ -200,8 +226,29 @@ function onContextMenu(e: MouseEvent, item?: FileItem) {
       fs.selectItem(item.id, false);
     }
 
+    if (item.type === 'shortcut' || item.extension === 'lnk' || item.appId || item.shortcutTarget?.appId) {
+      const appId = item.appId || item.shortcutTarget?.appId;
+      openMenu(e, [
+        {
+          label: 'Abrir',
+          icon: 'bi-box-arrow-up-right',
+          action: () => {
+            if (appId && os) os.launchApp(appId);
+          },
+        },
+        { separator: true },
+        {
+          label: 'Eliminar acceso directo',
+          icon: 'bi-trash3-fill text-danger',
+          action: () => fs.deleteItems([item.id]),
+        },
+      ]);
+      return;
+    }
+
     const isMultiple = fs.selectedIds.length > 1;
     const isImg = isImageFile(item);
+    const isPdf = isPdfFile(item);
 
     openMenu(e, [
       ...(isImg
@@ -212,6 +259,17 @@ function onContextMenu(e: MouseEvent, item?: FileItem) {
               action: () => {
                 photosStore.openPhotoFromFile(item);
                 if (os) os.launchApp('photos');
+              },
+            },
+          ]
+        : isPdf
+        ? [
+            {
+              label: isMultiple ? `Abrir con PDF Viewer (${fs.selectedIds.length})` : 'Abrir con PDF Viewer',
+              icon: 'bi-file-earmark-pdf-fill text-danger',
+              action: () => {
+                pdfViewerStore.openPdfFromFile(item);
+                if (os) os.launchApp('pdf_viewer');
               },
             },
           ]
@@ -846,7 +904,13 @@ const statusSelectedInfo = computed(() => {
           >
             <!-- Icono o Thumbnail -->
             <div class="grid-icon-wrap" :class="{ 'has-thumbnail': isImageFile(item) && fs.getThumbnail(item) }">
-              <div v-if="isImageFile(item) && fs.getThumbnail(item)" class="file-thumbnail-frame">
+              <div v-if="item.appId || item.shortcutTarget?.appId" class="shortcut-thumb-frame">
+                <IconManager :id="item.appId || item.shortcutTarget?.appId" class="shortcut-app-icon" />
+                <div class="shortcut-arrow-badge">
+                  <i class="bi bi-arrow-up-right-square-fill"></i>
+                </div>
+              </div>
+              <div v-else-if="isImageFile(item) && fs.getThumbnail(item)" class="file-thumbnail-frame">
                 <img
                   :src="fs.getThumbnail(item)!"
                   :alt="item.name"
@@ -874,7 +938,9 @@ const statusSelectedInfo = computed(() => {
                 @keydown.esc.prevent="cancelRename"
                 @blur="confirmRename"
               />
-              <span v-else class="item-name" :title="item.name">{{ item.name }}</span>
+              <span v-else class="item-name" :title="item.name">
+                {{ (item.type === 'shortcut' || item.extension === 'lnk') ? item.name.replace(/\.lnk$/i, '') : item.name }}
+              </span>
             </div>
           </div>
         </div>
@@ -915,8 +981,12 @@ const statusSelectedInfo = computed(() => {
             >
               <div class="col col-name">
                 <div class="details-thumb-wrap">
+                  <div v-if="item.appId || item.shortcutTarget?.appId" class="shortcut-list-thumb">
+                    <IconManager :id="item.appId || item.shortcutTarget?.appId" class="mini-app-icon" />
+                    <i class="bi bi-arrow-up-right-square-fill mini-shortcut-badge"></i>
+                  </div>
                   <img
-                    v-if="isImageFile(item) && fs.getThumbnail(item)"
+                    v-else-if="isImageFile(item) && fs.getThumbnail(item)"
                     :src="fs.getThumbnail(item)!"
                     :alt="item.name"
                     class="mini-thumb-img"
@@ -936,14 +1006,16 @@ const statusSelectedInfo = computed(() => {
                   @keydown.esc.prevent="cancelRename"
                   @blur="confirmRename"
                 />
-                <span v-else class="item-name" :title="item.name">{{ item.name }}</span>
+                <span v-else class="item-name" :title="item.name">
+                  {{ (item.type === 'shortcut' || item.extension === 'lnk') ? item.name.replace(/\.lnk$/i, '') : item.name }}
+                </span>
               </div>
               <div class="col col-date">{{ fs.formatDate(item.updatedAt) }}</div>
               <div class="col col-type">
-                {{ item.type === 'folder' ? 'Carpeta de archivos' : (item.extension?.toUpperCase() || 'Archivo') }}
+                {{ item.type === 'folder' ? 'Carpeta de archivos' : (item.type === 'shortcut' || item.extension === 'lnk' ? 'Acceso directo' : (item.extension?.toUpperCase() || 'Archivo')) }}
               </div>
               <div class="col col-size">
-                {{ item.type === 'folder' ? '' : fs.formatSize(item.size) }}
+                {{ item.type === 'folder' ? '' : (item.type === 'shortcut' || item.extension === 'lnk' ? '1 KB' : fs.formatSize(item.size)) }}
               </div>
             </div>
           </div>
@@ -964,8 +1036,12 @@ const statusSelectedInfo = computed(() => {
             @contextmenu="onContextMenu($event, item)"
           >
             <div class="details-thumb-wrap">
+              <div v-if="item.appId || item.shortcutTarget?.appId" class="shortcut-list-thumb">
+                <IconManager :id="item.appId || item.shortcutTarget?.appId" class="mini-app-icon" />
+                <i class="bi bi-arrow-up-right-square-fill mini-shortcut-badge"></i>
+              </div>
               <img
-                v-if="isImageFile(item) && fs.getThumbnail(item)"
+                v-else-if="isImageFile(item) && fs.getThumbnail(item)"
                 :src="fs.getThumbnail(item)!"
                 :alt="item.name"
                 class="mini-thumb-img"
@@ -985,7 +1061,9 @@ const statusSelectedInfo = computed(() => {
               @keydown.esc.prevent="cancelRename"
               @blur="confirmRename"
             />
-            <span v-else class="item-name" :title="item.name">{{ item.name }}</span>
+            <span v-else class="item-name" :title="item.name">
+              {{ (item.type === 'shortcut' || item.extension === 'lnk') ? item.name.replace(/\.lnk$/i, '') : item.name }}
+            </span>
           </div>
         </div>
       </main>
@@ -1796,6 +1874,61 @@ const statusSelectedInfo = computed(() => {
   width: 82px;
   height: 64px;
   filter: none;
+}
+
+.shortcut-thumb-frame {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcut-app-icon {
+  width: 42px;
+  height: 42px;
+  display: block;
+}
+
+.shortcut-arrow-badge {
+  position: absolute;
+  bottom: 0px;
+  left: 0px;
+  font-size: 11px;
+  color: #38bdf8;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 2px;
+  padding: 1px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcut-list-thumb {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mini-app-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.mini-shortcut-badge {
+  position: absolute;
+  bottom: -2px;
+  left: -2px;
+  font-size: 9px;
+  color: #38bdf8;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 1px;
 }
 
 .file-thumbnail-frame {

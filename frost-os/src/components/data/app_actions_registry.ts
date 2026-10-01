@@ -8,6 +8,7 @@ export const AppActionHandlers: Record<string, Record<string, ActionHandler>> = 
   discord: {
     'toggle-mute': discordActions.toggleMute,
     'open': discordActions.open,
+    'new-window': (ctx) => { ctx.os.launchApp(ctx.app.manifest.id) },
   },
 
   notepad: {

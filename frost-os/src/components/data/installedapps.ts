@@ -174,6 +174,22 @@ export const InstalledApps: Manifest[] = [
             defaultSize: { width: 520, height: 719 },
             minSize: { width: 520, height: 719 },
         }
+    },
+    {
+        id: "pdf_viewer",
+        name: "PDF Viewer",
+        window: {
+            defaultSize: { width: 1020, height: 680 },
+            minSize: { width: 560, height: 420 },
+            surface: {
+                mode: 'os-glass',
+                os: {
+                    frameBg: 'rgba(18, 22, 30, 0.55)',
+                    frameBlur: 'blur(30px)',
+                    contentBg: 'transparent'
+                }
+            }
+        }
     }
 ]
     
