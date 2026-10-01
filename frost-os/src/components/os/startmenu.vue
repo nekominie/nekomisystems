@@ -7,6 +7,8 @@ import type { App } from '../data/app'
 import { OS_KEY } from '../api/os_api'
 import { useLockStore } from './lock/lock_store'
 
+import { getUserProfile } from '../../database/user_profile'
+
 const os = inject(OS_KEY)
 if(!os) throw new Error('OS API not found')
 
@@ -31,39 +33,23 @@ onMounted(() => {
     fillProfile();
 })
 
-const getProfileFromDB = async (): Promise<UserProfile | null> => {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open("NekomiOS_DB", 1);
-
-        request.onsuccess = (e: any) => {
-            const db = e.target.result;
-            const transaction = db.transaction("user_data", "readonly");
-            const store = transaction.objectStore("user_data");
-
-            const getRequest = store.get("profile");
-
-            getRequest.onsuccess = () => {
-                resolve(getRequest.result as UserProfile || null); // Aquí viene { name, avatar, setupDate }
-            };
-
-            getRequest.onerror = () => reject("Error al obtener el perfil");
-        };
-
-        request.onerror = () => reject("No se pudo abrir la base de datos");
-    });
-};
-
 const fillProfile = async () => {
-    try{
-        const profile = await getProfileFromDB();
+    try {
+        const profile = await getUserProfile();
 
-        if(profile){
-            previewUrl.value = URL.createObjectURL(profile.avatar);
-            userName.value = profile.name;
+        if (profile) {
+            if (profile.avatar && profile.avatar instanceof Blob) {
+                if (previewUrl.value && previewUrl.value.startsWith('blob:')) {
+                    URL.revokeObjectURL(previewUrl.value);
+                }
+                previewUrl.value = URL.createObjectURL(profile.avatar);
+            }
+            if (profile.name) {
+                userName.value = profile.name;
+            }
         }
-    }
-    catch(e){
-        console.error(e);
+    } catch(e) {
+        console.error('Error cargando perfil en startmenu:', e);
     }
 }
 

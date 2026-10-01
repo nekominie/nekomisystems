@@ -3,6 +3,7 @@
 import { onMounted, ref } from 'vue'
 import OperatingSystem from '../os.vue'
 import WelcomeSetup from './welcome_setup.vue'
+import { useLockStore } from './lock/lock_store'
 
 const emit = defineEmits<{
     (e: 'shutdown'): void
@@ -13,9 +14,12 @@ const props = defineProps<{
     startUp: boolean
 }>()
 
+const lockStore = useLockStore()
+
 const doneLoading = ref(false);
 const runShutdown = ref(false);
 const showSetup = ref(false);
+const isTransitioningToDesktop = ref(false);
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -41,8 +45,14 @@ onMounted(async () => {
 })
 
 const finishedSetup = () => {
-    showSetup.value = false;    
+    isTransitioningToDesktop.value = true;
     localStorage.setItem('ranSetup', 'true');
+    lockStore.unlock(); // Asegurar ingreso directo al escritorio
+
+    setTimeout(() => {
+        showSetup.value = false;
+        isTransitioningToDesktop.value = false;
+    }, 950);
 }
 
 const acpiHandler = () => {
@@ -66,13 +76,18 @@ const restartHandler = () => {
 
 <template>
 
-    <WelcomeSetup v-if="showSetup"
-        @finishedSetup="finishedSetup"
-    />
-
-    <OperatingSystem v-if="doneLoading && !showSetup" :class="{ 'shutdown-run': runShutdown }"
+    <OperatingSystem v-if="doneLoading && (!showSetup || isTransitioningToDesktop)" 
+        :class="{ 
+            'shutdown-run': runShutdown,
+            'frost-desktop-reveal': isTransitioningToDesktop
+        }"
         @shutdown="acpiHandler"
         @restart="restartHandler"
+    />
+
+    <WelcomeSetup v-if="showSetup"
+        :class="{ 'frost-thaw-exit': isTransitioningToDesktop }"
+        @finishedSetup="finishedSetup"
     />
 
     <div v-if="!doneLoading" class="loading-os-container" >
@@ -171,5 +186,47 @@ const restartHandler = () => {
         transform: scaleY(0) scaleX(0);
         opacity: 0;
     }
+    }
+
+    /* Transición Helada (Frost Thaw) hacia el Escritorio */
+    .frost-desktop-reveal {
+        animation: frostRevealDesktop 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes frostRevealDesktop {
+        0% {
+            filter: blur(28px) brightness(1.2);
+            transform: scale(1.03);
+            opacity: 0.6;
+        }
+        100% {
+            filter: blur(0px) brightness(1);
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+
+    .frost-thaw-exit {
+        pointer-events: none;
+        animation: frostThawDissolve 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        position: absolute;
+        inset: 0;
+        z-index: 100;
+    }
+
+    @keyframes frostThawDissolve {
+        0% {
+            opacity: 1;
+            filter: blur(0px);
+        }
+        35% {
+            opacity: 0.95;
+            filter: blur(14px) brightness(1.2);
+        }
+        100% {
+            opacity: 0;
+            filter: blur(35px) brightness(1.3);
+            transform: scale(1.04);
+        }
     }
 </style>
