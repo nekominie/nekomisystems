@@ -264,14 +264,6 @@ export function useDesktopIcons(options: {
       const c = layout[appId]
       initialCells.set(appId, c ? { col: c.col, row: c.row } : { col: 0, row: 0 })
     }
-
-    try {
-      capturedEl = e.currentTarget as HTMLElement
-      capturedPointerId = e.pointerId
-      capturedEl.setPointerCapture(e.pointerId)
-    } catch {
-      /* noop */
-    }
   }
 
   function onIconPointerMove(e: PointerEvent) {
@@ -460,6 +452,50 @@ export function useDesktopIcons(options: {
     }
   }
 
+  // Ubicar iconos en una posición de pantalla específica (Drag & Drop desde explorador o recolocación)
+  function placeIconsAt(ids: string[], clientX: number, clientY: number) {
+    if (!ids || ids.length === 0) return
+    const startCell = pxToCell(clientX, clientY)
+    const maxAllowedCol = Math.max(0, cols.value - 1)
+    const maxAllowedRow = Math.max(0, rows.value - 1)
+
+    // Celdas ocupadas por iconos que no están en `ids`
+    const occupied = new Set<string>()
+    for (const [id, cell] of Object.entries(layout)) {
+      if (!ids.includes(id)) {
+        occupied.add(`${cell.col},${cell.row}`)
+      }
+    }
+
+    let offsetRow = 0
+    let offsetCol = 0
+    for (const id of ids) {
+      const targetCol = clamp(startCell.col + offsetCol, 0, maxAllowedCol)
+      const targetRow = clamp(startCell.row + offsetRow, 0, maxAllowedRow)
+
+      const freeCell = findNearestFreeCellForSet({ col: targetCol, row: targetRow }, occupied)
+      layout[id] = freeCell
+      occupied.add(`${freeCell.col},${freeCell.row}`)
+
+      offsetRow++
+      if (startCell.row + offsetRow > maxAllowedRow) {
+        offsetRow = 0
+        offsetCol++
+      }
+    }
+
+    saveToDb().catch(console.error)
+  }
+
+  // Eliminar icono del layout cuando se traslada fuera del escritorio
+  function removeIconLayout(id: string) {
+    if (layout[id]) {
+      delete layout[id]
+      selected.delete(id)
+      saveToDb().catch(console.error)
+    }
+  }
+
   onMounted(() => {
     loadFromDb().catch(console.error)
   })
@@ -479,6 +515,8 @@ export function useDesktopIcons(options: {
     saveToDb,
     syncLayoutWithPinned,
     findFirstFreeCell,
+    placeIconsAt,
+    removeIconLayout,
 
     // Arrastre simple y múltiple
     isDragging,

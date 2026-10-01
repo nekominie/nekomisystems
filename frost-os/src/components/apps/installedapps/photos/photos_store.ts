@@ -166,11 +166,12 @@ export const usePhotosStore = defineStore('photosStore', () => {
     }
   }
 
-  // Abrir una foto específica desde el Navegador de Archivos
-  async function openPhotoFromFile(fileItem: FileItem) {
-    await loadAllPhotos();
+  // Resolver o cargar una foto desde un FileItem sin forzar la vista global
+  async function resolvePhotoFromFile(fileItem: FileItem): Promise<PhotoItem | null> {
+    if (photos.value.length === 0) {
+      await loadAllPhotos();
+    }
 
-    // Buscar si ya está cargada
     let target = photos.value.find((p) => p.fileItem?.id === fileItem.id);
 
     if (!target) {
@@ -179,6 +180,7 @@ export const usePhotosStore = defineStore('photosStore', () => {
         const asset = await db.assets.get(fileItem.assetId);
         if (asset && asset.data) {
           photoUrl = URL.createObjectURL(asset.data);
+          trackedBlobUrls.add(photoUrl);
         }
       }
       if (!photoUrl) {
@@ -190,6 +192,7 @@ export const usePhotosStore = defineStore('photosStore', () => {
           id: `file-${fileItem.id}`,
           name: fileItem.name,
           url: photoUrl,
+          thumbUrl: photoUrl,
           size: fileItem.size,
           date: fileItem.updatedAt || fileItem.createdAt,
           source: 'file',
@@ -201,10 +204,15 @@ export const usePhotosStore = defineStore('photosStore', () => {
       }
     }
 
+    return target || null;
+  }
+
+  // Abrir una foto específica desde el Navegador de Archivos (compatibilidad)
+  async function openPhotoFromFile(fileItem: FileItem) {
+    const target = await resolvePhotoFromFile(fileItem);
     if (target) {
       activePhotoId.value = target.id;
     }
-
     resetTransform();
     currentView.value = 'viewer';
   }
@@ -330,11 +338,8 @@ export const usePhotosStore = defineStore('photosStore', () => {
     }
   }
 
-  // Eliminar foto activa
-  async function deleteActivePhoto() {
-    const target = activePhoto.value;
-    if (!target) return;
-
+  // Eliminar foto específica
+  async function deletePhoto(target: PhotoItem) {
     if (target.source === 'file' && target.fileItem) {
       await db.files.delete(target.fileItem.id);
       if (target.assetId) {
@@ -346,10 +351,18 @@ export const usePhotosStore = defineStore('photosStore', () => {
     if (idx !== -1) {
       photos.value.splice(idx, 1);
     }
+  }
+
+  // Eliminar foto activa
+  async function deleteActivePhoto() {
+    const target = activePhoto.value;
+    if (!target) return;
+
+    await deletePhoto(target);
 
     if (photos.value.length > 0) {
-      const nextIdx = Math.min(idx, photos.value.length - 1);
-      activePhotoId.value = photos.value[nextIdx].id;
+      const nextIdx = Math.min(0, photos.value.length - 1);
+      activePhotoId.value = photos.value[nextIdx]?.id || null;
     } else {
       activePhotoId.value = null;
       currentView.value = 'gallery';
@@ -371,6 +384,7 @@ export const usePhotosStore = defineStore('photosStore', () => {
     isSlideshowActive,
     loadAllPhotos,
     openPhotoFromFile,
+    resolvePhotoFromFile,
     openPhoto,
     nextPhoto,
     prevPhoto,
@@ -384,6 +398,7 @@ export const usePhotosStore = defineStore('photosStore', () => {
     setAsWallpaper,
     downloadPhoto,
     deleteActivePhoto,
+    deletePhoto,
     revokeTrackedBlobUrls,
     clearThumbnailCache,
   };

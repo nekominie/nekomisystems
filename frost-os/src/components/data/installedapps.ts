@@ -3,8 +3,20 @@ import { useDiscordStore } from '../apps/installedapps/discord/store'
 
 export const InstalledApps: Manifest[] = [
     {
-            id: 'notepad',
-            name: 'Notepad',
+        id: 'notepad',
+        name: 'Notepad',
+        window: {
+            defaultSize: { width: 850, height: 560 },
+            minSize: { width: 450, height: 320 },
+            surface: {
+                mode: 'os-glass',
+                os: {
+                    frameBg: 'rgba(20, 24, 34, 0.45)',
+                    frameBlur: 'blur(30px)',
+                    contentBg: 'transparent'
+                }
+            }
+        }
     },
     {
         id: 'calculator',

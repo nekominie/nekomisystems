@@ -118,7 +118,7 @@ const handleContextMenu = (e: MouseEvent) => {
             icon: 'bi-folder2-open',
             action: () => {
                 fs.navigateTo('desktop')
-                os.launchApp('explorer')
+                os.launchApp('explorer', { initialFolderId: 'desktop' })
             }
         },
         { separator: true },

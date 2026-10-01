@@ -107,6 +107,20 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
   const isUploading = ref<boolean>(false);
   const uploadStatus = ref<string>('');
 
+  // Estado de arrastre de archivos entre ventanas y escritorio
+  const draggedItemIds = ref<string[]>([]);
+  const isDraggingItems = ref<boolean>(false);
+
+  function startDragItems(ids: string[]) {
+    draggedItemIds.value = ids;
+    isDraggingItems.value = true;
+  }
+
+  function endDragItems() {
+    draggedItemIds.value = [];
+    isDraggingItems.value = false;
+  }
+
   // Carpetas del sistema predefinidas
   const systemFolders: { id: string; name: string; icon: string; path: string }[] = [
     { id: 'desktop', name: 'Escritorio', icon: 'bi-display', path: 'Este equipo > Escritorio' },
@@ -262,6 +276,26 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
             updatedAt: now - 3600000,
           };
           await db.files.put(manualPdf);
+          items = await db.files.toArray();
+        }
+
+        // Asegurar que exista el recordatorio en el escritorio
+        const hasDesktopNote = items.some((i) => i.name === 'recordatorio_importante.txt');
+        if (!hasDesktopNote) {
+          const now = Date.now();
+          const desktopNote: FileItem = {
+            id: 'file-desktop-note',
+            name: 'recordatorio_importante.txt',
+            parentId: 'desktop',
+            type: 'file',
+            extension: 'txt',
+            size: 195,
+            mimeType: 'text/plain',
+            textContent: `📌 Recordatorio Importante:\n- Terminar el visor de documentos de Frost OS.\n- Revisar las nuevas integraciones en la barra de tareas.\n- Guardar los cambios del sistema.`,
+            createdAt: now - 3600000,
+            updatedAt: now - 3600000,
+          };
+          await db.files.put(desktopNote);
           items = await db.files.toArray();
         }
       }
@@ -782,6 +816,13 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
     return newFile;
   }
 
+  // Crear archivo con nombre y contenido específicos (usado por Notepad y otros)
+  async function createNewFile(folderId: string, fileName: string, content = ''): Promise<FileItem> {
+    const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : 'txt';
+    const baseName = fileName.includes('.') ? fileName.slice(0, -(ext!.length + 1)) : fileName;
+    return await createTextFile(baseName, content, folderId);
+  }
+
   // Operaciones de Archivos: Crear Acceso Directo
   async function createShortcut(appId: string, customName?: string, targetFolderId = 'desktop') {
     const parent = targetFolderId;
@@ -817,12 +858,12 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
   }
 
   // Carga de Archivos desde el Navegador (Upload)
-  async function uploadFiles(files: FileList | File[]) {
+  async function uploadFiles(files: FileList | File[], customTargetFolder?: string) {
     if (!files || files.length === 0) return;
 
     isUploading.value = true;
     uploadStatus.value = `Subiendo ${files.length} archivo(s)...`;
-    const targetFolder = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+    const targetFolder = customTargetFolder || (currentFolderId.value === 'root' ? 'documents' : currentFolderId.value);
 
     try {
       for (let i = 0; i < files.length; i++) {
@@ -976,21 +1017,33 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
   }
 
   // Portapapeles: Copiar / Cortar
-  function copySelected() {
-    if (selectedIds.value.length === 0) return;
-    clipboard.value = { action: 'copy', itemIds: [...selectedIds.value] };
+  function copyItems(itemIds: string[]) {
+    if (!itemIds || itemIds.length === 0) return;
+    clipboard.value = { action: 'copy', itemIds: [...itemIds] };
   }
 
-  function cutSelected() {
-    if (selectedIds.value.length === 0) return;
-    clipboard.value = { action: 'cut', itemIds: [...selectedIds.value] };
+  function cutItems(itemIds: string[]) {
+    if (!itemIds || itemIds.length === 0) return;
+    clipboard.value = { action: 'cut', itemIds: [...itemIds] };
   }
 
-  // Pegar en la carpeta actual
-  async function paste() {
+  function copySelected(ids?: string[]) {
+    const toCopy = ids && ids.length > 0 ? ids : selectedIds.value;
+    if (toCopy.length === 0) return;
+    clipboard.value = { action: 'copy', itemIds: [...toCopy] };
+  }
+
+  function cutSelected(ids?: string[]) {
+    const toCut = ids && ids.length > 0 ? ids : selectedIds.value;
+    if (toCut.length === 0) return;
+    clipboard.value = { action: 'cut', itemIds: [...toCut] };
+  }
+
+  // Pegar en la carpeta actual o en carpeta destino
+  async function paste(targetFolderId?: string) {
     if (!clipboard.value || clipboard.value.itemIds.length === 0) return;
 
-    const targetFolder = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+    const targetFolder = targetFolderId || (currentFolderId.value === 'root' ? 'documents' : currentFolderId.value);
     const { action, itemIds } = clipboard.value;
 
     if (action === 'cut') {
@@ -1014,6 +1067,42 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
     }
 
     await loadAllFiles();
+  }
+
+  // Reubicar/mover elementos (Drag & Drop entre ventanas y escritorio)
+  async function moveItems(itemIds: string[], targetFolderId: string): Promise<boolean> {
+    if (!itemIds || itemIds.length === 0 || !targetFolderId) return false;
+
+    const targetFolder = targetFolderId === 'root' ? 'documents' : targetFolderId;
+    let modified = false;
+
+    for (const id of itemIds) {
+      const item = allItems.value.find((i) => i.id === id);
+      if (!item) continue;
+
+      // No mover si ya se encuentra en la misma carpeta
+      if (item.parentId === targetFolder) continue;
+
+      // Evitar mover una carpeta dentro de sí misma o de sus subcarpetas
+      if (item.type === 'folder' && (item.id === targetFolder || isDescendantOf(targetFolder, item.id))) {
+        continue;
+      }
+
+      // Evitar mover carpetas del sistema
+      if (item.isSystem) {
+        continue;
+      }
+
+      item.parentId = targetFolder;
+      item.updatedAt = Date.now();
+      await db.files.put(item);
+      modified = true;
+    }
+
+    if (modified) {
+      await loadAllFiles();
+    }
+    return modified;
   }
 
   // Duplicar elemento recursivamente para copy-paste
@@ -1151,7 +1240,24 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
       return;
     }
 
-    // 3. Texto o Código
+    // 3. Documento TXT -> Notepad
+    const isTxt =
+      item.extension?.toLowerCase() === 'txt' ||
+      item.extension?.toLowerCase() === 'log' ||
+      /\.(txt|log)$/i.test(item.name) ||
+      item.mimeType === 'text/plain';
+
+    if (isTxt) {
+      try {
+        const { useNotepadStore } = await import('../notepad/notepad_store');
+        await useNotepadStore().openTextFromFile(item);
+      } catch (err) {
+        console.error('Error abriendo TXT en Notepad:', err);
+      }
+      return;
+    }
+
+    // 4. Otro Texto o Código
     const isText =
       item.mimeType?.startsWith('text/') ||
       /\.(txt|md|json|js|ts|html|css|csv|xml|log|py|vue|yaml|yml|sql|sh)$/i.test(item.name);
@@ -1324,13 +1430,22 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
     selectAll,
     createFolder,
     createTextFile,
+    createNewFile,
     createShortcut,
     uploadFiles,
     renameItem,
     deleteItems,
     copySelected,
     cutSelected,
+    copyItems,
+    cutItems,
     paste,
+    moveItems,
+    isDescendantOf,
+    draggedItemIds,
+    isDraggingItems,
+    startDragItems,
+    endDragItems,
     downloadFile,
     openItem,
     saveTextDraft,

@@ -153,16 +153,16 @@ const createWindow = (appId: string, options: any = {}, parentWinId?: string) =>
 
         // --- NUEVA LÓGICA DE TAMAÑO ---
         // Extraemos width/height de options.params si existen, si no, del manifest, si no, default
-        const finalWidth = options.params?.width ?? app.manifest.window?.defaultSize?.width ?? 600;
-        const finalHeight = options.params?.height ?? app.manifest.window?.defaultSize?.height ?? 400;
+        const finalWidth = options.params?.width ?? options.width ?? app.manifest.window?.defaultSize?.width ?? 600;
+        const finalHeight = options.params?.height ?? options.height ?? app.manifest.window?.defaultSize?.height ?? 400;
         
         const finalSize = { width: finalWidth, height: finalHeight };
 
         // --- NUEVA LÓGICA DE POSICIÓN ---
         const offset = state.windows.length * 25;
         const initialPosition = {
-            x: options.params?.x ?? ((window.innerWidth - finalSize.width) / 2 + offset),
-            y: options.params?.y ?? ((window.innerHeight - finalSize.height) / 2 + offset)
+            x: options.params?.x ?? options.x ?? ((window.innerWidth - finalSize.width) / 2 + offset),
+            y: options.params?.y ?? options.y ?? ((window.innerHeight - finalSize.height) / 2 + offset)
         };
 
         const newWindow: WindowInstance = {
@@ -175,13 +175,13 @@ const createWindow = (appId: string, options: any = {}, parentWinId?: string) =>
             view: options.view || 'Main', 
             isMain: !parentWinId,
             isMinimized: options.isMinimized || false,
-            hideFromTaskbar: options.params?.hideFromTaskbar || false,
+            hideFromTaskbar: options.params?.hideFromTaskbar || options.hideFromTaskbar || false,
             isMaximized: false,
             isFocused: true,
             zIndex: ++state.topZ,
             position: initialPosition,
             size: finalSize, // <--- Ahora sí usa el tamaño procesado
-            params: options.params || {}, // <--- Guardamos los params limpios
+            params: options.params ? { ...options, ...options.params } : { ...options }, // <--- Guardamos los params limpios y accesibles
             tempSettings: undefined,
             snapState: null
         };

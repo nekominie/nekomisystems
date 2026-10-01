@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { db, type FileItem } from "../../../../../../database/db";
+import type { WindowInstance } from "../../../../../data/app";
+import { useFileSystemStore } from "../../../explorer/file_system_store";
 
-const text = ref("");
-const fileName = ref("untitled.txt");
-const isDirty = ref(false);
-const lastSavedText = ref("");
+const props = defineProps<{
+  win?: WindowInstance;
+}>();
+
+const fs = useFileSystemStore();
+
+// Estado LOCAL e independiente de este documento en esta ventana
+const currentFile = ref<FileItem | null>(null);
+const fileName = ref<string>("untitled.txt");
+const text = ref<string>("");
+const isDirty = ref<boolean>(false);
+const lastSavedText = ref<string>("");
+const statusMessage = ref<string>("");
 
 const wordWrap = ref(true);
 const showFindBar = ref(false);
@@ -12,7 +24,6 @@ const caseSensitive = ref(false);
 const findQuery = ref("");
 const replaceQuery = ref("");
 const fontSize = ref(15);
-const statusMessage = ref("");
 
 const line = ref(1);
 const column = ref(1);
@@ -34,12 +45,60 @@ watch(text, () => {
   isDirty.value = text.value !== lastSavedText.value;
 });
 
+async function loadFileItem(item: FileItem) {
+  let content = item.textContent ?? '';
+
+  if (!content && item.assetId) {
+    try {
+      const asset = await db.assets.get(item.assetId);
+      if (asset && asset.data) {
+        if (asset.data instanceof Blob) {
+          content = await asset.data.text();
+        } else if (typeof asset.data === 'string') {
+          content = asset.data;
+        }
+      }
+    } catch (err) {
+      console.error('Error leyendo asset para notepad:', err);
+    }
+  }
+
+  currentFile.value = item;
+  fileName.value = item.name || 'untitled.txt';
+  text.value = content;
+  lastSavedText.value = content;
+  isDirty.value = false;
+  setStatus(`Abierto: ${item.name}`);
+  updateCaret();
+}
+
+async function initWindowContent() {
+  if (props.win?.params?.fileItem) {
+    await loadFileItem(props.win.params.fileItem);
+  } else if (props.win?.params?.text !== undefined) {
+    text.value = props.win.params.text;
+    lastSavedText.value = props.win.params.text;
+    if (props.win.params.fileName) {
+      fileName.value = props.win.params.fileName;
+    }
+  }
+}
+
+watch(
+  () => props.win?.params?.fileItem,
+  (newFile) => {
+    if (newFile) {
+      loadFileItem(newFile);
+    }
+  }
+);
+
 function setStatus(message: string) {
   statusMessage.value = message;
   if (statusTimer) window.clearTimeout(statusTimer);
   statusTimer = window.setTimeout(() => {
     statusMessage.value = "";
-  }, 2000);
+  }, 2500);
 }
 
 function focusEditor() {
@@ -60,13 +119,14 @@ function updateCaret() {
 
 function confirmDiscardChanges(actionName: string) {
   if (!isDirty.value) return true;
-  return window.confirm(`You have unsaved changes. Continue with ${actionName}?`);
+  return window.confirm(`Tienes cambios sin guardar. ¿Deseas continuar con ${actionName}?`);
 }
 
 function resetDocument() {
-  text.value = "";
-  fileName.value = "untitled.txt";
-  lastSavedText.value = "";
+  currentFile.value = null;
+  fileName.value = 'untitled.txt';
+  text.value = '';
+  lastSavedText.value = '';
   isDirty.value = false;
   fileHandle = null;
   showFindBar.value = false;
@@ -77,14 +137,14 @@ function resetDocument() {
 }
 
 function newDocument() {
-  if (!confirmDiscardChanges("New")) return;
+  if (!confirmDiscardChanges("Nuevo")) return;
   resetDocument();
-  setStatus("New document ready");
+  setStatus("Nuevo documento listo");
   focusEditor();
 }
 
 function triggerOpen() {
-  if (!confirmDiscardChanges("Open")) return;
+  if (!confirmDiscardChanges("Abrir")) return;
   fileInputRef.value?.click();
 }
 
@@ -95,13 +155,14 @@ function onFileSelected(event: Event) {
 
   const reader = new FileReader();
   reader.onload = () => {
+    currentFile.value = null;
     text.value = String(reader.result ?? "");
     fileName.value = file.name || "untitled.txt";
     lastSavedText.value = text.value;
     isDirty.value = false;
     fileHandle = null;
     updateCaret();
-    setStatus(`Opened ${fileName.value}`);
+    setStatus(`Abierto: ${fileName.value}`);
     focusEditor();
   };
   reader.readAsText(file);
@@ -132,7 +193,7 @@ async function saveAs() {
         suggestedName: fileName.value,
         types: [
           {
-            description: "Text files",
+            description: "Archivos de texto",
             accept: { "text/plain": [".txt", ".md", ".log"] },
           },
         ],
@@ -142,7 +203,7 @@ async function saveAs() {
       fileName.value = handle.name || fileName.value;
       lastSavedText.value = text.value;
       isDirty.value = false;
-      setStatus(`Saved ${fileName.value}`);
+      setStatus(`Guardado: ${fileName.value}`);
       return;
     } catch {
       return;
@@ -152,20 +213,66 @@ async function saveAs() {
   downloadFile(fileName.value || "untitled.txt", text.value);
   lastSavedText.value = text.value;
   isDirty.value = false;
-  setStatus(`Downloaded ${fileName.value}`);
+  setStatus(`Descargado: ${fileName.value}`);
 }
 
 async function saveFile() {
+  // 1. Si el archivo pertenece al sistema virtual de Frost OS
+  if (currentFile.value) {
+    const updatedData = {
+      textContent: text.value,
+      size: new Blob([text.value]).size,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      await db.files.update(currentFile.value.id, updatedData);
+      currentFile.value.textContent = text.value;
+      currentFile.value.size = updatedData.size;
+      currentFile.value.updatedAt = updatedData.updatedAt;
+
+      lastSavedText.value = text.value;
+      isDirty.value = false;
+      setStatus(`Guardado en Frost OS (${fileName.value})`);
+
+      try {
+        await fs.loadAllFiles();
+      } catch {}
+
+      return;
+    } catch (e) {
+      console.error('Error guardando archivo en Notepad:', e);
+    }
+  }
+
+  // 2. Si tiene un handle nativo del explorador del navegador
   if (fileHandle) {
     try {
       await writeToHandle(fileHandle);
       lastSavedText.value = text.value;
       isDirty.value = false;
-      setStatus(`Saved ${fileName.value}`);
+      setStatus(`Guardado: ${fileName.value}`);
       return;
     } catch {
       fileHandle = null;
     }
+  }
+
+  // 3. Si es un nuevo archivo creado en Frost OS
+  try {
+    const trimmed = (fileName.value || 'documento.txt').trim();
+    const finalName = trimmed.endsWith('.txt') ? trimmed : `${trimmed}.txt`;
+    const newFile = await fs.createNewFile('documents', finalName, text.value);
+    if (newFile) {
+      currentFile.value = newFile;
+      fileName.value = newFile.name;
+      lastSavedText.value = text.value;
+      isDirty.value = false;
+      setStatus(`Guardado en Documentos (${newFile.name})`);
+      return;
+    }
+  } catch (err) {
+    console.error('Error guardando nuevo archivo en Notepad:', err);
   }
 
   await saveAs();
@@ -363,6 +470,8 @@ function onEditorKeydown(event: KeyboardEvent) {
 }
 
 function onGlobalShortcuts(event: KeyboardEvent) {
+  if (props.win && !props.win.isFocused) return;
+
   const ctrlOrCmd = event.ctrlKey || event.metaKey;
   if (!ctrlOrCmd) return;
 
@@ -422,7 +531,8 @@ function onGlobalShortcuts(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await initWindowContent();
   window.addEventListener("keydown", onGlobalShortcuts);
   updateCaret();
 });
@@ -437,52 +547,52 @@ onBeforeUnmount(() => {
   <div class="notepad-app">
     <header class="toolbar-shell">
       <div class="toolbar-row menu-row">
-        <button @click="newDocument"><i class="bi bi-file-earmark-plus"></i>New</button>
-        <button @click="triggerOpen"><i class="bi bi-folder2-open"></i>Open</button>
-        <button @click="saveFile"><i class="bi bi-floppy"></i>Save</button>
-        <button @click="saveAs"><i class="bi bi-download"></i>Save As</button>
+        <button @click="newDocument"><i class="bi bi-file-earmark-plus"></i>Nuevo</button>
+        <button @click="triggerOpen"><i class="bi bi-folder2-open"></i>Abrir</button>
+        <button @click="saveFile"><i class="bi bi-floppy"></i>Guardar</button>
+        <button @click="saveAs"><i class="bi bi-download"></i>Guardar como</button>
         <span class="divider"></span>
-        <button @click="undoEdit"><i class="bi bi-arrow-counterclockwise"></i>Undo</button>
-        <button @click="redoEdit"><i class="bi bi-arrow-clockwise"></i>Redo</button>
+        <button @click="undoEdit"><i class="bi bi-arrow-counterclockwise"></i>Deshacer</button>
+        <button @click="redoEdit"><i class="bi bi-arrow-clockwise"></i>Rehacer</button>
         <span class="divider"></span>
-        <button @click="cutSelection"><i class="bi bi-scissors"></i>Cut</button>
-        <button @click="copySelection"><i class="bi bi-files"></i>Copy</button>
-        <button @click="pasteClipboard"><i class="bi bi-clipboard2-check"></i>Paste</button>
-        <button @click="selectAll"><i class="bi bi-check2-square"></i>Select All</button>
+        <button @click="cutSelection"><i class="bi bi-scissors"></i>Cortar</button>
+        <button @click="copySelection"><i class="bi bi-files"></i>Copiar</button>
+        <button @click="pasteClipboard"><i class="bi bi-clipboard2-check"></i>Pegar</button>
+        <button @click="selectAll"><i class="bi bi-check2-square"></i>Seleccionar todo</button>
         <span class="divider"></span>
-        <button @click="toggleFindBar"><i class="bi bi-search"></i>Find / Replace</button>
-        <button @click="insertDateTime"><i class="bi bi-calendar3"></i>Date/Time</button>
+        <button @click="toggleFindBar"><i class="bi bi-search"></i>Buscar / Reemplazar</button>
+        <button @click="insertDateTime"><i class="bi bi-calendar3"></i>Fecha/Hora</button>
       </div>
 
       <div class="toolbar-row options-row">
         <label class="filename-field">
-          <span>File</span>
+          <span>Archivo</span>
           <input v-model="fileName" type="text" />
         </label>
 
         <label class="toggle-field">
           <input v-model="wordWrap" type="checkbox" />
-          <span>Word Wrap</span>
+          <span>Ajuste de línea</span>
         </label>
 
         <label class="range-field">
-          <span>Font {{ fontSize }}px</span>
+          <span>Fuente {{ fontSize }}px</span>
           <input v-model.number="fontSize" type="range" min="12" max="28" />
         </label>
 
         <label class="toggle-field">
           <input v-model="caseSensitive" type="checkbox" />
-          <span>Case Sensitive</span>
+          <span>Coincidir mayúsculas</span>
         </label>
       </div>
 
       <div v-if="showFindBar" class="toolbar-row find-row">
-        <input id="notepad-find-input" v-model="findQuery" type="text" placeholder="Find..." @keydown.enter.prevent="findNext" />
-        <input id="notepad-replace-input" v-model="replaceQuery" type="text" placeholder="Replace with..." @keydown.enter.prevent="replaceOne" />
-        <button @click="findNext"><i class="bi bi-arrow-down-circle"></i>Find Next</button>
-        <button @click="replaceOne"><i class="bi bi-pencil-square"></i>Replace</button>
-        <button @click="replaceAll"><i class="bi bi-ui-checks-grid"></i>Replace All</button>
-        <button class="close-find" @click="showFindBar = false"><i class="bi bi-x-circle"></i>Close</button>
+        <input id="notepad-find-input" v-model="findQuery" type="text" placeholder="Buscar..." @keydown.enter.prevent="findNext" />
+        <input id="notepad-replace-input" v-model="replaceQuery" type="text" placeholder="Reemplazar por..." @keydown.enter.prevent="replaceOne" />
+        <button @click="findNext"><i class="bi bi-arrow-down-circle"></i>Buscar sig.</button>
+        <button @click="replaceOne"><i class="bi bi-pencil-square"></i>Reemplazar</button>
+        <button @click="replaceAll"><i class="bi bi-ui-checks-grid"></i>Reemplazar todo</button>
+        <button class="close-find" @click="showFindBar = false"><i class="bi bi-x-circle"></i>Cerrar</button>
       </div>
     </header>
 
@@ -493,7 +603,7 @@ onBeforeUnmount(() => {
         class="editor"
         :style="{ fontSize: `${fontSize}px`, whiteSpace: wordWrap ? 'pre-wrap' : 'pre' }"
         spellcheck="false"
-        placeholder="Start typing..."
+        placeholder="Empieza a escribir aquí..."
         @click="updateCaret"
         @keyup="updateCaret"
         @mouseup="updateCaret"
@@ -504,13 +614,19 @@ onBeforeUnmount(() => {
 
     <footer class="statusbar">
       <div class="left">
-        <span>{{ isDirty ? "*" : "" }}{{ fileName }}</span>
-        <span>{{ words }} words</span>
-        <span>{{ chars }} chars</span>
+        <span class="file-name-indicator">
+          <i class="bi bi-file-earmark-text text-primary me-1"></i>
+          {{ isDirty ? "*" : "" }}{{ fileName }}
+        </span>
+        <span v-if="currentFile" class="frost-badge">
+          <i class="bi bi-hdd-fill me-1"></i>Frost OS: /{{ currentFile.parentId || 'archivos' }}
+        </span>
+        <span>{{ words }} palabras</span>
+        <span>{{ chars }} caracteres</span>
       </div>
       <div class="right">
         <span>Ln {{ line }}, Col {{ column }}</span>
-        <span>{{ wordWrap ? "Wrap" : "No Wrap" }}</span>
+        <span>{{ wordWrap ? "Ajuste activado" : "Sin ajuste" }}</span>
         <span class="status">{{ statusMessage }}</span>
       </div>
     </footer>
@@ -675,6 +791,23 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.file-name-indicator {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.frost-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(13, 110, 253, 0.2);
+  color: #79b8ff;
+  border: 1px solid rgba(13, 110, 253, 0.4);
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 11px;
 }
 
 .hidden-file-input {

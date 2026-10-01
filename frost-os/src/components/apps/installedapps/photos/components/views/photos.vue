@@ -1,40 +1,114 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { usePhotosStore, type PhotoItem } from '../../photos_store';
 import { useFileSystemStore } from '../../../explorer/file_system_store';
+import type { WindowInstance } from '../../../../../data/app';
+
+const props = defineProps<{
+  win?: WindowInstance;
+}>();
 
 const photosStore = usePhotosStore();
 const fs = useFileSystemStore();
 
-// Referencias
+// Estado LOCAL de esta ventana independiente
+const currentView = ref<'viewer' | 'gallery'>('gallery');
+const activePhotoId = ref<string | null>(null);
+const searchQuery = ref<string>('');
+const zoom = ref<number>(1);
+const rotation = ref<number>(0);
+const isFlipped = ref<boolean>(false);
+const showInfoDrawer = ref<boolean>(false);
+const isSlideshowActive = ref<boolean>(false);
+let slideshowTimer: number | null = null;
+
+// Referencias del DOM
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const currentImgRef = ref<HTMLImageElement | null>(null);
 const imageNaturalWidth = ref<number>(0);
 const imageNaturalHeight = ref<number>(0);
 
-onMounted(async () => {
+// Foto activa computada en esta ventana
+const activePhoto = computed<PhotoItem | null>(() => {
+  if (!activePhotoId.value) return photosStore.photos[0] || null;
+  return photosStore.photos.find((p) => p.id === activePhotoId.value) || photosStore.photos[0] || null;
+});
+
+const activePhotoIndex = computed(() => {
+  if (!activePhoto.value) return -1;
+  return photosStore.photos.findIndex((p) => p.id === activePhoto.value!.id);
+});
+
+// Fotos filtradas para la galería en esta ventana
+const filteredPhotos = computed(() => {
+  if (!searchQuery.value.trim()) return photosStore.photos;
+  const q = searchQuery.value.toLowerCase().trim();
+  return photosStore.photos.filter((p) => p.name.toLowerCase().includes(q));
+});
+
+async function initWindowPhoto() {
   await photosStore.loadAllPhotos();
+
+  const fileItem = props.win?.params?.fileItem;
+  const initialPhotoId = props.win?.params?.initialPhotoId || props.win?.params?.photoId;
+
+  if (fileItem) {
+    const item = await photosStore.resolvePhotoFromFile(fileItem);
+    if (item) {
+      activePhotoId.value = item.id;
+      resetTransform();
+      currentView.value = 'viewer';
+      return;
+    }
+  }
+
+  if (initialPhotoId) {
+    const found = photosStore.photos.find((p) => p.id === initialPhotoId);
+    if (found) {
+      activePhotoId.value = found.id;
+      resetTransform();
+      currentView.value = 'viewer';
+      return;
+    }
+  }
+
+  if (props.win?.params?.view === 'viewer' && photosStore.photos.length > 0) {
+    activePhotoId.value = photosStore.photos[0].id;
+    currentView.value = 'viewer';
+  }
+}
+
+watch(
+  () => [props.win?.params?.fileItem, props.win?.params?.initialPhotoId, props.win?.params?.photoId],
+  () => {
+    initWindowPhoto();
+  }
+);
+
+onMounted(async () => {
+  await initWindowPhoto();
   window.addEventListener('keydown', handleKeydown);
 });
 
 onUnmounted(() => {
-  photosStore.stopSlideshow();
+  stopSlideshow();
   window.removeEventListener('keydown', handleKeydown);
-  photosStore.revokeTrackedBlobUrls();
 });
 
 function handleKeydown(e: KeyboardEvent) {
-  if (photosStore.currentView === 'viewer') {
+  if (props.win && !props.win.isFocused) return;
+
+  if (currentView.value === 'viewer') {
     if (e.key === 'ArrowRight') {
-      photosStore.nextPhoto();
+      nextPhoto();
     } else if (e.key === 'ArrowLeft') {
-      photosStore.prevPhoto();
+      prevPhoto();
     } else if (e.key === '+' || e.key === '=') {
-      photosStore.zoomIn();
+      zoomIn();
     } else if (e.key === '-' || e.key === '_') {
-      photosStore.zoomOut();
+      zoomOut();
     } else if (e.key === 'Escape') {
-      photosStore.currentView = 'gallery';
+      currentView.value = 'gallery';
     }
   }
 }
@@ -55,9 +129,7 @@ function triggerImport() {
 async function onFilesSelected(e: Event) {
   const target = e.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
-    // Las subimos a la carpeta 'pictures' mediante el file system store
-    fs.currentFolderId = 'pictures';
-    await fs.uploadFiles(target.files);
+    await fs.uploadFiles(target.files, 'pictures');
     await photosStore.loadAllPhotos();
     target.value = '';
   }
@@ -77,19 +149,101 @@ function formatDate(timestamp?: number): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Navegación y controles locales
+function openPhoto(photo: PhotoItem) {
+  activePhotoId.value = photo.id;
+  resetTransform();
+  currentView.value = 'viewer';
+}
+
+function nextPhoto() {
+  if (photosStore.photos.length === 0) return;
+  const currentIndex = activePhotoIndex.value;
+  const nextIndex = (currentIndex + 1) % photosStore.photos.length;
+  activePhotoId.value = photosStore.photos[nextIndex].id;
+  resetTransform();
+}
+
+function prevPhoto() {
+  if (photosStore.photos.length === 0) return;
+  const currentIndex = activePhotoIndex.value;
+  const prevIndex = (currentIndex - 1 + photosStore.photos.length) % photosStore.photos.length;
+  activePhotoId.value = photosStore.photos[prevIndex].id;
+  resetTransform();
+}
+
+function zoomIn() {
+  zoom.value = Math.min(4, +(zoom.value + 0.25).toFixed(2));
+}
+
+function zoomOut() {
+  zoom.value = Math.max(0.25, +(zoom.value - 0.25).toFixed(2));
+}
+
+function rotate() {
+  rotation.value = (rotation.value + 90) % 360;
+}
+
+function flip() {
+  isFlipped.value = !isFlipped.value;
+}
+
+function resetTransform() {
+  zoom.value = 1;
+  rotation.value = 0;
+  isFlipped.value = false;
+}
+
+function toggleSlideshow() {
+  if (isSlideshowActive.value) {
+    stopSlideshow();
+  } else {
+    startSlideshow();
+  }
+}
+
+function startSlideshow() {
+  if (photosStore.photos.length <= 1) return;
+  isSlideshowActive.value = true;
+  currentView.value = 'viewer';
+  slideshowTimer = window.setInterval(() => {
+    nextPhoto();
+  }, 3000);
+}
+
+function stopSlideshow() {
+  isSlideshowActive.value = false;
+  if (slideshowTimer) {
+    clearInterval(slideshowTimer);
+    slideshowTimer = null;
+  }
+}
+
 // Notificación temporal al establecer fondo
 const showWallpaperToast = ref(false);
 async function applyWallpaper(photo?: PhotoItem) {
-  await photosStore.setAsWallpaper(photo);
+  const target = photo || activePhoto.value;
+  if (!target) return;
+  await photosStore.setAsWallpaper(target);
   showWallpaperToast.value = true;
   setTimeout(() => {
     showWallpaperToast.value = false;
   }, 2500);
 }
 
-function handleDeleteCurrent() {
-  if (confirm(`¿Deseas eliminar "${photosStore.activePhoto?.name}"?`)) {
-    photosStore.deleteActivePhoto();
+async function handleDeleteCurrent() {
+  const target = activePhoto.value;
+  if (!target) return;
+  if (confirm(`¿Deseas eliminar "${target.name}"?`)) {
+    const idx = activePhotoIndex.value;
+    await photosStore.deletePhoto(target);
+    if (photosStore.photos.length > 0) {
+      const nextIdx = Math.min(idx, photosStore.photos.length - 1);
+      activePhotoId.value = photosStore.photos[nextIdx]?.id || null;
+    } else {
+      activePhotoId.value = null;
+      currentView.value = 'gallery';
+    }
   }
 }
 </script>
@@ -115,7 +269,7 @@ function handleDeleteCurrent() {
     </Transition>
 
     <!-- 1. VISTA VISOR INDIVIDUAL (VIEWER MODE) -->
-    <div v-if="photosStore.currentView === 'viewer'" class="viewer-layout">
+    <div v-if="currentView === 'viewer'" class="viewer-layout">
       <!-- Barra Superior Estilo Windows Photos -->
       <header class="viewer-toolbar">
         <div class="toolbar-left">
@@ -123,18 +277,18 @@ function handleDeleteCurrent() {
             type="button"
             class="action-btn return-gallery-btn"
             title="Volver a todas las fotos"
-            @click="photosStore.currentView = 'gallery'"
+            @click="currentView = 'gallery'"
           >
             <i class="bi bi-arrow-left"></i>
             <span>Todas las fotos</span>
           </button>
 
           <div class="photo-info-header">
-            <span class="photo-title" :title="photosStore.activePhoto?.name">
-              {{ photosStore.activePhoto?.name }}
+            <span class="photo-title" :title="activePhoto?.name">
+              {{ activePhoto?.name }}
             </span>
             <span v-if="photosStore.photos.length > 0" class="photo-counter">
-              {{ photosStore.activePhotoIndex + 1 }} de {{ photosStore.photos.length }}
+              {{ activePhotoIndex + 1 }} de {{ photosStore.photos.length }}
             </span>
           </div>
         </div>
@@ -145,20 +299,20 @@ function handleDeleteCurrent() {
             type="button"
             class="action-btn icon"
             title="Reducir zoom (-)"
-            @click="photosStore.zoomOut"
+            @click="zoomOut"
           >
             <i class="bi bi-zoom-out"></i>
           </button>
 
-          <span class="zoom-pill" title="Nivel de zoom" @click="photosStore.resetTransform">
-            {{ Math.round(photosStore.zoom * 100) }}%
+          <span class="zoom-pill" title="Nivel de zoom" @click="resetTransform">
+            {{ Math.round(zoom * 100) }}%
           </span>
 
           <button
             type="button"
             class="action-btn icon"
             title="Aumentar zoom (+)"
-            @click="photosStore.zoomIn"
+            @click="zoomIn"
           >
             <i class="bi bi-zoom-in"></i>
           </button>
@@ -169,7 +323,7 @@ function handleDeleteCurrent() {
             type="button"
             class="action-btn icon"
             title="Rotar 90°"
-            @click="photosStore.rotate"
+            @click="rotate"
           >
             <i class="bi bi-arrow-clockwise"></i>
           </button>
@@ -178,7 +332,7 @@ function handleDeleteCurrent() {
             type="button"
             class="action-btn icon"
             title="Voltear horizontalmente"
-            @click="photosStore.flip"
+            @click="flip"
           >
             <i class="bi bi-symmetry-vertical"></i>
           </button>
@@ -186,11 +340,11 @@ function handleDeleteCurrent() {
           <button
             type="button"
             class="action-btn icon"
-            :class="{ active: photosStore.isSlideshowActive }"
-            :title="photosStore.isSlideshowActive ? 'Detener presentación' : 'Iniciar presentación'"
-            @click="photosStore.toggleSlideshow"
+            :class="{ active: isSlideshowActive }"
+            :title="isSlideshowActive ? 'Detener presentación' : 'Iniciar presentación'"
+            @click="toggleSlideshow"
           >
-            <i class="bi" :class="photosStore.isSlideshowActive ? 'bi-pause-fill' : 'bi-play-fill'"></i>
+            <i class="bi" :class="isSlideshowActive ? 'bi-pause-fill' : 'bi-play-fill'"></i>
           </button>
         </div>
 
@@ -210,7 +364,7 @@ function handleDeleteCurrent() {
             type="button"
             class="action-btn icon"
             title="Descargar imagen a tu equipo"
-            @click="photosStore.downloadPhoto()"
+            @click="photosStore.downloadPhoto(activePhoto || undefined)"
           >
             <i class="bi bi-download"></i>
           </button>
@@ -227,9 +381,9 @@ function handleDeleteCurrent() {
           <button
             type="button"
             class="action-btn icon"
-            :class="{ active: photosStore.showInfoDrawer }"
+            :class="{ active: showInfoDrawer }"
             title="Información de la foto"
-            @click="photosStore.showInfoDrawer = !photosStore.showInfoDrawer"
+            @click="showInfoDrawer = !showInfoDrawer"
           >
             <i class="bi bi-info-circle"></i>
           </button>
@@ -243,23 +397,23 @@ function handleDeleteCurrent() {
           type="button"
           class="nav-stage-arrow prev-arrow"
           title="Foto anterior (←)"
-          @click="photosStore.prevPhoto"
+          @click="prevPhoto"
         >
           <i class="bi bi-chevron-left"></i>
         </button>
 
         <!-- Contenedor de la Imagen Activa -->
-        <div class="image-stage-wrap" @dblclick="photosStore.resetTransform">
+        <div class="image-stage-wrap" @dblclick="resetTransform">
           <img
-            v-if="photosStore.activePhoto"
+            v-if="activePhoto"
             ref="currentImgRef"
-            :src="photosStore.activePhoto.url"
-            :alt="photosStore.activePhoto.name"
+            :src="activePhoto.url"
+            :alt="activePhoto.name"
             class="stage-image"
             decoding="async"
             :style="{
-              transform: `scale(${photosStore.zoom}) rotate(${photosStore.rotation}deg) scaleX(${
-                photosStore.isFlipped ? -1 : 1
+              transform: `scale(${zoom}) rotate(${rotation}deg) scaleX(${
+                isFlipped ? -1 : 1
               })`
             }"
             @load="onImageLoaded"
@@ -275,20 +429,20 @@ function handleDeleteCurrent() {
           type="button"
           class="nav-stage-arrow next-arrow"
           title="Foto siguiente (→)"
-          @click="photosStore.nextPhoto"
+          @click="nextPhoto"
         >
           <i class="bi bi-chevron-right"></i>
         </button>
 
         <!-- Panel Lateral de Información (Drawer) -->
         <Transition name="drawer-slide">
-          <aside v-if="photosStore.showInfoDrawer && photosStore.activePhoto" class="info-drawer">
+          <aside v-if="showInfoDrawer && activePhoto" class="info-drawer">
             <div class="drawer-header">
               <div class="drawer-title">
                 <i class="bi bi-info-circle text-primary"></i>
                 <span>Información</span>
               </div>
-              <button class="action-btn icon close-drawer" @click="photosStore.showInfoDrawer = false">
+              <button class="action-btn icon close-drawer" @click="showInfoDrawer = false">
                 <i class="bi bi-x-lg"></i>
               </button>
             </div>
@@ -296,7 +450,7 @@ function handleDeleteCurrent() {
             <div class="drawer-content">
               <div class="info-section">
                 <label>Nombre del archivo</label>
-                <p>{{ photosStore.activePhoto.name }}</p>
+                <p>{{ activePhoto.name }}</p>
               </div>
 
               <div class="info-section" v-if="imageNaturalWidth && imageNaturalHeight">
@@ -306,17 +460,17 @@ function handleDeleteCurrent() {
 
               <div class="info-section">
                 <label>Tamaño</label>
-                <p>{{ formatBytes(photosStore.activePhoto.size) }}</p>
+                <p>{{ formatBytes(activePhoto.size) }}</p>
               </div>
 
               <div class="info-section">
                 <label>Fecha</label>
-                <p>{{ formatDate(photosStore.activePhoto.date) }}</p>
+                <p>{{ formatDate(activePhoto.date) }}</p>
               </div>
 
               <div class="info-section">
                 <label>Ubicación</label>
-                <p>{{ photosStore.activePhoto.folderName || 'Fotos de Frost-OS' }}</p>
+                <p>{{ activePhoto.folderName || 'Fotos de Frost-OS' }}</p>
               </div>
 
               <div class="info-actions">
@@ -324,7 +478,7 @@ function handleDeleteCurrent() {
                   <i class="bi bi-display"></i>
                   <span>Establecer como fondo</span>
                 </button>
-                <button class="drawer-btn" @click="photosStore.downloadPhoto()">
+                <button class="drawer-btn" @click="photosStore.downloadPhoto(activePhoto || undefined)">
                   <i class="bi bi-download"></i>
                   <span>Descargar a mi PC</span>
                 </button>
@@ -341,9 +495,9 @@ function handleDeleteCurrent() {
             v-for="photo in photosStore.photos"
             :key="photo.id"
             class="filmstrip-thumb"
-            :class="{ active: photosStore.activePhotoId === photo.id }"
+            :class="{ active: activePhotoId === photo.id }"
             :title="photo.name"
-            @click="photosStore.openPhoto(photo)"
+            @click="openPhoto(photo)"
           >
             <img :src="photo.thumbUrl || photo.url" :alt="photo.name" loading="lazy" decoding="async" />
           </div>
@@ -361,7 +515,7 @@ function handleDeleteCurrent() {
             <h2>Fotos</h2>
           </div>
           <span class="gallery-count">
-            {{ photosStore.filteredPhotos.length }} foto(s) encontradas
+            {{ filteredPhotos.length }} foto(s) encontradas
           </span>
         </div>
 
@@ -370,16 +524,16 @@ function handleDeleteCurrent() {
           <div class="gallery-search">
             <i class="bi bi-search"></i>
             <input
-              v-model="photosStore.searchQuery"
+              v-model="searchQuery"
               type="text"
               placeholder="Buscar fotos..."
               class="search-input"
             />
             <button
-              v-if="photosStore.searchQuery"
+              v-if="searchQuery"
               class="clear-search-btn"
               type="button"
-              @click="photosStore.searchQuery = ''"
+              @click="searchQuery = ''"
             >
               <i class="bi bi-x"></i>
             </button>
@@ -395,7 +549,7 @@ function handleDeleteCurrent() {
 
       <!-- Cuadrícula de Fotos -->
       <main class="gallery-grid-viewport">
-        <div v-if="photosStore.filteredPhotos.length === 0" class="empty-gallery">
+        <div v-if="filteredPhotos.length === 0" class="empty-gallery">
           <i class="bi bi-images empty-icon"></i>
           <h3>No se encontraron fotos</h3>
           <p>Importa imágenes desde tu computadora real para verlas aquí.</p>
@@ -407,10 +561,10 @@ function handleDeleteCurrent() {
 
         <div v-else class="gallery-grid">
           <div
-            v-for="photo in photosStore.filteredPhotos"
+            v-for="photo in filteredPhotos"
             :key="photo.id"
             class="gallery-card"
-            @click="photosStore.openPhoto(photo)"
+            @click="openPhoto(photo)"
           >
             <div class="card-thumb-wrap">
               <img :src="photo.thumbUrl || photo.url" :alt="photo.name" loading="lazy" decoding="async" />

@@ -7,16 +7,18 @@ import { OS_KEY } from '../../api/os_api'
 import { useFileSystemStore } from '../../apps/installedapps/explorer/file_system_store'
 import { usePhotosStore } from '../../apps/installedapps/photos/photos_store'
 import { usePdfViewerStore } from '../../apps/installedapps/pdf_viewer/pdf_viewer_store'
+import { useNotepadStore } from '../../apps/installedapps/notepad/notepad_store'
 import { isImageFile } from '../../apps/installedapps/explorer/thumbnail_utils'
 import type { FileItem } from '../../../database/db'
 import { db } from '../../../database/db'
 
-const os = inject(OS_KEY)
+const os = inject<any>(OS_KEY)
 if (!os) throw new Error('OS API not found')
 
 const fs = useFileSystemStore()
 const photosStore = usePhotosStore()
 const pdfViewerStore = usePdfViewerStore()
+const notepadStore = useNotepadStore()
 const { openMenu } = useContextMenu()
 
 const desktopItems = computed<FileItem[]>(() => {
@@ -141,26 +143,30 @@ const onDblClick = (item: FileItem) => {
 
   if (item.type === 'folder') {
     fs.navigateTo(item.id)
-    os.launchApp('explorer')
+    os.launchApp('explorer', { initialFolderId: item.id })
     return
   }
 
   if (isImageFile(item)) {
-    photosStore.openPhotoFromFile(item)
-    os.launchApp('photos')
+    os.launchApp('photos', { fileItem: item })
     return
   }
 
   const isPdf = item.extension?.toLowerCase() === 'pdf' || /\.pdf$/i.test(item.name) || item.mimeType === 'application/pdf'
   if (isPdf) {
-    pdfViewerStore.openPdfFromFile(item)
-    os.launchApp('pdf_viewer')
+    os.launchApp('pdf_viewer', { fileItem: item })
     return
   }
 
-  // Texto u otro archivo
+  const isTxt = item.extension?.toLowerCase() === 'txt' || item.extension?.toLowerCase() === 'log' || /\.(txt|log)$/i.test(item.name) || item.mimeType === 'text/plain'
+  if (isTxt) {
+    os.launchApp('notepad', { fileItem: item })
+    return
+  }
+
+  // Otro archivo
   fs.openItem(item)
-  os.launchApp('explorer')
+  os.launchApp('explorer', { initialFolderId: item.parentId || 'documents' })
 }
 
 const contextMenuItem = (e: MouseEvent, item: FileItem) => {
@@ -169,6 +175,7 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
   const isFolder = item.type === 'folder'
   const isImg = isImageFile(item)
   const isPdf = item.extension?.toLowerCase() === 'pdf' || /\.pdf$/i.test(item.name) || item.mimeType === 'application/pdf'
+  const isTxt = item.extension?.toLowerCase() === 'txt' || item.extension?.toLowerCase() === 'log' || /\.(txt|log)$/i.test(item.name) || item.mimeType === 'text/plain'
 
   const menuItems: any[] = []
 
@@ -203,7 +210,7 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
       icon: 'bi-folder2-open',
       action: () => {
         fs.navigateTo(item.id)
-        os.launchApp('explorer')
+        os.launchApp('explorer', { initialFolderId: item.id })
       },
     })
     menuItems.push({ separator: true })
@@ -219,8 +226,7 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
         label: 'Abrir con Fotos',
         icon: 'bi-images text-danger',
         action: () => {
-          photosStore.openPhotoFromFile(item)
-          os.launchApp('photos')
+          os.launchApp('photos', { fileItem: item })
         },
       })
     } else if (isPdf) {
@@ -228,8 +234,15 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
         label: 'Abrir con PDF Viewer',
         icon: 'bi-file-earmark-pdf-fill text-danger',
         action: () => {
-          pdfViewerStore.openPdfFromFile(item)
-          os.launchApp('pdf_viewer')
+          os.launchApp('pdf_viewer', { fileItem: item })
+        },
+      })
+    } else if (isTxt) {
+      menuItems.push({
+        label: 'Abrir con Notepad',
+        icon: 'bi-file-earmark-text text-primary',
+        action: () => {
+          os.launchApp('notepad', { fileItem: item })
         },
       })
     } else {
@@ -238,7 +251,7 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
         icon: 'bi-box-arrow-up-right',
         action: () => {
           fs.openItem(item)
-          os.launchApp('explorer')
+          os.launchApp('explorer', { initialFolderId: item.parentId || 'documents' })
         },
       })
     }
@@ -257,17 +270,143 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
 
   openMenu(e, menuItems)
 }
+
+// Drag & Drop entre Escritorio y Ventanas
+const isDesktopDragOver = ref(false)
+const dragTargetFolderId = ref<string | null>(null)
+
+function onDesktopDragOver(e: DragEvent) {
+  e.preventDefault()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move'
+  }
+  isDesktopDragOver.value = true
+}
+
+function onDesktopDragLeave(e: DragEvent) {
+  const related = e.relatedTarget as HTMLElement | null
+  if (!containerEl.value || !containerEl.value.contains(related)) {
+    isDesktopDragOver.value = false
+  }
+}
+
+async function onDesktopDrop(e: DragEvent) {
+  e.preventDefault()
+  isDesktopDragOver.value = false
+  dragTargetFolderId.value = null
+
+  // 1. Archivos internos de Frost OS
+  let internalIds: string[] = []
+  const raw = e.dataTransfer?.getData('application/frost-file-ids')
+  if (raw) {
+    try {
+      internalIds = JSON.parse(raw)
+    } catch {}
+  }
+  if (!internalIds || internalIds.length === 0) {
+    internalIds = fs.draggedItemIds
+  }
+
+  if (internalIds && internalIds.length > 0) {
+    await fs.moveItems(internalIds, 'desktop')
+    icons.placeIconsAt(internalIds, e.clientX, e.clientY)
+    fs.endDragItems()
+    rebuildIconRects()
+    return
+  }
+
+  // 2. Archivos externos del navegador
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    await fs.uploadFiles(e.dataTransfer.files, 'desktop')
+    rebuildIconRects()
+  }
+}
+
+function onDesktopIconDragStart(e: DragEvent, item: FileItem) {
+  if (!icons.selected.has(item.id)) {
+    icons.selectOne(item.id)
+  }
+
+  const idsToDrag = icons.selected.has(item.id)
+    ? Array.from(icons.selected)
+    : [item.id]
+
+  fs.startDragItems(idsToDrag)
+
+  if (e.dataTransfer) {
+    e.dataTransfer.setData('application/frost-file-ids', JSON.stringify(idsToDrag))
+    e.dataTransfer.setData('text/plain', item.name)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function onDesktopIconDragEnd() {
+  fs.endDragItems()
+  dragTargetFolderId.value = null
+  isDesktopDragOver.value = false
+}
+
+function onDesktopFolderDragOver(e: DragEvent, folder: FileItem) {
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move'
+  }
+  if (fs.draggedItemIds.includes(folder.id)) return
+  dragTargetFolderId.value = folder.id
+}
+
+function onDesktopFolderDragLeave(e: DragEvent, folder: FileItem) {
+  if (dragTargetFolderId.value === folder.id) {
+    dragTargetFolderId.value = null
+  }
+}
+
+async function onDesktopFolderDrop(e: DragEvent, folder: FileItem) {
+  e.preventDefault()
+  e.stopPropagation()
+  dragTargetFolderId.value = null
+  isDesktopDragOver.value = false
+
+  let internalIds: string[] = []
+  const raw = e.dataTransfer?.getData('application/frost-file-ids')
+  if (raw) {
+    try {
+      internalIds = JSON.parse(raw)
+    } catch {}
+  }
+  if (!internalIds || internalIds.length === 0) {
+    internalIds = fs.draggedItemIds
+  }
+
+  if (internalIds && internalIds.length > 0) {
+    await fs.moveItems(internalIds, folder.id)
+    for (const id of internalIds) {
+      icons.removeIconLayout(id)
+    }
+    fs.endDragItems()
+    rebuildIconRects()
+    return
+  }
+
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    await fs.uploadFiles(e.dataTransfer.files, folder.id)
+  }
+}
 </script>
 
 <template>
   <div
     ref="containerEl"
     class="desktop-icons-layer"
-    :class="{ 'is-dragging-layer': icons.isDragging.value }"
+    :class="{ 'is-dragging-layer': icons.isDragging.value, 'desktop-drop-hover': isDesktopDragOver }"
     @pointerdown="icons.onDesktopPointerDown"
     @pointermove="handleDesktopMove"
     @pointerup="handleDesktopUp"
     @pointercancel="handleDesktopUp"
+    @dragover.prevent="onDesktopDragOver"
+    @dragleave="onDesktopDragLeave"
+    @drop.prevent="onDesktopDrop"
   >
     <!-- Marco de selección rectangular (Marquee) -->
     <div
@@ -286,8 +425,17 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
       v-for="item in desktopItems"
       :key="item.id"
       class="icon-wrap"
-      :class="{ 'is-dragged': icons.isIconDragged(item.id) }"
+      :class="{
+        'is-dragged': icons.isIconDragged(item.id) || (fs.isDraggingItems && fs.draggedItemIds.includes(item.id)),
+        'folder-drop-target': dragTargetFolderId === item.id
+      }"
       :style="styleFor(item.id)"
+      draggable="true"
+      @dragstart="onDesktopIconDragStart($event, item)"
+      @dragend="onDesktopIconDragEnd"
+      @dragover.stop.prevent="item.type === 'folder' ? onDesktopFolderDragOver($event, item) : undefined"
+      @dragleave.stop.prevent="item.type === 'folder' ? onDesktopFolderDragLeave($event, item) : undefined"
+      @drop.stop.prevent="item.type === 'folder' ? onDesktopFolderDrop($event, item) : undefined"
       @pointerdown="(e) => icons.onIconPointerDown(e, item.id)"
       @pointermove="icons.onIconPointerMove"
       @pointerup="(e) => { icons.onIconPointerUp(e); rebuildIconRects() }"
@@ -330,6 +478,18 @@ const contextMenuItem = (e: MouseEvent, item: FileItem) => {
 
 .icon-wrap.is-dragged {
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+
+.desktop-icons-layer.desktop-drop-hover {
+  background: rgba(56, 189, 248, 0.04);
+}
+
+.folder-drop-target {
+  outline: 2px dashed #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.22) !important;
+  border-radius: 8px !important;
+  transform: scale(1.05);
+  transition: all 0.15s ease;
 }
 
 .marquee {

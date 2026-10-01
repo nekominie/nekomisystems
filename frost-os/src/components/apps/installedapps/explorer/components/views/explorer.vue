@@ -1,18 +1,53 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, inject } from 'vue';
-import { useFileSystemStore } from '../../file_system_store';
+import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue';
+import {
+  useFileSystemStore,
+  type ViewMode,
+  type SortField,
+  type SortOrder,
+  type BreadcrumbItem,
+} from '../../file_system_store';
 import { useContextMenu } from '../../../../../os/context_menu/context_menu';
 import { usePhotosStore } from '../../../photos/photos_store';
 import { usePdfViewerStore } from '../../../pdf_viewer/pdf_viewer_store';
+import { useNotepadStore } from '../../../notepad/notepad_store';
 import { OS_KEY } from '../../../../../api/os_api';
 import IconManager from '../../../../../os/iconmanager.vue';
-import type { FileItem } from '../../../../../../database/db';
+import { db, type FileItem } from '../../../../../../database/db';
+import type { WindowInstance } from '../../../../../data/app';
+import { resolveSystemImageUrl } from '../../thumbnail_utils';
+
+const props = defineProps<{
+  win?: WindowInstance;
+}>();
 
 const fs = useFileSystemStore();
-const os = inject(OS_KEY);
+const os = inject<any>(OS_KEY);
 const photosStore = usePhotosStore();
 const pdfViewerStore = usePdfViewerStore();
+const notepadStore = useNotepadStore();
 const { openMenu } = useContextMenu();
+
+// Estado LOCAL de navegación y visualización de esta ventana independiente
+const initialFolder = props.win?.params?.initialFolderId || props.win?.params?.folderId || 'documents';
+const currentFolderId = ref<string>(initialFolder);
+const history = ref<string[]>([initialFolder]);
+const historyIndex = ref<number>(0);
+const searchQuery = ref<string>('');
+const viewMode = ref<ViewMode>('grid');
+const sortBy = ref<SortField>('name');
+const sortOrder = ref<SortOrder>('asc');
+const selectedIds = ref<string[]>([]);
+
+// Modales y vistas previas locales de esta ventana
+const previewItem = ref<FileItem | null>(null);
+const previewTextContent = ref<string>('');
+const previewBlobUrl = ref<string | null>(null);
+const showTextEditor = ref<boolean>(false);
+const showImagePreview = ref<boolean>(false);
+const showPropertiesModal = ref<boolean>(false);
+const isEditingText = ref<boolean>(false);
+const textEditorDraft = ref<string>('');
 
 // Referencias del DOM
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -21,6 +56,7 @@ const mainViewportRef = ref<HTMLElement | null>(null);
 // Estado de Drag & Drop
 const isDraggingOver = ref(false);
 let dragCounter = 0;
+const dragTargetFolderId = ref<string | null>(null);
 
 // Estado de renombrado
 const renamingItemId = ref<string | null>(null);
@@ -40,6 +76,9 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('click', closeAllPopups);
   window.removeEventListener('keydown', handleGlobalKeydown);
+  if (previewBlobUrl.value && previewBlobUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(previewBlobUrl.value);
+  }
 });
 
 function closeAllPopups() {
@@ -48,42 +87,212 @@ function closeAllPopups() {
   showViewMenu.value = false;
 }
 
-function handleGlobalKeydown(e: KeyboardEvent) {
-  // Tecla Supr / Delete -> Eliminar seleccionados
-  if (e.key === 'Delete' && fs.selectedIds.length > 0 && !renamingItemId.value && !fs.showTextEditor) {
-    if (confirm(`¿Deseas eliminar los ${fs.selectedIds.length} elemento(s) seleccionado(s)?`)) {
-      fs.deleteItems(fs.selectedIds);
+// Carpeta actual de esta ventana
+const currentFolder = computed(() => {
+  if (currentFolderId.value === 'root') {
+    return { id: 'root', name: 'Este equipo', parentId: '', type: 'folder', size: 0, createdAt: 0, updatedAt: 0 };
+  }
+  return fs.allItems.find((i) => i.id === currentFolderId.value) || null;
+});
+
+// Migas de pan de esta ventana
+const breadcrumbs = computed<BreadcrumbItem[]>(() => {
+  const crumbs: BreadcrumbItem[] = [];
+  if (currentFolderId.value === 'root') {
+    return [{ id: 'root', name: 'Este equipo', icon: 'bi-pc-display' }];
+  }
+
+  let curr: string | undefined = currentFolderId.value;
+  while (curr && curr !== 'root') {
+    const found = fs.allItems.find((i) => i.id === curr);
+    if (found) {
+      crumbs.unshift({ id: found.id, name: found.name });
+      curr = found.parentId;
+    } else {
+      break;
     }
   }
 
+  crumbs.unshift({ id: 'root', name: 'Este equipo', icon: 'bi-pc-display' });
+  return crumbs;
+});
+
+// Elementos mostrados en la carpeta de esta ventana con filtro y orden
+const currentItems = computed(() => {
+  let list = fs.allItems.filter((item) => item.parentId === currentFolderId.value);
+
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase().trim();
+    list = fs.allItems.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) &&
+        (fs.isDescendantOf(item.parentId, currentFolderId.value) || item.parentId === currentFolderId.value)
+    );
+  }
+
+  // Ordenar: primero carpetas, luego archivos
+  list.sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === 'folder' ? -1 : 1;
+    }
+
+    let valA: any = a[sortBy.value];
+    let valB: any = b[sortBy.value];
+
+    if (sortBy.value === 'name') {
+      valA = a.name.toLowerCase();
+      valB = b.name.toLowerCase();
+    }
+
+    if (valA < valB) return sortOrder.value === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder.value === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  return list;
+});
+
+// Cargar thumbnails para los archivos mostrados en esta ventana
+watch(
+  () => currentItems.value,
+  (items) => {
+    fs.loadThumbnailsForItems(items);
+  },
+  { immediate: true, deep: true }
+);
+
+// Escuchar cambios externos de initialFolderId si cambia params
+watch(
+  () => props.win?.params?.initialFolderId,
+  (newFolder) => {
+    if (newFolder && newFolder !== currentFolderId.value) {
+      navigateTo(newFolder);
+    }
+  }
+);
+
+// Navegación local de esta ventana
+function navigateTo(folderId: string) {
+  if (currentFolderId.value === folderId) return;
+
+  if (historyIndex.value < history.value.length - 1) {
+    history.value = history.value.slice(0, historyIndex.value + 1);
+  }
+
+  history.value.push(folderId);
+  historyIndex.value = history.value.length - 1;
+  currentFolderId.value = folderId;
+  selectedIds.value = [];
+  searchQuery.value = '';
+}
+
+function navigateBack() {
+  if (historyIndex.value > 0) {
+    historyIndex.value--;
+    currentFolderId.value = history.value[historyIndex.value];
+    selectedIds.value = [];
+    searchQuery.value = '';
+  }
+}
+
+function navigateForward() {
+  if (historyIndex.value < history.value.length - 1) {
+    historyIndex.value++;
+    currentFolderId.value = history.value[historyIndex.value];
+    selectedIds.value = [];
+    searchQuery.value = '';
+  }
+}
+
+function navigateUp() {
+  if (currentFolderId.value === 'root') return;
+  const current = currentFolder.value;
+  if (current && current.parentId) {
+    navigateTo(current.parentId);
+  } else {
+    navigateTo('root');
+  }
+}
+
+const canNavigateBack = computed(() => historyIndex.value > 0);
+const canNavigateForward = computed(() => historyIndex.value < history.value.length - 1);
+const canNavigateUp = computed(() => currentFolderId.value !== 'root');
+
+// Selección local de esta ventana
+function selectItem(id: string, multi = false) {
+  if (multi) {
+    const idx = selectedIds.value.indexOf(id);
+    if (idx >= 0) {
+      selectedIds.value.splice(idx, 1);
+    } else {
+      selectedIds.value.push(id);
+    }
+  } else {
+    selectedIds.value = [id];
+  }
+}
+
+function clearSelection() {
+  selectedIds.value = [];
+}
+
+function selectAll() {
+  selectedIds.value = currentItems.value.map((i) => i.id);
+}
+
+// Portapapeles (utiliza el clipboard compartido del store pero con la selección local)
+function copySelected() {
+  if (selectedIds.value.length === 0) return;
+  fs.copyItems(selectedIds.value);
+}
+
+function cutSelected() {
+  if (selectedIds.value.length === 0) return;
+  fs.cutItems(selectedIds.value);
+}
+
+async function handlePaste() {
+  const target = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+  await fs.paste(target);
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  // Ignorar atajos si esta ventana no tiene el foco activo
+  if (props.win && !props.win.isFocused) return;
+
+  // Tecla Supr / Delete -> Eliminar seleccionados
+  if (e.key === 'Delete' && selectedIds.value.length > 0 && !renamingItemId.value && !showTextEditor.value) {
+    handleDeleteSelected();
+  }
+
   // Ctrl + A -> Seleccionar todo
-  if (e.ctrlKey && e.key.toLowerCase() === 'a' && !fs.showTextEditor) {
+  if (e.ctrlKey && e.key.toLowerCase() === 'a' && !showTextEditor.value) {
     e.preventDefault();
-    fs.selectAll();
+    selectAll();
   }
 
   // Ctrl + C -> Copiar
-  if (e.ctrlKey && e.key.toLowerCase() === 'c' && !fs.showTextEditor) {
+  if (e.ctrlKey && e.key.toLowerCase() === 'c' && !showTextEditor.value) {
     e.preventDefault();
-    fs.copySelected();
+    copySelected();
   }
 
   // Ctrl + X -> Cortar
-  if (e.ctrlKey && e.key.toLowerCase() === 'x' && !fs.showTextEditor) {
+  if (e.ctrlKey && e.key.toLowerCase() === 'x' && !showTextEditor.value) {
     e.preventDefault();
-    fs.cutSelected();
+    cutSelected();
   }
 
   // Ctrl + V -> Pegar
-  if (e.ctrlKey && e.key.toLowerCase() === 'v' && !fs.showTextEditor) {
+  if (e.ctrlKey && e.key.toLowerCase() === 'v' && !showTextEditor.value) {
     e.preventDefault();
-    fs.paste();
+    handlePaste();
   }
 
   // F2 -> Renombrar seleccionado
-  if (e.key === 'F2' && fs.selectedIds.length === 1) {
+  if (e.key === 'F2' && selectedIds.value.length === 1) {
     e.preventDefault();
-    startRename(fs.selectedIds[0]);
+    startRename(selectedIds.value[0]);
   }
 
   // Escape -> Cancelar renombrado o selección
@@ -91,12 +300,12 @@ function handleGlobalKeydown(e: KeyboardEvent) {
     if (renamingItemId.value) {
       cancelRename();
     } else {
-      fs.clearSelection();
+      clearSelection();
     }
   }
 }
 
-// Cargar archivos (Browser File Picker)
+// Cargar archivos (Browser File Picker) en la carpeta de esta ventana
 function triggerUpload() {
   closeAllPopups();
   fileInputRef.value?.click();
@@ -105,22 +314,96 @@ function triggerUpload() {
 function onFileInputChange(e: Event) {
   const target = e.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
-    fs.uploadFiles(target.files);
-    target.value = ''; // Reset input
+    const targetFolder = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+    fs.uploadFiles(target.files, targetFolder);
+    target.value = '';
   }
 }
 
 // Drag & Drop handlers
+function onFileDragStart(e: DragEvent, item: FileItem) {
+  if (!selectedIds.value.includes(item.id)) {
+    selectItem(item.id, false);
+  }
+
+  const idsToDrag = selectedIds.value.length > 0 && selectedIds.value.includes(item.id)
+    ? [...selectedIds.value]
+    : [item.id];
+
+  fs.startDragItems(idsToDrag);
+
+  if (e.dataTransfer) {
+    e.dataTransfer.setData('application/frost-file-ids', JSON.stringify(idsToDrag));
+    e.dataTransfer.setData('text/plain', item.name);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function onFileDragEnd() {
+  fs.endDragItems();
+  dragTargetFolderId.value = null;
+  isDraggingOver.value = false;
+  dragCounter = 0;
+}
+
+function onFolderDragOver(e: DragEvent, folder: { id: string }) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move';
+  }
+  if (fs.draggedItemIds.includes(folder.id)) return;
+  dragTargetFolderId.value = folder.id;
+}
+
+function onFolderDragLeave(e: DragEvent, folder: { id: string }) {
+  if (dragTargetFolderId.value === folder.id) {
+    dragTargetFolderId.value = null;
+  }
+}
+
+async function onFolderDrop(e: DragEvent, folder: { id: string }) {
+  e.preventDefault();
+  e.stopPropagation();
+  dragTargetFolderId.value = null;
+  isDraggingOver.value = false;
+  dragCounter = 0;
+
+  // 1. Archivos internos de Frost OS
+  let internalIds: string[] = [];
+  const raw = e.dataTransfer?.getData('application/frost-file-ids');
+  if (raw) {
+    try {
+      internalIds = JSON.parse(raw);
+    } catch {}
+  }
+  if (!internalIds || internalIds.length === 0) {
+    internalIds = fs.draggedItemIds;
+  }
+
+  if (internalIds && internalIds.length > 0) {
+    await fs.moveItems(internalIds, folder.id);
+    fs.endDragItems();
+    return;
+  }
+
+  // 2. Archivos externos del navegador
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    await fs.uploadFiles(e.dataTransfer.files, folder.id);
+  }
+}
+
 function onDragEnter(e: DragEvent) {
   e.preventDefault();
   dragCounter++;
-  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
-    isDraggingOver.value = true;
-  }
+  isDraggingOver.value = true;
 }
 
 function onDragOver(e: DragEvent) {
   e.preventDefault();
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move';
+  }
 }
 
 function onDragLeave(e: DragEvent) {
@@ -132,12 +415,35 @@ function onDragLeave(e: DragEvent) {
   }
 }
 
-function onDrop(e: DragEvent) {
+async function onDrop(e: DragEvent) {
   e.preventDefault();
   isDraggingOver.value = false;
   dragCounter = 0;
+  dragTargetFolderId.value = null;
+
+  // 1. Archivos internos de Frost OS (desde otra ventana del explorador o del escritorio)
+  let internalIds: string[] = [];
+  const rawData = e.dataTransfer?.getData('application/frost-file-ids');
+  if (rawData) {
+    try {
+      internalIds = JSON.parse(rawData);
+    } catch {}
+  }
+  if (!internalIds || internalIds.length === 0) {
+    internalIds = fs.draggedItemIds;
+  }
+
+  const targetFolder = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+
+  if (internalIds && internalIds.length > 0) {
+    await fs.moveItems(internalIds, targetFolder);
+    fs.endDragItems();
+    return;
+  }
+
+  // 2. Archivos externos del navegador / PC del usuario
   if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-    fs.uploadFiles(e.dataTransfer.files);
+    await fs.uploadFiles(e.dataTransfer.files, targetFolder);
   }
 }
 
@@ -149,18 +455,18 @@ function onItemClick(e: MouseEvent, item: FileItem) {
   if (renamingItemId.value === item.id) return;
 
   if (e.ctrlKey || e.metaKey) {
-    fs.selectItem(item.id, true);
-  } else if (e.shiftKey && fs.selectedIds.length > 0) {
-    const items = fs.currentItems;
-    const lastSelectedId = fs.selectedIds[fs.selectedIds.length - 1];
+    selectItem(item.id, true);
+  } else if (e.shiftKey && selectedIds.value.length > 0) {
+    const items = currentItems.value;
+    const lastSelectedId = selectedIds.value[selectedIds.value.length - 1];
     const idx1 = items.findIndex((i) => i.id === lastSelectedId);
     const idx2 = items.findIndex((i) => i.id === item.id);
     if (idx1 !== -1 && idx2 !== -1) {
       const [start, end] = [Math.min(idx1, idx2), Math.max(idx1, idx2)];
-      fs.selectedIds = items.slice(start, end + 1).map((i) => i.id);
+      selectedIds.value = items.slice(start, end + 1).map((i) => i.id);
     }
   } else {
-    fs.selectItem(item.id, false);
+    selectItem(item.id, false);
   }
 }
 
@@ -181,6 +487,16 @@ function isPdfFile(item: FileItem): boolean {
   );
 }
 
+function isTxtFile(item: FileItem): boolean {
+  return (
+    item.type === 'file' &&
+    (item.extension?.toLowerCase() === 'txt' ||
+      item.extension?.toLowerCase() === 'log' ||
+      /\.(txt|log)$/i.test(item.name) ||
+      item.mimeType === 'text/plain')
+  );
+}
+
 function onItemDblClick(item: FileItem) {
   if (renamingItemId.value) return;
 
@@ -193,26 +509,139 @@ function onItemDblClick(item: FileItem) {
   }
 
   if (isImageFile(item)) {
-    photosStore.openPhotoFromFile(item);
-    if (os) os.launchApp('photos');
+    if (os) os.launchApp('photos', { fileItem: item });
     return;
   }
 
   if (isPdfFile(item)) {
-    pdfViewerStore.openPdfFromFile(item);
-    if (os) os.launchApp('pdf_viewer');
+    if (os) os.launchApp('pdf_viewer', { fileItem: item });
     return;
   }
 
-  fs.openItem(item);
+  if (isTxtFile(item)) {
+    if (os) os.launchApp('notepad', { fileItem: item });
+    return;
+  }
+
+  openItem(item);
 }
 
 function onBackgroundClick(e: MouseEvent) {
   const target = e.target as HTMLElement;
   if (!target.closest('.file-item') && !target.closest('.command-btn')) {
-    fs.clearSelection();
+    clearSelection();
     if (renamingItemId.value) cancelRename();
   }
+}
+
+// Abrir elemento (archivo o carpeta) en esta ventana
+async function openItem(item: FileItem) {
+  if (item.type === 'folder') {
+    navigateTo(item.id);
+    return;
+  }
+
+  previewItem.value = item;
+
+  // 1. Imagen
+  if (isImageFile(item)) {
+    if (previewBlobUrl.value && previewBlobUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(previewBlobUrl.value);
+    }
+    previewBlobUrl.value = null;
+
+    if (fs.thumbnailUrls[item.id]) {
+      previewBlobUrl.value = fs.thumbnailUrls[item.id];
+    } else if (item.assetId) {
+      const asset = await db.assets.get(item.assetId);
+      if (asset) {
+        previewBlobUrl.value = URL.createObjectURL(asset.data);
+      }
+    } else {
+      previewBlobUrl.value = resolveSystemImageUrl(item.id, item.name) || '/wallpapers/default-wallpaper.jpg';
+    }
+
+    showImagePreview.value = true;
+    return;
+  }
+
+  // 2. Documento PDF
+  if (isPdfFile(item)) {
+    try {
+      if (os) os.launchApp('pdf_viewer', { fileItem: item });
+    } catch (err) {
+      console.error('Error abriendo PDF en visor:', err);
+    }
+    return;
+  }
+
+  // 3. Documento TXT -> Notepad
+  if (isTxtFile(item)) {
+    try {
+      if (os) os.launchApp('notepad', { fileItem: item });
+    } catch (err) {
+      console.error('Error abriendo TXT en Notepad:', err);
+    }
+    return;
+  }
+
+  // 4. Otro Texto o Código -> Editor interno de la ventana
+  const isText =
+    item.mimeType?.startsWith('text/') ||
+    /\.(txt|md|json|js|ts|html|css|csv|xml|log|py|vue|yaml|yml|sql|sh)$/i.test(item.name);
+
+  if (isText || item.textContent !== undefined) {
+    let content = item.textContent || '';
+    if (!content && item.assetId) {
+      const asset = await db.assets.get(item.assetId);
+      if (asset && asset.data instanceof Blob) {
+        content = await asset.data.text();
+      }
+    }
+    previewTextContent.value = content;
+    textEditorDraft.value = content;
+    showTextEditor.value = true;
+    isEditingText.value = false;
+    return;
+  }
+
+  // 5. Otro archivo: mostrar modal de propiedades
+  showPropertiesModal.value = true;
+}
+
+// Guardar cambios de texto desde el editor interno
+async function saveTextDraft() {
+  if (!previewItem.value) return;
+
+  previewItem.value.textContent = textEditorDraft.value;
+  previewItem.value.size = new Blob([textEditorDraft.value]).size;
+  previewItem.value.updatedAt = Date.now();
+
+  if (previewItem.value.assetId) {
+    const blob = new Blob([textEditorDraft.value], { type: previewItem.value.mimeType || 'text/plain' });
+    await db.assets.put({
+      id: previewItem.value.assetId,
+      name: previewItem.value.name,
+      data: blob,
+      type: previewItem.value.mimeType || 'text/plain',
+    });
+  }
+
+  await db.files.put(previewItem.value);
+  previewTextContent.value = textEditorDraft.value;
+  isEditingText.value = false;
+  await fs.loadAllFiles();
+}
+
+function closeModals() {
+  if (previewBlobUrl.value && previewBlobUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(previewBlobUrl.value);
+  }
+  previewBlobUrl.value = null;
+  showImagePreview.value = false;
+  showTextEditor.value = false;
+  showPropertiesModal.value = false;
+  previewItem.value = null;
 }
 
 // MENÚ CONTEXTUAL GLOBAL DE FROST-OS
@@ -222,8 +651,8 @@ function onContextMenu(e: MouseEvent, item?: FileItem) {
   closeAllPopups();
 
   if (item) {
-    if (!fs.selectedIds.includes(item.id)) {
-      fs.selectItem(item.id, false);
+    if (!selectedIds.value.includes(item.id)) {
+      selectItem(item.id, false);
     }
 
     if (item.type === 'shortcut' || item.extension === 'lnk' || item.appId || item.shortcutTarget?.appId) {
@@ -246,50 +675,59 @@ function onContextMenu(e: MouseEvent, item?: FileItem) {
       return;
     }
 
-    const isMultiple = fs.selectedIds.length > 1;
+    const isMultiple = selectedIds.value.length > 1;
     const isImg = isImageFile(item);
     const isPdf = isPdfFile(item);
+    const isTxt = isTxtFile(item);
 
     openMenu(e, [
       ...(isImg
         ? [
             {
-              label: isMultiple ? `Abrir con Fotos (${fs.selectedIds.length})` : 'Abrir con Fotos',
+              label: isMultiple ? `Abrir con Fotos (${selectedIds.value.length})` : 'Abrir con Fotos',
               icon: 'bi-images text-danger',
               action: () => {
-                photosStore.openPhotoFromFile(item);
-                if (os) os.launchApp('photos');
+                if (os) os.launchApp('photos', { fileItem: item });
               },
             },
           ]
         : isPdf
         ? [
             {
-              label: isMultiple ? `Abrir con PDF Viewer (${fs.selectedIds.length})` : 'Abrir con PDF Viewer',
+              label: isMultiple ? `Abrir con PDF Viewer (${selectedIds.value.length})` : 'Abrir con PDF Viewer',
               icon: 'bi-file-earmark-pdf-fill text-danger',
               action: () => {
-                pdfViewerStore.openPdfFromFile(item);
-                if (os) os.launchApp('pdf_viewer');
+                if (os) os.launchApp('pdf_viewer', { fileItem: item });
+              },
+            },
+          ]
+        : isTxt
+        ? [
+            {
+              label: isMultiple ? `Abrir con Notepad (${selectedIds.value.length})` : 'Abrir con Notepad',
+              icon: 'bi-file-earmark-text text-primary',
+              action: () => {
+                if (os) os.launchApp('notepad', { fileItem: item });
               },
             },
           ]
         : [
             {
-              label: isMultiple ? `Abrir (${fs.selectedIds.length} elementos)` : 'Abrir',
+              label: isMultiple ? `Abrir (${selectedIds.value.length} elementos)` : 'Abrir',
               icon: 'bi-box-arrow-up-right',
-              action: () => fs.openItem(item),
+              action: () => openItem(item),
             },
           ]),
       { separator: true },
       {
         label: 'Cortar',
         icon: 'bi-scissors',
-        action: () => fs.cutSelected(),
+        action: () => cutSelected(),
       },
       {
         label: 'Copiar',
         icon: 'bi-copy',
-        action: () => fs.copySelected(),
+        action: () => copySelected(),
       },
       ...(item.type === 'file'
         ? [
@@ -308,7 +746,7 @@ function onContextMenu(e: MouseEvent, item?: FileItem) {
         action: () => startRename(item.id),
       },
       {
-        label: isMultiple ? `Eliminar (${fs.selectedIds.length} elementos)` : 'Eliminar',
+        label: isMultiple ? `Eliminar (${selectedIds.value.length} elementos)` : 'Eliminar',
         icon: 'bi-trash3 text-danger',
         disabled: item.isSystem,
         action: () => handleDeleteSelected(),
@@ -351,29 +789,29 @@ function onContextMenu(e: MouseEvent, item?: FileItem) {
       label: 'Pegar',
       icon: 'bi-clipboard',
       disabled: !fs.clipboard || fs.clipboard.itemIds.length === 0,
-      action: () => fs.paste(),
+      action: () => handlePaste(),
     },
     { separator: true },
     {
       label: 'Ver: Cuadrícula',
       icon: 'bi-grid-fill',
-      action: () => (fs.viewMode = 'grid'),
+      action: () => (viewMode.value = 'grid'),
     },
     {
       label: 'Ver: Detalles',
       icon: 'bi-list-columns',
-      action: () => (fs.viewMode = 'details'),
+      action: () => (viewMode.value = 'details'),
     },
     {
       label: 'Ver: Lista compacta',
       icon: 'bi-list',
-      action: () => (fs.viewMode = 'list'),
+      action: () => (viewMode.value = 'list'),
     },
     { separator: true },
     {
       label: 'Seleccionar todo',
       icon: 'bi-check2-all',
-      action: () => fs.selectAll(),
+      action: () => selectAll(),
     },
     {
       label: 'Actualizar',
@@ -408,34 +846,41 @@ function cancelRename() {
 // Acciones desde barra o menú contextual
 async function handleCreateFolder() {
   closeAllPopups();
-  const folder = await fs.createFolder();
+  const target = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+  const folder = await fs.createFolder(undefined, target);
+  selectedIds.value = [folder.id];
   startRename(folder.id);
 }
 
 async function handleCreateTextFile() {
   closeAllPopups();
-  const file = await fs.createTextFile();
+  const target = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+  const file = await fs.createTextFile(undefined, '', target);
+  selectedIds.value = [file.id];
   startRename(file.id);
 }
 
 async function handleCreateMarkdownFile() {
   closeAllPopups();
-  const file = await fs.createTextFile('Nuevo documento', '# Título\n\nEscribe tu contenido aquí.');
+  const target = currentFolderId.value === 'root' ? 'documents' : currentFolderId.value;
+  const file = await fs.createTextFile('Nuevo documento', '# Título\n\nEscribe tu contenido aquí.', target);
+  selectedIds.value = [file.id];
   startRename(file.id);
 }
 
 function handleDeleteSelected() {
   closeAllPopups();
-  const count = fs.selectedIds.length;
+  const count = selectedIds.value.length;
   if (count === 0) return;
   if (confirm(`¿Estás seguro de que deseas eliminar ${count} elemento(s)?`)) {
-    fs.deleteItems(fs.selectedIds);
+    fs.deleteItems(selectedIds.value);
+    selectedIds.value = [];
   }
 }
 
 function handleDownloadSelected() {
   closeAllPopups();
-  const selectedItems = fs.allItems.filter((i) => fs.selectedIds.includes(i.id) && i.type === 'file');
+  const selectedItems = fs.allItems.filter((i) => selectedIds.value.includes(i.id) && i.type === 'file');
   for (const item of selectedItems) {
     fs.downloadFile(item);
   }
@@ -443,18 +888,18 @@ function handleDownloadSelected() {
 
 function handleShowProperties(item?: FileItem) {
   closeAllPopups();
-  const target = item || fs.allItems.find((i) => i.id === fs.selectedIds[0]);
+  const target = item || fs.allItems.find((i) => i.id === selectedIds.value[0]);
   if (target) {
-    fs.previewItem = target;
-    fs.showPropertiesModal = true;
+    previewItem.value = target;
+    showPropertiesModal.value = true;
   }
 }
 
 // Información de estado
 const statusSelectedInfo = computed(() => {
-  const count = fs.selectedIds.length;
+  const count = selectedIds.value.length;
   if (count === 0) return '';
-  const selectedItems = fs.allItems.filter((i) => fs.selectedIds.includes(i.id));
+  const selectedItems = fs.allItems.filter((i) => selectedIds.value.includes(i.id));
   const totalBytes = selectedItems.reduce((acc, curr) => acc + (curr.size || 0), 0);
   return `${count} seleccionado(s) ${totalBytes > 0 ? `(${fs.formatSize(totalBytes)})` : ''}`;
 });
@@ -524,8 +969,8 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="command-btn icon-only"
           title="Cortar (Ctrl+X)"
-          :disabled="!fs.selectedIds?.length"
-          @click.stop="fs.cutSelected"
+          :disabled="!selectedIds?.length"
+          @click.stop="cutSelected"
         >
           <i class="bi bi-scissors"></i>
         </button>
@@ -534,8 +979,8 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="command-btn icon-only"
           title="Copiar (Ctrl+C)"
-          :disabled="!fs.selectedIds?.length"
-          @click.stop="fs.copySelected"
+          :disabled="!selectedIds?.length"
+          @click.stop="copySelected"
         >
           <i class="bi bi-copy"></i>
         </button>
@@ -545,7 +990,7 @@ const statusSelectedInfo = computed(() => {
           class="command-btn icon-only"
           title="Pegar (Ctrl+V)"
           :disabled="!fs.clipboard?.itemIds?.length"
-          @click.stop="fs.paste"
+          @click.stop="handlePaste"
         >
           <i class="bi bi-clipboard"></i>
         </button>
@@ -554,8 +999,8 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="command-btn icon-only"
           title="Cambiar nombre (F2)"
-          :disabled="fs.selectedIds?.length !== 1"
-          @click.stop="fs.selectedIds?.[0] && startRename(fs.selectedIds[0])"
+          :disabled="selectedIds?.length !== 1"
+          @click.stop="selectedIds?.[0] && startRename(selectedIds[0])"
         >
           <i class="bi bi-input-cursor-text"></i>
         </button>
@@ -564,7 +1009,7 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="command-btn icon-only delete-btn"
           title="Eliminar (Supr)"
-          :disabled="!fs.selectedIds?.length"
+          :disabled="!selectedIds?.length"
           @click.stop="handleDeleteSelected"
         >
           <i class="bi bi-trash3"></i>
@@ -574,7 +1019,7 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="command-btn icon-only"
           title="Descargar archivo a tu equipo"
-          :disabled="!fs.selectedIds?.length"
+          :disabled="!selectedIds?.length"
           @click.stop="handleDownloadSelected"
         >
           <i class="bi bi-download"></i>
@@ -599,51 +1044,51 @@ const statusSelectedInfo = computed(() => {
           <div v-if="showSortMenu" class="dropdown-flyout glass-acrylic" @click.stop>
             <button
               class="dropdown-item"
-              :class="{ active: fs.sortBy === 'name' }"
-              @click="fs.sortBy = 'name'; showSortMenu = false"
+              :class="{ active: sortBy === 'name' }"
+              @click="sortBy = 'name'; showSortMenu = false"
             >
-              <i class="bi bi-check" :style="{ opacity: fs.sortBy === 'name' ? 1 : 0 }"></i>
+              <i class="bi bi-check" :style="{ opacity: sortBy === 'name' ? 1 : 0 }"></i>
               <span>Nombre</span>
             </button>
             <button
               class="dropdown-item"
-              :class="{ active: fs.sortBy === 'updatedAt' }"
-              @click="fs.sortBy = 'updatedAt'; showSortMenu = false"
+              :class="{ active: sortBy === 'updatedAt' }"
+              @click="sortBy = 'updatedAt'; showSortMenu = false"
             >
-              <i class="bi bi-check" :style="{ opacity: fs.sortBy === 'updatedAt' ? 1 : 0 }"></i>
+              <i class="bi bi-check" :style="{ opacity: sortBy === 'updatedAt' ? 1 : 0 }"></i>
               <span>Fecha de modificación</span>
             </button>
             <button
               class="dropdown-item"
-              :class="{ active: fs.sortBy === 'type' }"
-              @click="fs.sortBy = 'type'; showSortMenu = false"
+              :class="{ active: sortBy === 'type' }"
+              @click="sortBy = 'type'; showSortMenu = false"
             >
-              <i class="bi bi-check" :style="{ opacity: fs.sortBy === 'type' ? 1 : 0 }"></i>
+              <i class="bi bi-check" :style="{ opacity: sortBy === 'type' ? 1 : 0 }"></i>
               <span>Tipo</span>
             </button>
             <button
               class="dropdown-item"
-              :class="{ active: fs.sortBy === 'size' }"
-              @click="fs.sortBy = 'size'; showSortMenu = false"
+              :class="{ active: sortBy === 'size' }"
+              @click="sortBy = 'size'; showSortMenu = false"
             >
-              <i class="bi bi-check" :style="{ opacity: fs.sortBy === 'size' ? 1 : 0 }"></i>
+              <i class="bi bi-check" :style="{ opacity: sortBy === 'size' ? 1 : 0 }"></i>
               <span>Tamaño</span>
             </button>
             <div class="dropdown-separator"></div>
             <button
               class="dropdown-item"
-              :class="{ active: fs.sortOrder === 'asc' }"
-              @click="fs.sortOrder = 'asc'; showSortMenu = false"
+              :class="{ active: sortOrder === 'asc' }"
+              @click="sortOrder = 'asc'; showSortMenu = false"
             >
-              <i class="bi bi-check" :style="{ opacity: fs.sortOrder === 'asc' ? 1 : 0 }"></i>
+              <i class="bi bi-check" :style="{ opacity: sortOrder === 'asc' ? 1 : 0 }"></i>
               <span>Ascendente</span>
             </button>
             <button
               class="dropdown-item"
-              :class="{ active: fs.sortOrder === 'desc' }"
-              @click="fs.sortOrder = 'desc'; showSortMenu = false"
+              :class="{ active: sortOrder === 'desc' }"
+              @click="sortOrder = 'desc'; showSortMenu = false"
             >
-              <i class="bi bi-check" :style="{ opacity: fs.sortOrder === 'desc' ? 1 : 0 }"></i>
+              <i class="bi bi-check" :style="{ opacity: sortOrder === 'desc' ? 1 : 0 }"></i>
               <span>Descendente</span>
             </button>
           </div>
@@ -660,9 +1105,9 @@ const statusSelectedInfo = computed(() => {
           <i
             class="bi"
             :class="
-              fs.viewMode === 'grid'
+              viewMode === 'grid'
                 ? 'bi-grid-fill'
-                : fs.viewMode === 'details'
+                : viewMode === 'details'
                 ? 'bi-list-ul'
                 : 'bi-list'
             "
@@ -675,24 +1120,24 @@ const statusSelectedInfo = computed(() => {
           <div v-if="showViewMenu" class="dropdown-flyout glass-acrylic" @click.stop>
             <button
               class="dropdown-item"
-              :class="{ active: fs.viewMode === 'grid' }"
-              @click="fs.viewMode = 'grid'; showViewMenu = false"
+              :class="{ active: viewMode === 'grid' }"
+              @click="viewMode = 'grid'; showViewMenu = false"
             >
               <i class="bi bi-grid-fill"></i>
               <span>Iconos grandes (Cuadrícula)</span>
             </button>
             <button
               class="dropdown-item"
-              :class="{ active: fs.viewMode === 'details' }"
-              @click="fs.viewMode = 'details'; showViewMenu = false"
+              :class="{ active: viewMode === 'details' }"
+              @click="viewMode = 'details'; showViewMenu = false"
             >
               <i class="bi bi-list-columns"></i>
               <span>Detalles</span>
             </button>
             <button
               class="dropdown-item"
-              :class="{ active: fs.viewMode === 'list' }"
-              @click="fs.viewMode = 'list'; showViewMenu = false"
+              :class="{ active: viewMode === 'list' }"
+              @click="viewMode = 'list'; showViewMenu = false"
             >
               <i class="bi bi-list"></i>
               <span>Lista compacta</span>
@@ -710,8 +1155,8 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="nav-btn"
           title="Atrás"
-          :disabled="!fs.canNavigateBack"
-          @click.stop="fs.navigateBack"
+          :disabled="!canNavigateBack"
+          @click.stop="navigateBack"
         >
           <i class="bi bi-arrow-left"></i>
         </button>
@@ -719,8 +1164,8 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="nav-btn"
           title="Adelante"
-          :disabled="!fs.canNavigateForward"
-          @click.stop="fs.navigateForward"
+          :disabled="!canNavigateForward"
+          @click.stop="navigateForward"
         >
           <i class="bi bi-arrow-right"></i>
         </button>
@@ -728,8 +1173,8 @@ const statusSelectedInfo = computed(() => {
           type="button"
           class="nav-btn"
           title="Subir de nivel"
-          :disabled="!fs.canNavigateUp"
-          @click.stop="fs.navigateUp"
+          :disabled="!canNavigateUp"
+          @click.stop="navigateUp"
         >
           <i class="bi bi-arrow-up"></i>
         </button>
@@ -747,18 +1192,18 @@ const statusSelectedInfo = computed(() => {
       <div class="breadcrumb-container">
         <i class="bi bi-folder-fill folder-icon-indicator"></i>
         <div class="breadcrumbs-list">
-          <template v-for="(crumb, idx) in fs.breadcrumbs" :key="crumb.id">
+          <template v-for="(crumb, idx) in breadcrumbs" :key="crumb.id">
             <button
               type="button"
               class="crumb-btn"
-              :class="{ 'current-crumb': idx === fs.breadcrumbs.length - 1 }"
-              @click.stop="fs.navigateTo(crumb.id)"
+              :class="{ 'current-crumb': idx === breadcrumbs.length - 1 }"
+              @click.stop="navigateTo(crumb.id)"
             >
               <i v-if="crumb.icon" class="bi" :class="crumb.icon" style="margin-right: 4px;"></i>
               <span>{{ crumb.name }}</span>
             </button>
             <i
-              v-if="idx < fs.breadcrumbs.length - 1"
+              v-if="idx < breadcrumbs.length - 1"
               class="bi bi-chevron-right crumb-arrow"
             ></i>
           </template>
@@ -769,16 +1214,16 @@ const statusSelectedInfo = computed(() => {
       <div class="search-box">
         <i class="bi bi-search search-icon"></i>
         <input
-          v-model="fs.searchQuery"
+          v-model="searchQuery"
           type="text"
-          :placeholder="`Buscar en ${fs.currentFolder?.name || 'carpeta'}...`"
+          :placeholder="`Buscar en ${currentFolder?.name || 'carpeta'}...`"
           class="search-input"
         />
         <button
-          v-if="fs.searchQuery"
+          v-if="searchQuery"
           class="search-clear-btn"
           type="button"
-          @click="fs.searchQuery = ''"
+          @click="searchQuery = ''"
         >
           <i class="bi bi-x"></i>
         </button>
@@ -798,8 +1243,14 @@ const statusSelectedInfo = computed(() => {
               :key="folder.id"
               type="button"
               class="sidebar-item"
-              :class="{ active: fs.currentFolderId === folder.id }"
-              @click="fs.navigateTo(folder.id)"
+              :class="{
+                active: currentFolderId === folder.id,
+                'folder-drop-target': dragTargetFolderId === folder.id
+              }"
+              @click="navigateTo(folder.id)"
+              @dragover.stop.prevent="onFolderDragOver($event, folder)"
+              @dragleave.stop.prevent="onFolderDragLeave($event, folder)"
+              @drop.stop.prevent="onFolderDrop($event, folder)"
             >
               <i class="bi" :class="folder.icon"></i>
               <span>{{ folder.name }}</span>
@@ -814,8 +1265,8 @@ const statusSelectedInfo = computed(() => {
             <button
               type="button"
               class="sidebar-item"
-              :class="{ active: fs.currentFolderId === 'root' }"
-              @click="fs.navigateTo('root')"
+              :class="{ active: currentFolderId === 'root' }"
+              @click="navigateTo('root')"
             >
               <i class="bi bi-pc-display"></i>
               <span>Este equipo (PC)</span>
@@ -859,9 +1310,14 @@ const statusSelectedInfo = computed(() => {
         <!-- Overlay al arrastrar archivos (Drag & Drop) -->
         <div v-if="isDraggingOver" class="drag-drop-overlay">
           <div class="drop-modal-box glass-acrylic">
-            <i class="bi bi-cloud-arrow-up-fill drop-icon"></i>
-            <h3>Soltar para cargar archivos</h3>
-            <p>Se guardarán en <strong>{{ fs.currentFolder?.name || 'la carpeta actual' }}</strong></p>
+            <i class="bi" :class="fs.isDraggingItems ? 'bi-box-arrow-in-down-right drop-icon' : 'bi-cloud-arrow-up-fill drop-icon'"></i>
+            <h3>{{ fs.isDraggingItems ? 'Soltar para mover a esta carpeta' : 'Soltar para cargar archivos' }}</h3>
+            <p v-if="fs.isDraggingItems">
+              Se reubicarán <strong>{{ fs.draggedItemIds.length }} elemento(s)</strong> en <strong>{{ currentFolder?.name || 'esta carpeta' }}</strong>
+            </p>
+            <p v-else>
+              Se guardarán en <strong>{{ currentFolder?.name || 'la carpeta actual' }}</strong>
+            </p>
           </div>
         </div>
 
@@ -872,7 +1328,7 @@ const statusSelectedInfo = computed(() => {
         </div>
 
         <!-- VISTA VACÍA -->
-        <div v-if="fs.currentItems.length === 0" class="empty-folder-box">
+        <div v-if="currentItems.length === 0" class="empty-folder-box">
           <i class="bi bi-folder2-open empty-icon"></i>
           <h4>Esta carpeta está vacía</h4>
           <p>Puedes crear nuevas carpetas o cargar archivos desde tu ordenador.</p>
@@ -889,15 +1345,23 @@ const statusSelectedInfo = computed(() => {
         </div>
 
         <!-- 1. VISTA CUADRÍCULA (GRID VIEW) -->
-        <div v-else-if="fs.viewMode === 'grid'" class="items-grid">
+        <div v-else-if="viewMode === 'grid'" class="items-grid">
           <div
-            v-for="item in fs.currentItems"
+            v-for="item in currentItems"
             :key="item.id"
             class="file-item grid-item"
             :class="{
-              selected: fs.selectedIds?.includes(item.id),
-              'is-cut': fs.clipboard?.action === 'cut' && fs.clipboard?.itemIds?.includes(item.id)
+              selected: selectedIds?.includes(item.id),
+              'is-cut': fs.clipboard?.action === 'cut' && fs.clipboard?.itemIds?.includes(item.id),
+              'is-dragged': fs.draggedItemIds?.includes(item.id),
+              'folder-drop-target': dragTargetFolderId === item.id
             }"
+            draggable="true"
+            @dragstart="onFileDragStart($event, item)"
+            @dragend="onFileDragEnd"
+            @dragover.stop.prevent="item.type === 'folder' ? onFolderDragOver($event, item) : undefined"
+            @dragleave.stop.prevent="item.type === 'folder' ? onFolderDragLeave($event, item) : undefined"
+            @drop.stop.prevent="item.type === 'folder' ? onFolderDrop($event, item) : undefined"
             @click="onItemClick($event, item)"
             @dblclick="onItemDblClick(item)"
             @contextmenu="onContextMenu($event, item)"
@@ -946,35 +1410,43 @@ const statusSelectedInfo = computed(() => {
         </div>
 
         <!-- 2. VISTA DETALLES (DETAILS VIEW) -->
-        <div v-else-if="fs.viewMode === 'details'" class="items-details">
+        <div v-else-if="viewMode === 'details'" class="items-details">
           <div class="details-header">
-            <div class="col col-name" @click="fs.sortBy = 'name'; fs.sortOrder = fs.sortOrder === 'asc' ? 'desc' : 'asc'">
+            <div class="col col-name" @click="sortBy = 'name'; sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'">
               <span>Nombre</span>
-              <i v-if="fs.sortBy === 'name'" class="bi" :class="fs.sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              <i v-if="sortBy === 'name'" class="bi" :class="sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
             </div>
-            <div class="col col-date" @click="fs.sortBy = 'updatedAt'; fs.sortOrder = fs.sortOrder === 'asc' ? 'desc' : 'asc'">
+            <div class="col col-date" @click="sortBy = 'updatedAt'; sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'">
               <span>Fecha de modificación</span>
-              <i v-if="fs.sortBy === 'updatedAt'" class="bi" :class="fs.sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              <i v-if="sortBy === 'updatedAt'" class="bi" :class="sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
             </div>
-            <div class="col col-type" @click="fs.sortBy = 'type'; fs.sortOrder = fs.sortOrder === 'asc' ? 'desc' : 'asc'">
+            <div class="col col-type" @click="sortBy = 'type'; sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'">
               <span>Tipo</span>
-              <i v-if="fs.sortBy === 'type'" class="bi" :class="fs.sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              <i v-if="sortBy === 'type'" class="bi" :class="sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
             </div>
-            <div class="col col-size" @click="fs.sortBy = 'size'; fs.sortOrder = fs.sortOrder === 'asc' ? 'desc' : 'asc'">
+            <div class="col col-size" @click="sortBy = 'size'; sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'">
               <span>Tamaño</span>
-              <i v-if="fs.sortBy === 'size'" class="bi" :class="fs.sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              <i v-if="sortBy === 'size'" class="bi" :class="sortOrder === 'asc' ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
             </div>
           </div>
 
           <div class="details-body">
             <div
-              v-for="item in fs.currentItems"
+              v-for="item in currentItems"
               :key="item.id"
               class="file-item details-row"
               :class="{
-                selected: fs.selectedIds?.includes(item.id),
-                'is-cut': fs.clipboard?.action === 'cut' && fs.clipboard?.itemIds?.includes(item.id)
+                selected: selectedIds?.includes(item.id),
+                'is-cut': fs.clipboard?.action === 'cut' && fs.clipboard?.itemIds?.includes(item.id),
+                'is-dragged': fs.draggedItemIds?.includes(item.id),
+                'folder-drop-target': dragTargetFolderId === item.id
               }"
+              draggable="true"
+              @dragstart="onFileDragStart($event, item)"
+              @dragend="onFileDragEnd"
+              @dragover.stop.prevent="item.type === 'folder' ? onFolderDragOver($event, item) : undefined"
+              @dragleave.stop.prevent="item.type === 'folder' ? onFolderDragLeave($event, item) : undefined"
+              @drop.stop.prevent="item.type === 'folder' ? onFolderDrop($event, item) : undefined"
               @click="onItemClick($event, item)"
               @dblclick="onItemDblClick(item)"
               @contextmenu="onContextMenu($event, item)"
@@ -1024,13 +1496,21 @@ const statusSelectedInfo = computed(() => {
         <!-- 3. VISTA LISTA (LIST VIEW) -->
         <div v-else class="items-list">
           <div
-            v-for="item in fs.currentItems"
+            v-for="item in currentItems"
             :key="item.id"
             class="file-item list-row"
             :class="{
-              selected: fs.selectedIds?.includes(item.id),
-              'is-cut': fs.clipboard?.action === 'cut' && fs.clipboard?.itemIds?.includes(item.id)
+              selected: selectedIds?.includes(item.id),
+              'is-cut': fs.clipboard?.action === 'cut' && fs.clipboard?.itemIds?.includes(item.id),
+              'is-dragged': fs.draggedItemIds?.includes(item.id),
+              'folder-drop-target': dragTargetFolderId === item.id
             }"
+            draggable="true"
+            @dragstart="onFileDragStart($event, item)"
+            @dragend="onFileDragEnd"
+            @dragover.stop.prevent="item.type === 'folder' ? onFolderDragOver($event, item) : undefined"
+            @dragleave.stop.prevent="item.type === 'folder' ? onFolderDragLeave($event, item) : undefined"
+            @drop.stop.prevent="item.type === 'folder' ? onFolderDrop($event, item) : undefined"
             @click="onItemClick($event, item)"
             @dblclick="onItemDblClick(item)"
             @contextmenu="onContextMenu($event, item)"
@@ -1072,7 +1552,7 @@ const statusSelectedInfo = computed(() => {
     <!-- 4. BARRA DE ESTADO (STATUS BAR ACRYLIC) -->
     <footer class="explorer-status-bar">
       <div class="status-left">
-        <span>{{ fs.currentItems.length }} elemento(s)</span>
+        <span>{{ currentItems.length }} elemento(s)</span>
         <span v-if="statusSelectedInfo" class="status-selected-pill">
           {{ statusSelectedInfo }}
         </span>
@@ -1082,18 +1562,18 @@ const statusSelectedInfo = computed(() => {
         <button
           type="button"
           class="status-view-btn"
-          :class="{ active: fs.viewMode === 'details' }"
+          :class="{ active: viewMode === 'details' }"
           title="Vista Detalles"
-          @click="fs.viewMode = 'details'"
+          @click="viewMode = 'details'"
         >
           <i class="bi bi-list-columns"></i>
         </button>
         <button
           type="button"
           class="status-view-btn"
-          :class="{ active: fs.viewMode === 'grid' }"
+          :class="{ active: viewMode === 'grid' }"
           title="Vista Cuadrícula"
-          @click="fs.viewMode = 'grid'"
+          @click="viewMode = 'grid'"
         >
           <i class="bi bi-grid-fill"></i>
         </button>
@@ -1101,32 +1581,32 @@ const statusSelectedInfo = computed(() => {
     </footer>
 
     <!-- 5. MODAL VISOR DE IMÁGENES (GLASS ACRYLIC) -->
-    <div v-if="fs.showImagePreview" class="preview-modal-backdrop" @click="fs.closeModals">
+    <div v-if="showImagePreview" class="preview-modal-backdrop" @click="closeModals">
       <div class="image-preview-modal glass-modal" @click.stop>
         <div class="modal-header">
           <div class="modal-title">
             <i class="bi bi-image text-danger"></i>
-            <span>{{ fs.previewItem?.name }}</span>
+            <span>{{ previewItem?.name }}</span>
           </div>
           <div class="modal-actions">
             <button
-              v-if="fs.previewItem"
+              v-if="previewItem"
               class="modal-btn"
               title="Descargar"
-              @click="fs.downloadFile(fs.previewItem)"
+              @click="fs.downloadFile(previewItem)"
             >
               <i class="bi bi-download"></i>
             </button>
-            <button class="modal-btn close" title="Cerrar" @click="fs.closeModals">
+            <button class="modal-btn close" title="Cerrar" @click="closeModals">
               <i class="bi bi-x-lg"></i>
             </button>
           </div>
         </div>
         <div class="image-modal-body">
           <img
-            v-if="fs.previewBlobUrl"
-            :src="fs.previewBlobUrl"
-            :alt="fs.previewItem?.name"
+            v-if="previewBlobUrl"
+            :src="previewBlobUrl"
+            :alt="previewItem?.name"
             class="full-image-preview"
           />
         </div>
@@ -1134,116 +1614,116 @@ const statusSelectedInfo = computed(() => {
     </div>
 
     <!-- 6. MODAL EDITOR / VISOR DE TEXTO (GLASS ACRYLIC) -->
-    <div v-if="fs.showTextEditor" class="preview-modal-backdrop" @click="fs.closeModals">
+    <div v-if="showTextEditor" class="preview-modal-backdrop" @click="closeModals">
       <div class="text-editor-modal glass-modal" @click.stop>
         <div class="modal-header">
           <div class="modal-title">
             <i class="bi bi-file-earmark-text text-info"></i>
-            <span>{{ fs.previewItem?.name }}</span>
+            <span>{{ previewItem?.name }}</span>
           </div>
           <div class="modal-actions">
             <button
               class="modal-btn primary-save"
               title="Guardar cambios"
-              @click="fs.saveTextDraft"
+              @click="saveTextDraft"
             >
               <i class="bi bi-floppy"></i>
               <span>Guardar</span>
             </button>
             <button
-              v-if="fs.previewItem"
+              v-if="previewItem"
               class="modal-btn"
               title="Descargar archivo"
-              @click="fs.downloadFile(fs.previewItem)"
+              @click="fs.downloadFile(previewItem)"
             >
               <i class="bi bi-download"></i>
             </button>
-            <button class="modal-btn close" title="Cerrar" @click="fs.closeModals">
+            <button class="modal-btn close" title="Cerrar" @click="closeModals">
               <i class="bi bi-x-lg"></i>
             </button>
           </div>
         </div>
         <div class="text-editor-body">
           <textarea
-            v-model="fs.textEditorDraft"
+            v-model="textEditorDraft"
             class="text-editor-area"
             spellcheck="false"
             placeholder="Escribe aquí tu contenido..."
           ></textarea>
         </div>
         <div class="text-editor-footer">
-          <span>Caracteres: {{ fs.textEditorDraft.length }}</span>
-          <span>Líneas: {{ fs.textEditorDraft.split('\n').length }}</span>
+          <span>Caracteres: {{ textEditorDraft.length }}</span>
+          <span>Líneas: {{ textEditorDraft.split('\n').length }}</span>
           <span>Codificación: UTF-8</span>
         </div>
       </div>
     </div>
 
     <!-- 7. MODAL DE PROPIEDADES (GLASS ACRYLIC) -->
-    <div v-if="fs.showPropertiesModal" class="preview-modal-backdrop" @click="fs.closeModals">
+    <div v-if="showPropertiesModal" class="preview-modal-backdrop" @click="closeModals">
       <div class="properties-modal glass-modal" @click.stop>
         <div class="modal-header">
           <div class="modal-title">
             <i class="bi bi-info-circle text-primary"></i>
-            <span>Propiedades de {{ fs.previewItem?.name }}</span>
+            <span>Propiedades de {{ previewItem?.name }}</span>
           </div>
-          <button class="modal-btn close" @click="fs.closeModals">
+          <button class="modal-btn close" @click="closeModals">
             <i class="bi bi-x-lg"></i>
           </button>
         </div>
         <div class="properties-body">
           <div class="prop-icon-row">
             <div
-              v-if="fs.previewItem && isImageFile(fs.previewItem) && fs.getThumbnail(fs.previewItem)"
+              v-if="previewItem && isImageFile(previewItem) && fs.getThumbnail(previewItem)"
               class="prop-thumb-preview"
             >
               <img
-                :src="fs.getThumbnail(fs.previewItem)!"
-                :alt="fs.previewItem.name"
+                :src="fs.getThumbnail(previewItem)!"
+                :alt="previewItem.name"
                 class="prop-thumb-img"
               />
             </div>
             <i
               v-else
               class="bi prop-big-icon"
-              :class="fs.previewItem ? fs.getFileIcon(fs.previewItem) : 'bi-file-earmark'"
+              :class="previewItem ? fs.getFileIcon(previewItem) : 'bi-file-earmark'"
             ></i>
             <div class="prop-title-box">
-              <strong>{{ fs.previewItem?.name }}</strong>
-              <small>{{ fs.previewItem?.type === 'folder' ? 'Carpeta de archivos' : fs.previewItem?.mimeType }}</small>
+              <strong>{{ previewItem?.name }}</strong>
+              <small>{{ previewItem?.type === 'folder' ? 'Carpeta de archivos' : previewItem?.mimeType }}</small>
             </div>
           </div>
           <div class="prop-divider"></div>
           <div class="prop-row">
             <span class="prop-label">Tipo:</span>
-            <span class="prop-val">{{ fs.previewItem?.type === 'folder' ? 'Carpeta' : `${fs.previewItem?.extension?.toUpperCase()} (${fs.previewItem?.mimeType})` }}</span>
+            <span class="prop-val">{{ previewItem?.type === 'folder' ? 'Carpeta' : `${previewItem?.extension?.toUpperCase()} (${previewItem?.mimeType})` }}</span>
           </div>
           <div class="prop-row">
             <span class="prop-label">Tamaño:</span>
-            <span class="prop-val">{{ fs.previewItem?.type === 'folder' ? '-' : `${fs.formatSize(fs.previewItem?.size || 0)} (${fs.previewItem?.size?.toLocaleString()} bytes)` }}</span>
+            <span class="prop-val">{{ previewItem?.type === 'folder' ? '-' : `${fs.formatSize(previewItem?.size || 0)} (${previewItem?.size?.toLocaleString()} bytes)` }}</span>
           </div>
           <div class="prop-row">
             <span class="prop-label">Ubicación:</span>
-            <span class="prop-val">{{ fs.currentFolder?.name || 'Sistema' }}</span>
+            <span class="prop-val">{{ currentFolder?.name || 'Sistema' }}</span>
           </div>
           <div class="prop-row">
             <span class="prop-label">Creado:</span>
-            <span class="prop-val">{{ fs.formatDate(fs.previewItem?.createdAt || 0) }}</span>
+            <span class="prop-val">{{ fs.formatDate(previewItem?.createdAt || 0) }}</span>
           </div>
           <div class="prop-row">
             <span class="prop-label">Modificado:</span>
-            <span class="prop-val">{{ fs.formatDate(fs.previewItem?.updatedAt || 0) }}</span>
+            <span class="prop-val">{{ fs.formatDate(previewItem?.updatedAt || 0) }}</span>
           </div>
         </div>
         <div class="properties-footer">
           <button
-            v-if="fs.previewItem?.type === 'file'"
+            v-if="previewItem?.type === 'file'"
             class="modal-btn primary-save"
-            @click="fs.previewItem && fs.downloadFile(fs.previewItem)"
+            @click="previewItem && fs.downloadFile(previewItem)"
           >
             <i class="bi bi-download"></i> Descargar
           </button>
-          <button class="modal-btn" @click="fs.closeModals">Aceptar</button>
+          <button class="modal-btn" @click="closeModals">Aceptar</button>
         </div>
       </div>
     </div>
@@ -1692,6 +2172,18 @@ const statusSelectedInfo = computed(() => {
 
 .explorer-viewport.dragging-over {
   background: rgba(2, 132, 199, 0.12);
+}
+
+.folder-drop-target {
+  outline: 2px dashed #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.22) !important;
+  border-radius: 8px !important;
+  transform: scale(1.02);
+  transition: all 0.15s ease;
+}
+
+.file-item.is-dragged {
+  opacity: 0.45;
 }
 
 /* Drag & Drop Overlay */

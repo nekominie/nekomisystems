@@ -1,13 +1,37 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { usePdfViewerStore, type PdfDocument } from '../../pdf_viewer_store'
+import type { WindowInstance } from '../../../../../data/app'
+
+const props = defineProps<{
+  win?: WindowInstance
+}>()
 
 const store = usePdfViewerStore()
+
+// Estado LOCAL de visualización e interacción de esta ventana
+const currentPdf = ref<PdfDocument | null>(store.SAMPLE_MANUAL)
+const currentPage = ref<number>(1)
+const zoom = ref<number>(100)
+const rotation = ref<number>(0)
+const sidebarOpen = ref<boolean>(true)
+
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDraggingOver = ref(false)
 
 const triggerFileInput = () => {
   fileInputRef.value?.click()
+}
+
+const openDoc = (doc: PdfDocument) => {
+  currentPdf.value = doc
+  currentPage.value = 1
+  zoom.value = 100
+  rotation.value = 0
+
+  if (!store.recentPdfs.some(d => d.id === doc.id)) {
+    store.recentPdfs.unshift(doc)
+  }
 }
 
 const onFileSelected = (e: Event) => {
@@ -24,7 +48,7 @@ const onFileSelected = (e: Event) => {
     pageCount: 1,
     source: 'file'
   }
-  store.openPdf(doc)
+  openDoc(doc)
   target.value = ''
 }
 
@@ -42,7 +66,7 @@ const onDropFile = (e: DragEvent) => {
     pageCount: 1,
     source: 'file'
   }
-  store.openPdf(doc)
+  openDoc(doc)
 }
 
 const printDocument = () => {
@@ -50,15 +74,15 @@ const printDocument = () => {
 }
 
 const downloadDocument = () => {
-  if (!store.currentPdf) return
-  if (store.currentPdf.url) {
+  if (!currentPdf.value) return
+  if (currentPdf.value.url) {
     const a = document.createElement('a')
-    a.href = store.currentPdf.url
-    a.download = store.currentPdf.name
+    a.href = currentPdf.value.url
+    a.download = currentPdf.value.name
     a.click()
   } else {
     // Generar archivo de texto descargable con el contenido del PDF
-    const textContent = (store.currentPdf.pages || [])
+    const textContent = (currentPdf.value.pages || [])
       .map(p => `=== ${p.title} (Página ${p.pageNum}) ===\n\n${p.content}\n\n` + (p.sections?.map(s => `${s.heading}\n${s.body}\n`).join('\n') || ''))
       .join('\n\n---------------------------------------------\n\n')
     
@@ -66,16 +90,98 @@ const downloadDocument = () => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = store.currentPdf.name.replace(/\.pdf$/i, '') + '.txt'
+    a.download = currentPdf.value.name.replace(/\.pdf$/i, '') + '.txt'
     a.click()
     URL.revokeObjectURL(url)
   }
 }
 
 const currentPageData = computed(() => {
-  if (!store.currentPdf?.pages) return null
-  return store.currentPdf.pages.find(p => p.pageNum === store.currentPage) || store.currentPdf.pages[0]
+  if (!currentPdf.value?.pages) return null
+  return currentPdf.value.pages.find(p => p.pageNum === currentPage.value) || currentPdf.value.pages[0]
 })
+
+const nextPage = () => {
+  if (currentPdf.value && currentPage.value < currentPdf.value.pageCount) {
+    currentPage.value++
+  }
+}
+
+const prevPage = () => {
+  if (currentPage.value > 1) {
+    currentPage.value--
+  }
+}
+
+const setPage = (p: number) => {
+  if (currentPdf.value && p >= 1 && p <= currentPdf.value.pageCount) {
+    currentPage.value = p
+  }
+}
+
+const zoomIn = () => {
+  if (zoom.value < 250) zoom.value += 15
+}
+
+const zoomOut = () => {
+  if (zoom.value > 50) zoom.value -= 15
+}
+
+const resetZoom = () => {
+  zoom.value = 100
+}
+
+const rotateClockwise = () => {
+  rotation.value = (rotation.value + 90) % 360
+}
+
+const toggleSidebar = () => {
+  sidebarOpen.value = !sidebarOpen.value
+}
+
+async function initWindowPdf() {
+  const fileItem = props.win?.params?.fileItem
+  if (fileItem) {
+    const doc = await store.createPdfDocumentFromFile(fileItem)
+    openDoc(doc)
+    return
+  }
+
+  const doc = props.win?.params?.doc
+  if (doc) {
+    openDoc(doc)
+    return
+  }
+}
+
+watch(
+  () => [props.win?.params?.fileItem, props.win?.params?.doc],
+  () => {
+    initWindowPdf()
+  }
+)
+
+onMounted(() => {
+  initWindowPdf()
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+function handleKeydown(e: KeyboardEvent) {
+  if (props.win && !props.win.isFocused) return
+  if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+    prevPage()
+  } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+    nextPage()
+  } else if (e.key === '+' || e.key === '=') {
+    zoomIn()
+  } else if (e.key === '-' || e.key === '_') {
+    zoomOut()
+  }
+}
 </script>
 
 <template>
@@ -100,17 +206,17 @@ const currentPageData = computed(() => {
       <div class="toolbar-left">
         <button 
           class="toolbar-btn" 
-          :class="{ active: store.sidebarOpen }"
-          @click="store.toggleSidebar"
+          :class="{ active: sidebarOpen }"
+          @click="toggleSidebar"
           title="Alternar panel lateral de miniaturas"
         >
           <i class="bi bi-layout-sidebar-inset"></i>
         </button>
 
-        <div class="document-badge-title" v-if="store.currentPdf">
+        <div class="document-badge-title" v-if="currentPdf">
           <span class="pdf-tag">PDF</span>
-          <span class="doc-title" :title="store.currentPdf.name">{{ store.currentPdf.name }}</span>
-          <span class="doc-size" v-if="store.currentPdf.size">({{ store.currentPdf.size }})</span>
+          <span class="doc-title" :title="currentPdf.name">{{ currentPdf.name }}</span>
+          <span class="doc-size" v-if="currentPdf.size">({{ currentPdf.size }})</span>
         </div>
       </div>
 
@@ -120,21 +226,21 @@ const currentPageData = computed(() => {
         <div class="tool-group pagination-group">
           <button 
             class="toolbar-btn icon-sm" 
-            :disabled="store.currentPage <= 1"
-            @click="store.prevPage"
+            :disabled="currentPage <= 1"
+            @click="prevPage"
             title="Página anterior"
           >
             <i class="bi bi-chevron-up"></i>
           </button>
           <div class="page-indicator">
-            <span class="page-current">{{ store.currentPage }}</span>
+            <span class="page-current">{{ currentPage }}</span>
             <span class="page-sep">/</span>
-            <span class="page-total">{{ store.currentPdf?.pageCount || 1 }}</span>
+            <span class="page-total">{{ currentPdf?.pageCount || 1 }}</span>
           </div>
           <button 
             class="toolbar-btn icon-sm" 
-            :disabled="store.currentPage >= (store.currentPdf?.pageCount || 1)"
-            @click="store.nextPage"
+            :disabled="currentPage >= (currentPdf?.pageCount || 1)"
+            @click="nextPage"
             title="Página siguiente"
           >
             <i class="bi bi-chevron-down"></i>
@@ -147,24 +253,24 @@ const currentPageData = computed(() => {
         <div class="tool-group zoom-group">
           <button 
             class="toolbar-btn icon-sm" 
-            :disabled="store.zoom <= 50"
-            @click="store.zoomOut"
+            :disabled="zoom <= 50"
+            @click="zoomOut"
             title="Reducir zoom (-)"
           >
             <i class="bi bi-dash-lg"></i>
           </button>
-          <span class="zoom-text">{{ store.zoom }}%</span>
+          <span class="zoom-text">{{ zoom }}%</span>
           <button 
             class="toolbar-btn icon-sm" 
-            :disabled="store.zoom >= 250"
-            @click="store.zoomIn"
+            :disabled="zoom >= 250"
+            @click="zoomIn"
             title="Aumentar zoom (+)"
           >
             <i class="bi bi-plus-lg"></i>
           </button>
           <button 
             class="toolbar-btn" 
-            @click="store.resetZoom"
+            @click="resetZoom"
             title="Restablecer tamaño 100%"
           >
             <i class="bi bi-aspect-ratio"></i>
@@ -176,7 +282,7 @@ const currentPageData = computed(() => {
         <!-- Rotación -->
         <button 
           class="toolbar-btn" 
-          @click="store.rotateClockwise"
+          @click="rotateClockwise"
           title="Girar 90° hacia la derecha"
         >
           <i class="bi bi-arrow-clockwise"></i>
@@ -215,20 +321,20 @@ const currentPageData = computed(() => {
     <!-- ÁREA PRINCIPAL CON PANEL LATERAL Y VISOR -->
     <div class="pdf-main-content">
       <!-- SIDEBAR LATERAL (MINIATURAS Y DOCUMENTOS) -->
-      <aside v-if="store.sidebarOpen" class="pdf-sidebar custom-pdf-scrollbar">
+      <aside v-if="sidebarOpen" class="pdf-sidebar custom-pdf-scrollbar">
         <div class="sidebar-section-title">
           <i class="bi bi-file-earmark-text"></i>
-          <span>Páginas ({{ store.currentPdf?.pageCount || 1 }})</span>
+          <span>Páginas ({{ currentPdf?.pageCount || 1 }})</span>
         </div>
 
         <!-- Lista de Miniaturas de Páginas -->
         <div class="thumbnails-container">
           <div 
-            v-for="page in (store.currentPdf?.pages || [{ pageNum: 1, title: store.currentPdf?.name || 'Página 1' }])" 
+            v-for="page in (currentPdf?.pages || [{ pageNum: 1, title: currentPdf?.name || 'Página 1' }])" 
             :key="page.pageNum"
             class="thumbnail-card"
-            :class="{ active: store.currentPage === page.pageNum }"
-            @click="store.setPage(page.pageNum)"
+            :class="{ active: currentPage === page.pageNum }"
+            @click="setPage(page.pageNum)"
           >
             <div class="thumb-page-sheet">
               <div class="thumb-lines">
@@ -254,8 +360,8 @@ const currentPageData = computed(() => {
             v-for="doc in store.recentPdfs" 
             :key="doc.id"
             class="recent-doc-item"
-            :class="{ active: store.currentPdf?.id === doc.id }"
-            @click="store.openPdf(doc)"
+            :class="{ active: currentPdf?.id === doc.id }"
+            @click="openDoc(doc)"
           >
             <i class="bi bi-file-earmark-pdf-fill text-danger"></i>
             <div class="recent-doc-info">
@@ -276,15 +382,15 @@ const currentPageData = computed(() => {
 
         <!-- SI HAY UN ARCHIVO PDF REAL (Blob URL de archivo subido) -->
         <div 
-          v-if="store.currentPdf?.url" 
+          v-if="currentPdf?.url" 
           class="pdf-iframe-wrapper"
           :style="{
-            transform: `scale(${store.zoom / 100}) rotate(${store.rotation}deg)`,
+            transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
             transformOrigin: 'top center'
           }"
         >
           <iframe 
-            :src="store.currentPdf.url" 
+            :src="currentPdf.url" 
             class="pdf-native-iframe"
             title="Visor PDF"
           ></iframe>
@@ -295,7 +401,7 @@ const currentPageData = computed(() => {
           v-else-if="currentPageData" 
           class="pdf-sheet-wrapper"
           :style="{
-            transform: `scale(${store.zoom / 100}) rotate(${store.rotation}deg)`,
+            transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
             transformOrigin: 'top center'
           }"
         >
@@ -306,7 +412,7 @@ const currentPageData = computed(() => {
                 <i class="bi bi-snow2"></i>
                 <span>FROST-OS DOCUMENT SERVICES</span>
               </div>
-              <div class="sheet-header-docname">{{ store.currentPdf?.name }}</div>
+              <div class="sheet-header-docname">{{ currentPdf?.name }}</div>
             </header>
 
             <!-- Contenido de la página -->
@@ -338,7 +444,7 @@ const currentPageData = computed(() => {
             <!-- Pie de página -->
             <footer class="sheet-footer">
               <span>Confidencial • Solo para uso autorizado</span>
-              <span class="sheet-page-num">Página {{ store.currentPage }} de {{ store.currentPdf?.pageCount || 1 }}</span>
+              <span class="sheet-page-num">Página {{ currentPage }} de {{ currentPdf?.pageCount || 1 }}</span>
             </footer>
           </article>
         </div>
@@ -355,7 +461,7 @@ const currentPageData = computed(() => {
               <i class="bi bi-folder2-open"></i>
               <span>Abrir archivo PDF</span>
             </button>
-            <button class="empty-btn secondary" @click="store.openPdf(store.SAMPLE_MANUAL)">
+            <button class="empty-btn secondary" @click="openDoc(store.SAMPLE_MANUAL)">
               <i class="bi bi-book"></i>
               <span>Ver Manual de Frost OS</span>
             </button>

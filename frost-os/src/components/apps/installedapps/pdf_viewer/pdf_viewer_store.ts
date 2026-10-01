@@ -144,7 +144,7 @@ export const usePdfViewerStore = defineStore('pdf_viewer', () => {
     }
   }
 
-  const openPdfFromFile = async (fileItem: FileItem) => {
+  const createPdfDocumentFromFile = async (fileItem: FileItem): Promise<PdfDocument> => {
     let pdfUrl = ''
     let content = fileItem.textContent || ''
 
@@ -163,17 +163,16 @@ export const usePdfViewerStore = defineStore('pdf_viewer', () => {
     )
 
     if (sampleMatch && !pdfUrl) {
-      openPdf({
+      return {
         ...sampleMatch,
         id: fileItem.id,
         name: fileItem.name,
         fileItem,
         source: 'file'
-      })
-      return
+      }
     }
 
-    const doc: PdfDocument = {
+    return {
       id: fileItem.id,
       name: fileItem.name,
       url: pdfUrl,
@@ -196,7 +195,10 @@ export const usePdfViewerStore = defineStore('pdf_viewer', () => {
         }
       ]
     }
+  }
 
+  const openPdfFromFile = async (fileItem: FileItem) => {
+    const doc = await createPdfDocumentFromFile(fileItem)
     openPdf(doc)
   }
 
@@ -255,6 +257,7 @@ export const usePdfViewerStore = defineStore('pdf_viewer', () => {
     sidebarOpen,
     openPdf,
     openPdfFromFile,
+    createPdfDocumentFromFile,
     nextPage,
     prevPage,
     setPage,
