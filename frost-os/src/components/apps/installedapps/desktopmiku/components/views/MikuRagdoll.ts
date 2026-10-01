@@ -356,6 +356,21 @@ export class MikuRagdoll {
     return this._built;
   }
 
+  /** Returns true when the ragdoll has settled near the floor (low velocity, hips near floorY) */
+  isSettled(): boolean {
+    const hips = this.boneBodies.get('Hips');
+    if (!hips) return true;
+
+    const vel = hips.body.velocity;
+    const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+    const hipsY = hips.body.position.y;
+    // Consider settled when hips are within a margin of the floor and speed is very low
+    const nearFloor = hipsY < this.bounds.floorY + 0.5;
+    const slowEnough = speed < 0.3;
+
+    return nearFloor && slowEnough;
+  }
+
   private clampVelocitiesAndLockZ(): void {
     for (const body of this.world.bodies) {
       if (body.mass <= 0) continue;

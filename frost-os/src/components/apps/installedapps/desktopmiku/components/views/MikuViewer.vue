@@ -77,6 +77,7 @@ let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 // 'finished') de una recuperación anterior si se vuelve a agarrar a Miku
 // mientras todavía se estaba levantando.
 let recoveryToken = 0;
+let settleCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 let currentVisibleWidth = 8;
 let currentVisibleHeight = 4.5;
@@ -350,6 +351,10 @@ function setupRagdoll() {
       clearTimeout(recoveryTimer);
       recoveryTimer = null;
     }
+    if (settleCheckInterval) {
+      clearInterval(settleCheckInterval);
+      settleCheckInterval = null;
+    }
 
     isGrabbing.value = true;
     recoveryToken++; // invalida cualquier recuperación/levantada pendiente
@@ -376,11 +381,51 @@ function setupRagdoll() {
     if (props.ragdollActive) return;
 
     // Esperar a que caiga al suelo con gravedad física y ponerse de pie
+    // En vez de un timeout fijo, esperar a que la física realmente asiente
+    // a Miku en el suelo (hips cerca del floorY con velocidad baja).
     if (recoveryTimer) clearTimeout(recoveryTimer);
-    recoveryTimer = setTimeout(() => {
-      recoverFromRagdoll();
-    }, 1200);
+    startSettleCheck();
   };
+}
+
+/**
+ * Polls the ragdoll physics every 100ms to detect when Miku has actually
+ * landed near the floor with low velocity. Only then triggers recovery.
+ * Has a max fallback of 8 seconds in case she gets stuck somewhere.
+ */
+function startSettleCheck(): void {
+  if (settleCheckInterval) {
+    clearInterval(settleCheckInterval);
+    settleCheckInterval = null;
+  }
+
+  const startTime = Date.now();
+  const MAX_SETTLE_WAIT = 8000; // max 8 seconds fallback
+
+  settleCheckInterval = setInterval(() => {
+    // If the user grabs Miku again, the interval will be cleared by onGrabStart
+    if (!isRagdollActive.value || ragdoll?.isGrabbing) {
+      if (settleCheckInterval) {
+        clearInterval(settleCheckInterval);
+        settleCheckInterval = null;
+      }
+      return;
+    }
+
+    const elapsed = Date.now() - startTime;
+    const settled = ragdoll?.isSettled() ?? true;
+
+    if (settled || elapsed >= MAX_SETTLE_WAIT) {
+      if (settleCheckInterval) {
+        clearInterval(settleCheckInterval);
+        settleCheckInterval = null;
+      }
+      // Small extra delay after settling to let the physics fully stabilize
+      recoveryTimer = setTimeout(() => {
+        recoverFromRagdoll();
+      }, 300);
+    }
+  }, 100);
 }
 
 function recoverFromRagdoll() {
@@ -684,6 +729,10 @@ onUnmounted(() => {
   if (recoveryTimer) {
     clearTimeout(recoveryTimer);
     recoveryTimer = null;
+  }
+  if (settleCheckInterval) {
+    clearInterval(settleCheckInterval);
+    settleCheckInterval = null;
   }
   if (ragdoll) {
     ragdoll.dispose();
