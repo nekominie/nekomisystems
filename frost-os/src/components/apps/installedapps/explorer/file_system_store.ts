@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { db, type FileItem, type Asset } from '../../../../database/db';
-import { isImageFile, resolveSystemImageUrl, SYSTEM_WALLPAPERS_MAP } from './thumbnail_utils';
+import { isImageFile, resolveSystemImageUrl, resolveSystemThumbnailUrl, SYSTEM_WALLPAPERS_MAP } from './thumbnail_utils';
 
 export interface BreadcrumbItem {
   id: string;
@@ -52,8 +52,8 @@ export const useFileSystemStore = defineStore('fileSystem', () => {
       return thumbnailUrls.value[item.id];
     }
 
-    // Resolver síncrono si es wallpaper/foto del sistema
-    const sysUrl = resolveSystemImageUrl(item.id, item.name);
+    // Resolver síncrono si es wallpaper/foto del sistema usando miniatura ultraligera
+    const sysUrl = resolveSystemThumbnailUrl(item.id, item.name);
     if (sysUrl) {
       thumbnailUrls.value[item.id] = sysUrl;
       return sysUrl;

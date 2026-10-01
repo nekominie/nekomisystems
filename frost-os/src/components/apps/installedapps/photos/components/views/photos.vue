@@ -20,6 +20,7 @@ onMounted(async () => {
 onUnmounted(() => {
   photosStore.stopSlideshow();
   window.removeEventListener('keydown', handleKeydown);
+  photosStore.revokeTrackedBlobUrls();
 });
 
 function handleKeydown(e: KeyboardEvent) {
@@ -255,6 +256,7 @@ function handleDeleteCurrent() {
             :src="photosStore.activePhoto.url"
             :alt="photosStore.activePhoto.name"
             class="stage-image"
+            decoding="async"
             :style="{
               transform: `scale(${photosStore.zoom}) rotate(${photosStore.rotation}deg) scaleX(${
                 photosStore.isFlipped ? -1 : 1
@@ -343,7 +345,7 @@ function handleDeleteCurrent() {
             :title="photo.name"
             @click="photosStore.openPhoto(photo)"
           >
-            <img :src="photo.url" :alt="photo.name" loading="lazy" />
+            <img :src="photo.thumbUrl || photo.url" :alt="photo.name" loading="lazy" decoding="async" />
           </div>
         </div>
       </footer>
@@ -411,7 +413,7 @@ function handleDeleteCurrent() {
             @click="photosStore.openPhoto(photo)"
           >
             <div class="card-thumb-wrap">
-              <img :src="photo.url" :alt="photo.name" loading="lazy" />
+              <img :src="photo.thumbUrl || photo.url" :alt="photo.name" loading="lazy" decoding="async" />
               <div class="card-hover-overlay">
                 <i class="bi bi-arrows-angle-expand"></i>
               </div>
@@ -436,15 +438,13 @@ function handleDeleteCurrent() {
 .photos-app {
   width: 100%;
   height: 100%;
-  background: transparent;
+  background: rgba(10, 15, 26, 0.35);
   color: #f1f5f9;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   user-select: none;
   font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
   position: relative;
 }
 
@@ -1032,8 +1032,10 @@ function handleDeleteCurrent() {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: all 0.18s ease;
-  backdrop-filter: blur(8px);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 190px 180px;
+  contain: content;
 }
 
 .gallery-card:hover {

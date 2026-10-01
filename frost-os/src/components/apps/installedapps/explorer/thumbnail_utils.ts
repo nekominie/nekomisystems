@@ -54,3 +54,16 @@ export function resolveSystemImageUrl(id: string, name: string): string | null {
 
   return null;
 }
+
+export function resolveSystemThumbnailUrl(id: string, name: string): string | null {
+  const fullUrl = resolveSystemImageUrl(id, name);
+  if (!fullUrl) return null;
+
+  if (fullUrl.startsWith('/wallpapers/')) {
+    const filename = fullUrl.replace('/wallpapers/', '');
+    const baseName = filename.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+    return `/wallpapers/thumbs/${baseName}.jpg`;
+  }
+
+  return fullUrl;
+}

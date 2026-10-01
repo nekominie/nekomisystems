@@ -2,12 +2,14 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { db, type FileItem } from '../../../../database/db';
 import { useSettingsStore } from '../../coreapps/settings/store';
-import { resolveSystemImageUrl } from '../explorer/thumbnail_utils';
+import { resolveSystemImageUrl, resolveSystemThumbnailUrl } from '../explorer/thumbnail_utils';
+import { getOrCreateThumbnail, clearThumbnailCache } from './thumbnail_cache';
 
 export interface PhotoItem {
   id: string;
   name: string;
   url: string;
+  thumbUrl: string;
   size?: number;
   date?: number;
   source: 'file' | 'asset' | 'system';
@@ -23,6 +25,16 @@ export const usePhotosStore = defineStore('photosStore', () => {
   const activePhotoId = ref<string | null>(null);
   const currentView = ref<'viewer' | 'gallery'>('gallery');
   const searchQuery = ref<string>('');
+  const trackedBlobUrls = new Set<string>();
+
+  function revokeTrackedBlobUrls() {
+    for (const url of trackedBlobUrls) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {}
+    }
+    trackedBlobUrls.clear();
+  }
 
   // Controles de transformación
   const zoom = ref<number>(1);
@@ -57,6 +69,9 @@ export const usePhotosStore = defineStore('photosStore', () => {
     const list: PhotoItem[] = [];
     const seenUrls = new Set<string>();
 
+    // Liberar ObjectURLs anteriores para evitar fugas de memoria
+    revokeTrackedBlobUrls();
+
     try {
       // 1. Cargar desde la tabla de archivos (db.files)
       const allFiles = await db.files.toArray();
@@ -69,59 +84,76 @@ export const usePhotosStore = defineStore('photosStore', () => {
 
       for (const file of imageFiles) {
         let photoUrl = '';
+        let thumbUrl = '';
 
         if (file.assetId) {
           const asset = await db.assets.get(file.assetId);
           if (asset && asset.data) {
             photoUrl = URL.createObjectURL(asset.data);
+            trackedBlobUrls.add(photoUrl);
           }
         }
 
         // Si es archivo del sistema o wallpaper
         if (!photoUrl) {
           photoUrl = resolveSystemImageUrl(file.id, file.name) || '';
+          thumbUrl = resolveSystemThumbnailUrl(file.id, file.name) || '';
         }
 
-        if (photoUrl) {
-          list.push({
+        if (photoUrl && !seenUrls.has(photoUrl)) {
+          const item: PhotoItem = {
             id: `file-${file.id}`,
             name: file.name,
             url: photoUrl,
+            thumbUrl: thumbUrl || photoUrl,
             size: file.size,
             date: file.updatedAt || file.createdAt,
             source: 'file',
             fileItem: file,
             assetId: file.assetId,
             folderName: file.parentId,
-          });
+          };
+
+          // Si es un asset de usuario sin thumbnail estático, generarlo en background
+          if (!thumbUrl && file.assetId) {
+            getOrCreateThumbnail(photoUrl).then((thumb) => {
+              if (thumb) item.thumbUrl = thumb;
+            });
+          }
+
+          list.push(item);
           seenUrls.add(photoUrl);
         }
       }
 
-      // 2. Cargar fotos del sistema (Wallpapers preinstalados en Frost-OS)
-      const systemWallpapers: { name: string; url: string }[] = [
-        { name: 'Aurora_Nordica.jpg', url: '/wallpapers/default-wallpaper.jpg' },
-        { name: 'Nebulosa_Cosmica.jpg', url: '/wallpapers/default-wallpaper1.jpg' },
-        { name: 'Horizonte_Ciberpunk.jpg', url: '/wallpapers/default-wallpaper2.jpg' },
-        { name: 'Montanas_al_Atardecer.jpg', url: '/wallpapers/default-wallpaper3.jpg' },
-        { name: 'Bosque_de_Niebla.jpg', url: '/wallpapers/default-wallpaper4.jpg' },
-        { name: 'Oceano_Calmo.jpg', url: '/wallpapers/default-wallpaper5.jpg' },
-        { name: 'Geometria_Abstracta.jpg', url: '/wallpapers/default-wallpaper6.jpg' },
-        { name: 'Flor_de_Loto.jpg', url: '/wallpapers/default-wallpaper7.jpg' },
-        { name: 'Luces_de_Neon.jpg', url: '/wallpapers/default-wallpaper8.jpg' },
-        { name: 'NekoDrive_Cosmos.png', url: '/wallpapers/nekodrive-bg.png' },
+      // 2. Cargar fotos del sistema (Wallpapers preinstalados en Frost-OS) con miniaturas estáticas instantáneas
+      const systemWallpapers: { name: string; url: string; thumbUrl: string }[] = [
+        { name: 'Aurora_Nordica.jpg', url: '/wallpapers/default-wallpaper.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper.jpg' },
+        { name: 'Nebulosa_Cosmica.jpg', url: '/wallpapers/default-wallpaper1.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper1.jpg' },
+        { name: 'Horizonte_Ciberpunk.jpg', url: '/wallpapers/default-wallpaper2.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper2.jpg' },
+        { name: 'Montanas_al_Atardecer.jpg', url: '/wallpapers/default-wallpaper3.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper3.jpg' },
+        { name: 'Bosque_de_Niebla.jpg', url: '/wallpapers/default-wallpaper4.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper4.jpg' },
+        { name: 'Oceano_Calmo.jpg', url: '/wallpapers/default-wallpaper5.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper5.jpg' },
+        { name: 'Geometria_Abstracta.jpg', url: '/wallpapers/default-wallpaper6.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper6.jpg' },
+        { name: 'Flor_de_Loto.jpg', url: '/wallpapers/default-wallpaper7.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper7.jpg' },
+        { name: 'Luces_de_Neon.jpg', url: '/wallpapers/default-wallpaper8.jpg', thumbUrl: '/wallpapers/thumbs/default-wallpaper8.jpg' },
+        { name: 'NekoDrive_Cosmos.png', url: '/wallpapers/nekodrive-bg.png', thumbUrl: '/wallpapers/thumbs/nekodrive-bg.jpg' },
       ];
 
       for (const sys of systemWallpapers) {
-        list.push({
-          id: `sys-${sys.name}`,
-          name: sys.name,
-          url: sys.url,
-          size: 1920 * 1080 * 3, // Tamaño estimado
-          date: Date.now() - 86400000 * 5,
-          source: 'system',
-          folderName: 'Fondos de Frost-OS',
-        });
+        if (!seenUrls.has(sys.url)) {
+          list.push({
+            id: `sys-${sys.name}`,
+            name: sys.name,
+            url: sys.url,
+            thumbUrl: sys.thumbUrl,
+            size: 1920 * 1080 * 3, // Tamaño estimado
+            date: Date.now() - 86400000 * 5,
+            source: 'system',
+            folderName: 'Fondos de Frost-OS',
+          });
+          seenUrls.add(sys.url);
+        }
       }
 
       photos.value = list;
@@ -352,5 +384,7 @@ export const usePhotosStore = defineStore('photosStore', () => {
     setAsWallpaper,
     downloadPhoto,
     deleteActivePhoto,
+    revokeTrackedBlobUrls,
+    clearThumbnailCache,
   };
 });
