@@ -41,6 +41,7 @@ import mikurigImg  from '@/index/previews/mikurig_preview.png'
 import mangaImg    from '@/index/previews/1 izq.jpg'
 import bibooImg    from '../../bibootaxgame/src/characters/biboo.png'
 import nekodriveImg from '/wallpapers/nekodrive-bg.png'
+import dropperImg  from '../../the-dropper/portfolio-card.png'
 
 // Frost OS wallpaper lives in /public — referenced as a static URL.
 const frostImg = '/wallpapers/default-wallpaper.jpg'
@@ -117,6 +118,25 @@ export const PROJECTS: Project[] = [
       { name: 'CSS3',        icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/css3/css3-original.svg' },
     ],
     cta: { label: 'Jugar', icon: 'sports_esports', url: '/bibootaxgame/' },
+    status: 'wip',
+  },
+  {
+    id: 'the-dropper',
+    title: 'The Dropper',
+    category: 'Juego',
+    summary: 'Sandbox 3D de físicas: construye estructuras y guía esferas con máquinas cinéticas.',
+    description:
+      'The Dropper es un juego sandbox de físicas 3D con estética arquitectónica brutalista. Construye estructuras con piezas de concreto, toboganes, tubos curvos, molinos de cucharas (con giro invertible), escaleras eléctricas y elevadores de canicas, y suelta esferas con distintos materiales (metal, goma, plástico, flash) para ver cómo recorren tu creación. Incluye decoración, ciclo día/noche con iluminación dinámica y guardado de mundos en el navegador.',
+    image: dropperImg,
+    previews: [],
+    technologies: [
+      { name: 'Three.js',    class: 'devicon-threejs-original' },
+      { name: 'Vue.js',      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vuejs/vuejs-original.svg' },
+      { name: 'TypeScript',  icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg' },
+      { name: 'Cannon-es',   icon: 'sports_basketball' },
+      { name: 'IndexedDB',   icon: 'database' },
+    ],
+    cta: { label: 'Jugar', icon: 'sports_esports', url: '/the-dropper/' },
     status: 'wip',
   },
   {

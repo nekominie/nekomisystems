@@ -26,6 +26,7 @@ export default defineConfig({
                 frost_os: resolve(__dirname, 'frost-os/index.html'),
                 doomgame: resolve(__dirname, 'doomgame/index.html'),
                 manga_reader: resolve(__dirname, 'manga_reader/index.html'),
+                the_dropper: resolve(__dirname, 'the-dropper/index.html'),
             }
         }
     },
