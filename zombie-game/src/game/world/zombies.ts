@@ -6,6 +6,7 @@ import type { WorldManager } from './worldManager';
 import type { ShotResult } from '../weapons/weapon';
 import { RagdollManager, type ZombieRagdoll } from './zombieRagdoll';
 import type { DrivableCar } from './vehicles';
+import { loadAnimation } from './animationAssets';
 
 /** Hitbox invisible (cilindro) contra el que se lanzan los rayos de las armas. */
 const HIT_GEO = new THREE.CylinderGeometry(0.4, 0.4, 1.9, 8).translate(0, 0.95, 0);
@@ -21,6 +22,14 @@ export interface ZombieTierProfile {
   alertSpeed: number;
   wanderRunChance: number;
   detectRadius: number;
+  /** Alcance del campo de visión corto frontal (metros) */
+  visionDist: number;
+  /** Coseno del semi-ángulo del cono visual frontal */
+  visionCosAngle: number;
+  /** Radio de detección por sonido al caminar normal (metros) */
+  normalHearingRadius: number;
+  /** Radio de detección por sonido al correr ruidosamente (metros) */
+  runHearingRadius: number;
 }
 
 /**
@@ -38,6 +47,10 @@ export const ZOMBIE_TIERS: Record<ZombieTier, ZombieTierProfile> = {
     alertSpeed: 2.2, // ~36% vel. jugador
     wanderRunChance: 0.15,
     detectRadius: 10,
+    visionDist: 8.5,
+    visionCosAngle: 0.64, // ±50° cono frontal corto
+    normalHearingRadius: 5.5,
+    runHearingRadius: 13.0,
   },
   fast: {
     name: 'Rápido',
@@ -46,6 +59,10 @@ export const ZOMBIE_TIERS: Record<ZombieTier, ZombieTierProfile> = {
     alertSpeed: 3.9, // ~65% vel. jugador
     wanderRunChance: 0.40,
     detectRadius: 14,
+    visionDist: 10.5,
+    visionCosAngle: 0.57, // ±55° cono frontal
+    normalHearingRadius: 6.5,
+    runHearingRadius: 15.0,
   },
   super_fast: {
     name: 'Súper Rápido',
@@ -54,6 +71,10 @@ export const ZOMBIE_TIERS: Record<ZombieTier, ZombieTierProfile> = {
     alertSpeed: 5.3, // Tope estricto: máximo 90% de la velocidad base del jugador (6.0 * 0.90 = 5.4 m/s)
     wanderRunChance: 0.65,
     detectRadius: 17,
+    visionDist: 12.5,
+    visionCosAngle: 0.50, // ±60° cono frontal
+    normalHearingRadius: 7.5,
+    runHearingRadius: 17.0,
   },
   extreme: {
     name: 'Extremo',
@@ -62,6 +83,10 @@ export const ZOMBIE_TIERS: Record<ZombieTier, ZombieTierProfile> = {
     alertSpeed: 8.0, // Velocidad súper rápida original que sobrepasa al jugador (solo el 1%)
     wanderRunChance: 0.90,
     detectRadius: 22,
+    visionDist: 15.0,
+    visionCosAngle: 0.42, // ±65° cono frontal
+    normalHearingRadius: 9.0,
+    runHearingRadius: 20.0,
   },
 };
 
@@ -113,28 +138,47 @@ const ZOMBIE = {
 };
 
 interface Assets {
-  walk: MikuTemplate;
-  run: MikuTemplate;
-  idle: MikuTemplate;
+  base: MikuTemplate;
+  slowWalk: THREE.AnimationClip;
+  run1: THREE.AnimationClip;
+  run2: THREE.AnimationClip;
+  walk: THREE.AnimationClip;
+  run: THREE.AnimationClip;
+  idle: THREE.AnimationClip;
+  hit: THREE.AnimationClip;
+  attack: THREE.AnimationClip;
 }
 
 let assetsPromise: Promise<Assets> | null = null;
 function loadAssets(): Promise<Assets> {
   if (!assetsPromise) {
     assetsPromise = Promise.all([
-      loadMikuTemplate('Walking'),
       loadMikuTemplate('Running'),
-      loadMikuTemplate('Stand_and_Chat'),
-    ]).then(([walk, run, idle]) => ({
+      loadAnimation('zombie_lento'),
+      loadAnimation('zombie_correr_1'),
+      loadAnimation('zombie_correr_2'),
+      loadAnimation('caminar'),
+      loadAnimation('correr'),
+      loadAnimation('idle'),
+      loadAnimation('reaccion_golpe'),
+      loadAnimation('bat_swing'),
+    ]).then(([base, slowWalk, run1, run2, walk, run, idle, hit, attack]) => ({
+      base,
+      slowWalk,
+      run1,
+      run2,
       walk,
       run,
       idle,
+      hit,
+      attack,
     }));
   }
   return assetsPromise;
 }
 
 interface SpawnRequest {
+  id: string;
   x: number;
   z: number;
   rot: number;
@@ -148,11 +192,15 @@ interface SpawnRequest {
 export type ZombieAnimState = 'idle' | 'walk' | 'run';
 
 interface Zombie {
+  id: string;
   inst: MikuInstance;
   mixer: THREE.AnimationMixer;
   walkAction: THREE.AnimationAction;
   runAction: THREE.AnimationAction;
   idleAction: THREE.AnimationAction;
+  hitAction: THREE.AnimationAction;
+  attackAction: THREE.AnimationAction;
+  attackCooldown: number;
   animState: ZombieAnimState;
   tier: ZombieTier;
   wanderSpeed: number;
@@ -185,12 +233,15 @@ interface Zombie {
 
 export class ZombieManager {
   private zombies: Zombie[] = [];
+  private zombiesById = new Map<string, Zombie>();
   private queue: SpawnRequest[] = [];
   private spawned = new Set<string>();
   private assets: Assets | null = null;
   private ragdolls = new RagdollManager();
   private disposed = false;
   carPushConfig: CarPushConfig = { ...DEFAULT_CAR_PUSH_CONFIG };
+  public onZombieHit?: (z: Zombie, damage: number, killed: boolean, impulse: THREE.Vector3, isCar: boolean) => void;
+  public onPlayerAttacked?: (z: Zombie, damage: number) => void;
 
   constructor(
     private scene: THREE.Scene,
@@ -213,7 +264,14 @@ export class ZombieManager {
   /** Bajas totales de esta partida. */
   kills = 0;
 
-  update(dt: number, px: number, pz: number, drv?: DrivableCar | null) {
+  update(
+    dt: number,
+    px: number,
+    pz: number,
+    drv?: DrivableCar | null,
+    otherPlayers?: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[],
+    localPlayerStatus?: { isStealth: boolean; isRunning: boolean },
+  ) {
     if (drv) this.checkCarCollisions(drv, dt);
     this.ragdolls.update(dt);
     if (!this.assets) return; // los zombis aparecen cuando el modelo ya está cargado
@@ -271,7 +329,7 @@ export class ZombieManager {
         }
         continue;
       }
-      this.wander(z, dt, px, pz);
+      this.wander(z, dt, px, pz, otherPlayers, localPlayerStatus);
       this.applyShadows(z);
       if (z.d <= ZOMBIE.animDist) animatable.push(z);
     }
@@ -312,23 +370,33 @@ export class ZombieManager {
       const heightVar = tier === 'extreme' ? 0.95 + rng() * 0.07 : tier === 'slow' ? 1.02 + rng() * 0.10 : 0.96 + rng() * 0.09;
       const phase = rng();
       if (Math.hypot(x - px, z - pz) < ZOMBIE.safeSpawnDist) continue;
-      this.queue.push({ x, z, rot, tier, wanderSpeed, alertSpeed, heightVar, phase });
+      const id = `z_${cx}_${cz}_${i}`;
+      this.queue.push({ id, x, z, rot, tier, wanderSpeed, alertSpeed, heightVar, phase });
     }
   }
 
   private spawn(req: SpawnRequest) {
     if (!this.assets) return;
     const pos = this.world.resolveCollision(req.x, req.z, ZOMBIE.radius + 0.1);
-    const inst = instantiateMiku(this.assets.walk, true, true); // tono verde, versión ligera
+    const inst = instantiateMiku(this.assets.base, true, true); // tono verde, versión ligera
     inst.root.scale.setScalar(req.heightVar);
     inst.root.position.set(pos.x, 0, pos.z);
     inst.root.rotation.y = req.rot;
     this.scene.add(inst.root);
 
     const mixer = new THREE.AnimationMixer(inst.model);
-    const walkAction = mixer.clipAction(this.assets.walk.clip);
-    const runAction = mixer.clipAction(this.assets.run.clip);
-    const idleAction = mixer.clipAction(this.assets.idle.clip);
+
+    // Seleccionar clip de caminata y carrera según la categoría
+    const walkClip = req.tier === 'slow' ? this.assets.slowWalk : (Math.random() < 0.6 ? this.assets.slowWalk : this.assets.walk);
+    const runClip = req.tier === 'fast' ? this.assets.run1 : this.assets.run2;
+
+    const walkAction = mixer.clipAction(walkClip);
+    const runAction = mixer.clipAction(runClip);
+    const idleAction = mixer.clipAction(this.assets.idle);
+    const hitAction = mixer.clipAction(this.assets.hit);
+    hitAction.setLoop(THREE.LoopOnce, 1);
+    const attackAction = mixer.clipAction(this.assets.attack);
+    attackAction.setLoop(THREE.LoopOnce, 1);
 
     // Desfasar las fases para que no se muevan de forma sincronizada
     walkAction.time = req.phase * walkAction.getClip().duration;
@@ -342,11 +410,15 @@ export class ZombieManager {
     inst.root.add(hit);
 
     const zombie: Zombie = {
+      id: req.id,
       inst,
       mixer,
       walkAction,
       runAction,
       idleAction,
+      hitAction,
+      attackAction,
+      attackCooldown: Math.random() * 0.5,
       animState: 'idle',
       tier: req.tier,
       wanderSpeed: req.wanderSpeed,
@@ -371,13 +443,15 @@ export class ZombieManager {
       baseScale: req.heightVar,
     };
     hit.userData.owner = zombie; // los rayos de las armas devuelven este dueño
+    this.zombiesById.set(req.id, zombie);
     this.zombies.push(zombie);
   }
 
   // --- Depuración ---------------------------------------------------------------------------------
 
   /** Hace aparecer `count` zombis repartidos en círculo a `dist` metros del punto (para probar armas y velocidades). */
-  spawnTest(px: number, pz: number, count: number, dist: number) {
+  spawnTest(px: number, pz: number, count: number, dist: number): SpawnRequest[] {
+    const list: SpawnRequest[] = [];
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + Math.random() * 0.4;
       const tierRoll = Math.random();
@@ -387,7 +461,8 @@ export class ZombieManager {
       const wanderSpeed = profile.minWanderSpeed + Math.random() * (profile.maxWanderSpeed - profile.minWanderSpeed);
       const alertSpeed = profile.alertSpeed * (0.94 + Math.random() * 0.12);
 
-      this.queue.push({
+      const req: SpawnRequest = {
+        id: `dbg_${Date.now()}_${i}_${Math.floor(Math.random() * 1000)}`,
         x: px + Math.cos(a) * dist,
         z: pz + Math.sin(a) * dist,
         rot: Math.random() * Math.PI * 2,
@@ -396,15 +471,19 @@ export class ZombieManager {
         alertSpeed,
         heightVar: tier === 'extreme' ? 0.95 : tier === 'slow' ? 1.05 : tier === 'super_fast' ? 0.97 : 1.0,
         phase: Math.random(),
-      });
+      };
+      this.queue.push(req);
+      list.push(req);
     }
+    return list;
   }
 
   /** Genera forzadamente 1 zombi de tipo Extremo (el 1% que corre más rápido que el jugador). */
-  spawnExtreme(px: number, pz: number, dist = 14) {
+  spawnExtreme(px: number, pz: number, dist = 14): SpawnRequest {
     const a = Math.random() * Math.PI * 2;
     const profile = ZOMBIE_TIERS.extreme;
-    this.queue.push({
+    const req: SpawnRequest = {
+      id: `extreme_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       x: px + Math.cos(a) * dist,
       z: pz + Math.sin(a) * dist,
       rot: Math.random() * Math.PI * 2,
@@ -413,6 +492,26 @@ export class ZombieManager {
       alertSpeed: profile.alertSpeed * (0.95 + Math.random() * 0.1),
       heightVar: 0.95,
       phase: Math.random(),
+    };
+    this.queue.push(req);
+    return req;
+  }
+
+  /** Spawnea un zombi remoto compartido recibido de otro jugador o evento */
+  spawnFromNetwork(req: { id: string; x: number; z: number; rot?: number; tier?: string; heightVar?: number }) {
+    if (this.findZombie(req.id)) return;
+    const tier = (req.tier as ZombieTier) || 'fast';
+    const profile = ZOMBIE_TIERS[tier] || ZOMBIE_TIERS.fast;
+    this.queue.push({
+      id: req.id,
+      x: req.x,
+      z: req.z,
+      rot: req.rot ?? 0,
+      tier,
+      wanderSpeed: (profile.minWanderSpeed + profile.maxWanderSpeed) * 0.5,
+      alertSpeed: profile.alertSpeed,
+      heightVar: req.heightVar ?? 1.0,
+      phase: 0,
     });
   }
 
@@ -467,12 +566,17 @@ export class ZombieManager {
       if (od.zone === 'head') headshots++;
       z.stun = res.melee ? 0.5 : 0.25;
       z.alert = { x: res.muzzle.x, z: res.muzzle.z, timer: ZOMBIE.alertDuration };
+      const dir = res.direction.clone().normalize();
+      const bulletImpulse = dir.multiplyScalar(res.melee ? 6.5 : 4.0);
+      bulletImpulse.y += res.melee ? 2.5 : 1.2;
+
       if (z.health <= 0) {
-        const dir = res.direction.clone().normalize();
-        const bulletImpulse = dir.multiplyScalar(res.melee ? 6.5 : 4.0);
-        bulletImpulse.y += res.melee ? 2.5 : 1.2;
         this.kill(z, bulletImpulse);
         kills++;
+        this.onZombieHit?.(z, od.damage, true, bulletImpulse, false);
+      } else {
+        z.hitAction.reset().play();
+        this.onZombieHit?.(z, od.damage, false, bulletImpulse, false);
       }
     }
     this.kills += kills;
@@ -562,6 +666,9 @@ export class ZombieManager {
         if (z.health <= 0) {
           this.kill(z, impulse, cfg.tumble);
           this.kills++;
+          this.onZombieHit?.(z, hitResult.zombieDamage, true, impulse, true);
+        } else {
+          this.onZombieHit?.(z, hitResult.zombieDamage, false, impulse, true);
         }
       }
     }
@@ -642,7 +749,71 @@ export class ZombieManager {
     z.running = running;
   }
 
-  private wander(z: Zombie, dt: number, px: number, pz: number) {
+  /**
+   * Evalúa si un zombi detecta a un objetivo según su campo de visión frontal corto,
+   * proximidad física inmediata ("enseguida del zombi") y modo de movimiento (sigilo vs normal vs carrera).
+   */
+  private checkPlayerDetection(
+    z: Zombie,
+    tx: number,
+    tz: number,
+    profile: ZombieTierProfile,
+    isStealth: boolean,
+    isRunning: boolean
+  ): boolean {
+    const dx = tx - z.x;
+    const dz = tz - z.z;
+    const dist = Math.hypot(dx, dz);
+
+    // 1. Proximidad física inmediata (menos de 1.8 metros: enseguida del zombi).
+    // Si estás pegado a él, te detecta incondicionalmente aunque estés en sigilo.
+    if (dist <= 1.8) {
+      return true;
+    }
+
+    // 2. Campo de visión corto frontal
+    if (dist <= profile.visionDist) {
+      // Vector frontal del zombi (en Three.js con rotación Y: x = sin(rot), z = cos(rot))
+      const fwdX = Math.sin(z.rot);
+      const fwdZ = Math.cos(z.rot);
+      const toTargetX = dx / dist;
+      const toTargetZ = dz / dist;
+      const dot = toTargetX * fwdX + toTargetZ * fwdZ;
+
+      if (dot >= profile.visionCosAngle) {
+        // Dentro del cono visual frontal: comprobar si obstáculos opacos (paredes, cabañas) bloquean la visión
+        const obs = this.world.raycastObstacle(z.x, z.z, toTargetX, toTargetZ, dist);
+        const hasLineOfSight = obs === null || obs >= dist - 0.2;
+        if (hasLineOfSight) {
+          // El zombi te ve directamente en su campo de visión corto (incluso si estás en sigilo)
+          return true;
+        }
+      }
+    }
+
+    // 3. Detección por sonido / paso fuera del campo de visión:
+    // Si camina en sigilo: los pasos no hacen ruido, NO lo detecta fuera de su campo de visión.
+    if (isStealth) {
+      return false;
+    }
+
+    // Caminata normal o carrera ruidosa: los pasos producen sonido radial
+    const hearingRadius = isRunning ? profile.runHearingRadius : profile.normalHearingRadius;
+    if (dist <= hearingRadius) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private wander(
+    z: Zombie,
+    dt: number,
+    px: number,
+    pz: number,
+    otherPlayers?: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[],
+    localPlayerStatus?: { isStealth: boolean; isRunning: boolean }
+  ) {
     // Aturdido por un impacto: se queda quieto un instante
     if (z.stun > 0) {
       z.stun -= dt;
@@ -652,15 +823,47 @@ export class ZombieManager {
 
     const profile = ZOMBIE_TIERS[z.tier];
 
-    // Detección por proximidad al jugador:
-    // Los súper rápidos tienen rango de alerta mayor (26m), los rápidos 18m, los lentos 13m
-    if (z.d <= profile.detectRadius) {
-      z.alert = { x: px, z: pz, timer: ZOMBIE.alertDuration };
+    // Detección: 1. Jugador local con sigilo/visión
+    const localDetected = this.checkPlayerDetection(
+      z,
+      px,
+      pz,
+      profile,
+      localPlayerStatus?.isStealth ?? false,
+      localPlayerStatus?.isRunning ?? false
+    );
+
+    let alertTarget: { x: number; z: number } | null = null;
+    if (localDetected) {
+      alertTarget = { x: px, z: pz };
+    } else if (otherPlayers && otherPlayers.length > 0) {
+      // 2. Supervivientes remotos en multijugador
+      for (const op of otherPlayers) {
+        const detected = this.checkPlayerDetection(
+          z,
+          op.x,
+          op.z,
+          profile,
+          op.isStealth ?? false,
+          op.isRunning ?? false
+        );
+        if (detected) {
+          alertTarget = { x: op.x, z: op.z };
+          break;
+        }
+      }
+    }
+
+    if (alertTarget) {
+      z.alert = { x: alertTarget.x, z: alertTarget.z, timer: ZOMBIE.alertDuration };
     }
 
     // Alertado por un ruido o jugador: va hacia allí a su velocidad de carrera/alerta
     if (z.alert) {
       z.alert.timer -= dt;
+      if (z.attackCooldown > 0) {
+        z.attackCooldown -= dt;
+      }
       const ax = z.alert.x - z.x;
       const az = z.alert.z - z.z;
       const distToAlert = Math.hypot(ax, az);
@@ -668,10 +871,15 @@ export class ZombieManager {
       if (z.alert.timer <= 0) {
         z.alert = null;
         z.timer = 0;
-      } else if (distToAlert < 1.1) {
-        // Al estar a distancia de contacto, reduce velocidad para no empujar al jugador
+      } else if (distToAlert < 1.35) {
+        // Al estar a distancia de contacto, reduce velocidad y ataca al jugador
         z.targetRot = Math.atan2(ax, az);
-        this.setMotion(z, true, false, z.wanderSpeed * 0.4);
+        this.setMotion(z, true, false, z.wanderSpeed * 0.35);
+        if (z.attackCooldown <= 0) {
+          z.attackAction.reset().play();
+          z.attackCooldown = 1.25;
+          this.onPlayerAttacked?.(z, 10);
+        }
       } else {
         z.targetRot = Math.atan2(ax, az);
         // Al perseguir, se activa la animación de correr con la velocidad de su tier
@@ -728,6 +936,7 @@ export class ZombieManager {
   }
 
   private removeZombie(z: Zombie) {
+    this.zombiesById.delete(z.id);
     if (z.ragdoll) {
       this.ragdolls.removeRagdoll(z.ragdoll);
       z.ragdoll = null;
@@ -737,11 +946,103 @@ export class ZombieManager {
     disposeMikuInstance(z.inst);
   }
 
+  /** Encuentra un zombi por ID o el más cercano a las coordenadas */
+  findZombie(id: string, x?: number, z?: number): Zombie | undefined {
+    let zb = this.zombiesById.get(id);
+    if (!zb && x !== undefined && z !== undefined) {
+      let bestDist = 3.5;
+      for (const candidate of this.zombies) {
+        const d = Math.hypot(candidate.x - x, candidate.z - z);
+        if (d < bestDist) {
+          bestDist = d;
+          zb = candidate;
+        }
+      }
+    }
+    return zb;
+  }
+
+  /** Aplica un impacto recibido por la red desde otro jugador */
+  applyRemoteHit(hit: { zombieId: string; damage: number; impulseX: number; impulseY: number; impulseZ: number; isKilled: boolean; zombieX?: number; zombieZ?: number }) {
+    const z = this.findZombie(hit.zombieId, hit.zombieX, hit.zombieZ);
+    if (!z || z.dead) return;
+
+    z.health = Math.max(0, z.health - hit.damage);
+    z.stun = 0.3;
+    const impulse = new THREE.Vector3(hit.impulseX, hit.impulseY, hit.impulseZ);
+
+    if (hit.isKilled || z.health <= 0) {
+      this.kill(z, impulse, 0.5);
+      this.kills++;
+    }
+  }
+
+  /** Alerta un zombi a una posición dada recibida por la red */
+  applyRemoteAlert(zombieId: string, x: number, z: number) {
+    const zb = this.findZombie(zombieId, x, z);
+    if (!zb || zb.dead) return;
+    zb.alert = { x, z, timer: ZOMBIE.alertDuration };
+  }
+
+  /** Sincroniza las posiciones de los zombis recibidas por la red */
+  applyRemoteSync(states: { id: string; x: number; z: number; rot: number; speed: number; animState: string; health: number; dead: boolean }[]) {
+    for (const s of states) {
+      const z = this.findZombie(s.id, s.x, s.z);
+      if (!z) continue;
+
+      if (s.dead && !z.dead) {
+        this.kill(z);
+        continue;
+      }
+      if (z.dead) continue;
+
+      // Suavizar posición hacia la transmitida
+      z.x += (s.x - z.x) * 0.35;
+      z.z += (s.z - z.z) * 0.35;
+      z.rot = s.rot;
+      z.health = s.health;
+      z.inst.root.position.set(z.x, 0, z.z);
+      z.inst.root.rotation.y = z.rot;
+      this.setMotion(z, s.speed > 0.1, s.animState === 'run', s.speed);
+    }
+  }
+
+  /** Devuelve los zombis activos cercanos para enviar paquete de sincronización */
+  getActiveZombiesSync(maxCount = 20, maxDist = 35): any[] {
+    const result: any[] = [];
+    for (const z of this.zombies) {
+      if (z.visible && !z.dead && z.d < maxDist) {
+        result.push({
+          id: z.id,
+          x: z.x,
+          z: z.z,
+          rot: z.rot,
+          speed: z.currentSpeed,
+          animState: z.animState,
+          health: z.health,
+          dead: z.dead,
+        });
+        if (result.length >= maxCount) break;
+      }
+    }
+    return result;
+  }
+
+  /** Limpia todos los zombis actuales (al cambiar de semilla / sala) */
+  clearAllZombies() {
+    for (const z of this.zombies) this.removeZombie(z);
+    this.zombies = [];
+    this.zombiesById.clear();
+    this.queue = [];
+    this.spawned.clear();
+  }
+
   dispose() {
     this.disposed = true;
     this.ragdolls.dispose();
     for (const z of this.zombies) this.removeZombie(z);
     this.zombies = [];
+    this.zombiesById.clear();
     this.queue = [];
     this.spawned.clear();
   }

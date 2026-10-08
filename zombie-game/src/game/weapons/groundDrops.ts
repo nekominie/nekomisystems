@@ -95,6 +95,14 @@ export class GroundDropManager {
     return spawn.id;
   }
 
+  /** Suelta un arma con un ID específico (para sincronización por red). */
+  dropAtWithId(id: string, item: WeaponItem, x: number, z: number): void {
+    if (this.taken.has(id)) return;
+    if (this.dynamic.some((e) => e.spawn.id === id)) return;
+    const spawn: DropSpawn = { ...item, id, x, z };
+    this.dynamic.push(this.create(spawn));
+  }
+
   /** Animación de flotación y giro. Llamar cada frame. */
   update(timeSec: number) {
     const animate = (e: DropEntity) => {

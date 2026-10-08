@@ -60,6 +60,12 @@ export class DayNightCycle {
     this.time = this.time < CYCLE.dayDuration ? CYCLE.dayDuration : 0;
   }
 
+  /** Establece el tiempo exacto del ciclo (sincronizado con la sala). */
+  setTime(t: number) {
+    this.time = ((t % this.total) + this.total) % this.total;
+    this.update(0);
+  }
+
   update(dt: number) {
     this.time = (this.time + dt) % this.total;
     const t = this.time;

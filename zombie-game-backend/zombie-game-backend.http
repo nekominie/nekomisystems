@@ -1,6 +1,0 @@
-@zombie_game_backend_HostAddress = http://localhost:5157
-
-GET {{zombie_game_backend_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

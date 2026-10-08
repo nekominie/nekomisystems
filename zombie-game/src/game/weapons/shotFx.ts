@@ -123,6 +123,34 @@ export class ShotFx {
     }
   }
 
+  /** Dibuja los efectos visuales de un disparo recibido por la red desde otro jugador. */
+  playRemote(shot: {
+    category: string;
+    isMelee: boolean;
+    muzzle: THREE.Vector3;
+    direction: THREE.Vector3;
+    pellets: { end: THREE.Vector3; blocked?: boolean; hit?: boolean }[];
+  }) {
+    if (shot.isMelee) {
+      const arc = 1.7;
+      const reach = 2.0;
+      const s = this.swing;
+      s.mesh.geometry.dispose();
+      s.mesh.geometry = new THREE.RingGeometry(0.4, reach, 14, 1, -arc / 2, arc).rotateX(-Math.PI / 2);
+      s.mesh.position.set(shot.muzzle.x, 0.12, shot.muzzle.z);
+      s.mesh.rotation.y = Math.atan2(shot.direction.x, shot.direction.z) - Math.PI / 2;
+      s.life = s.max;
+      s.mesh.visible = true;
+    } else {
+      this.trigger(this.flashes, shot.muzzle, shot.category === 'shotgun' ? 1.8 : 1.1, 0.06);
+      for (const p of shot.pellets) {
+        this.tracer(shot.muzzle, p.end);
+        if (p.hit) this.trigger(this.blood, p.end, 0.55, 0.28);
+        else if (p.blocked) this.trigger(this.sparks, p.end, 0.5, 0.18);
+      }
+    }
+  }
+
   private tracer(from: THREE.Vector3, to: THREE.Vector3) {
     const t = this.tracers.find((x) => x.life <= 0) ?? this.tracers[0];
     t.pos.set([from.x, from.y, from.z, to.x, to.y, to.z]);

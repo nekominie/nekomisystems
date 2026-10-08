@@ -149,13 +149,22 @@ export class VehicleManager {
     return [...this.cars.values()].filter((c) => c !== this.driven);
   }
 
+  /** Obtiene un carro por su ID. */
+  getCar(id: string): DrivableCar | undefined {
+    return this.cars.get(id);
+  }
+
   /**
    * Genera un carro conducible en la posición indicada (abierto y con tanque lleno).
-   * Puede recibir un ID de modelo o arquetipo del catálogo base.
+   * Puede recibir un ID de modelo o arquetipo del catálogo base y un ID personalizado.
    */
-  spawnCar(px: number, pz: number, heading = 0, configIdOrArchetype?: string): DrivableCar {
+  spawnCar(px: number, pz: number, heading = 0, configIdOrArchetype?: string, customId?: string): DrivableCar {
+    if (customId && this.cars.has(customId)) {
+      return this.cars.get(customId)!;
+    }
     const cfg = configIdOrArchetype ? getVehicleConfig(configIdOrArchetype) : CLASSIC_SEDAN;
     const dc = new DrivableCar(cfg, { x: px, z: pz, heading }, {
+      id: customId,
       lockState: 'unlocked',
       durability: cfg.maxDurability,
       fuel: cfg.fuelCapacity,

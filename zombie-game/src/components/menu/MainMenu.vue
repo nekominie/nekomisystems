@@ -54,7 +54,7 @@
           <!-- 1. JUGAR (DESTACA / PROMINENT) -->
           <IndustrialButton
             label="JUGAR"
-            subtext="INICIAR EXPEDICIÓN DE SUPERVIVENCIA"
+            subtext="UN JUGADOR Y MULTIJUGADOR ONLINE"
             icon-class="bi bi-crosshair text-2xl text-red-400"
             :is-prominent="true"
             badge="PRIORITARIO"

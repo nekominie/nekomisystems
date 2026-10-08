@@ -8,7 +8,7 @@
           MUNDO PROCEDURAL INFINITO // CÁMARA SUPERIOR
         </span>
         <span class="text-[10px] font-mono px-2 py-0.5 bg-stone-900 border border-stone-700 text-stone-400">
-          WASD: Moverse | Shift: Correr | F: Interactuar (cajas, carros, bombas) | Espacio: freno de mano | Q/E: Rotar cámara | Rueda: Zoom | Clic: Disparar | R: Recargar | 1-5: Armas | L: Armas de prueba | N: Saltar día/noche | K: Nuevo mundo
+          WASD: Moverse | C: Sigilo / Normal | Shift: Correr | F: Interactuar (cajas, carros, bombas) | Espacio: freno de mano | Q/E: Rotar cámara | Rueda: Zoom | Clic: Disparar | R: Recargar | 1-5: Armas | L: Armas de prueba | N: Saltar día/noche | K: Nuevo mundo
         </span>
       </div>
 
@@ -25,6 +25,14 @@
     <!-- Canvas Container -->
     <div ref="container" class="relative flex-1 overflow-hidden">
       <canvas ref="gameCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+      
+      <!-- Controles móviles -->
+      <MobileControls 
+        @move="handleMobileMove" 
+        @aim="handleMobileAim" 
+        @keyPress="handleMobileKey" 
+        @keyState="handleMobileKeyState" 
+      />
 
       <!-- Menú de debug de armas y físicas (Tab). onDebugMouseDown evita que los botones roben el foco del teclado sin bloquear los sliders -->
       <div class="absolute top-3 right-4 z-30 flex flex-col items-end gap-2" @mousedown="onDebugMouseDown">
@@ -284,6 +292,22 @@
             <div class="h-full bg-yellow-500" :style="{ width: `${playerStamina}%` }"></div>
           </div>
         </div>
+        <!-- Postura / Sigilo -->
+        <div>
+          <div class="text-[10px] text-stone-500 uppercase mb-0.5">POSTURA [C]</div>
+          <button
+            type="button"
+            @click="isStealth = !isStealth"
+            class="px-2.5 py-1 text-[11px] font-bold border transition-colors cursor-pointer rounded-xs flex items-center gap-1.5"
+            :class="
+              isStealth
+                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                : 'bg-stone-900 border-stone-700 text-stone-400 hover:text-stone-200'
+            "
+          >
+            <span>{{ isStealth ? '🤫 SIGILO' : '🚶 NORMAL' }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- Armas: ranuras 1-5, arma equipada y munición -->
@@ -444,6 +468,9 @@
         <div><span class="text-stone-500">ZOMBIS CERCA:</span> {{ hud.zombies }}</div>
         <div><span class="text-stone-500">BAJAS:</span> {{ hud.kills }}</div>
       </div>
+
+      <!-- Sistema Multijugador y Chat Overlay -->
+      <MultiplayerHUD @chat-focus-change="(val) => (isChatFocused = val)" />
     </div>
   </div>
 </template>
@@ -473,6 +500,10 @@ import { WeaponCompanion } from '../../game/weapons/weaponCompanion';
 import { ShotFx } from '../../game/weapons/shotFx';
 import { weaponAudio } from '../../game/weapons/weaponAudio';
 import { PICKUP_RANGE, type DropSpawn } from '../../game/weapons/groundDrops';
+import MultiplayerHUD from './MultiplayerHUD.vue';
+import MobileControls from './MobileControls.vue';
+import { networkManager } from '../../game/network/networkManager';
+import { RemotePlayerManager } from '../../game/network/remotePlayerManager';
 
 const emit = defineEmits<{
   (e: 'exit'): void;
@@ -480,6 +511,30 @@ const emit = defineEmits<{
 
 const container = ref<HTMLDivElement | null>(null);
 const gameCanvas = ref<HTMLCanvasElement | null>(null);
+const isChatFocused = ref(false);
+
+const mobileMove = ref({ x: 0, y: 0 });
+const mobileAim = ref({ x: 0, y: 0, active: false, fire: false });
+
+function handleMobileMove(input: { x: number; y: number }) {
+  mobileMove.value = input;
+}
+function handleMobileAim(input: { x: number; y: number; active: boolean; fire: boolean }) {
+  mobileAim.value = input;
+}
+function handleMobileKey(key: string) {
+  handleKeyDown({ key, repeat: false, preventDefault: () => {} } as KeyboardEvent);
+  setTimeout(() => handleKeyUp({ key, preventDefault: () => {} } as KeyboardEvent), 100);
+}
+function handleMobileKeyState(key: string, pressed: boolean) {
+  if (pressed) {
+    handleKeyDown({ key, repeat: false, preventDefault: () => {} } as KeyboardEvent);
+  } else {
+    handleKeyUp({ key, preventDefault: () => {} } as KeyboardEvent);
+  }
+}
+
+let remotePlayers: RemotePlayerManager | null = null;
 const playerHealth = ref(100);
 const playerStamina = ref(100);
 const weaponHud = reactive({
@@ -544,7 +599,7 @@ const carHud = reactive({
   offroadTraction: 0.55,
 });
 const refuelHud = reactive({ active: false, added: 0, pct: 0, left: 0 });
-const seed = ref(newSeed());
+const seed = ref(networkManager.currentRoom?.seed ?? newSeed());
 const hud = reactive({ x: 0, z: 0, cx: 0, cz: 0, chunks: 0, city: '—', zombies: 0, kills: 0, clock: '06:00', night: false });
 
 function newSeed() {
@@ -552,7 +607,8 @@ function newSeed() {
 }
 
 // --- Estado de juego ---
-const player = { x: 0, z: 0, rot: 0, walkSpeed: 6, runSpeed: 10, radius: 0.4 };
+const isStealth = ref(false);
+const player = { x: 0, z: 0, rot: 0, stealthSpeed: 2.8, walkSpeed: 5.6, runSpeed: 9.6, radius: 0.4 };
 const keys: Record<string, boolean> = {};
 
 // Cámara flotante superior (estilo Project Zomboid): ángulo fijo, rotable con Q/E.
@@ -589,6 +645,7 @@ let reticle: AimReticle | null = null;
 let fireHeld = false;
 /** Un clic pendiente (armas semiautomáticas): se consume al disparar. */
 let semiPending = false;
+let lastMobileFire = false;
 let aimHeading = 0;
 const aimDir = new THREE.Vector3(0, 0, 1);
 const muzzlePos = new THREE.Vector3();
@@ -660,11 +717,42 @@ function startWorld(newSeedValue: number) {
   world = new WorldManager(scene, newSeedValue);
   zombies = new ZombieManager(scene, world);
   zombies.carPushConfig = carPushConfig;
+  zombies.onZombieHit = (z, damage, killed, impulse, isCar) => {
+    if (networkManager.isConnected && networkManager.currentRoom) {
+      networkManager.sendZombieHit({
+        zombieId: z.id,
+        zombieX: z.x,
+        zombieZ: z.z,
+        damage,
+        impulseX: impulse.x,
+        impulseY: impulse.y,
+        impulseZ: impulse.z,
+        isKilled: killed,
+        isCarHit: isCar,
+      });
+    }
+  };
+  zombies.onPlayerAttacked = (z, damage) => {
+    if (playerHealth.value <= 0) return;
+    playerHealth.value = Math.max(0, playerHealth.value - damage);
+    avatar?.playHitReaction();
+    showHitMark(`-${damage}`, 'hit');
+    if (playerHealth.value <= 0) {
+      avatar?.playDeath();
+      showToast('¡Has caído ante la horda de zombis!');
+    }
+  };
   vehicles = new VehicleManager(scene, world);
   vehicles.onPlayerDamaged = (damage: number) => {
+    if (playerHealth.value <= 0) return;
     playerHealth.value = Math.max(0, playerHealth.value - damage);
+    avatar?.playHitReaction();
     showToast(`¡Impacto crítico! -${damage} Salud por colisión violenta`);
     showHitMark(`-${damage}`, 'kill');
+    if (playerHealth.value <= 0) {
+      avatar?.playDeath();
+      showToast('¡Has muerto por impacto vehicular!');
+    }
   };
   refuel = new RefuelSession(scene, world);
   player.x = 0;
@@ -779,6 +867,9 @@ function interact() {
   } else if (t.kind === 'weapon') {
     if (!giveWeapon(t.drop)) return; // ya tienes esa arma cuerpo a cuerpo: se queda en el suelo
     world.drops.take(t.drop.id);
+    if (networkManager.isConnected && networkManager.currentRoom) {
+      networkManager.sendItemPickup(t.drop.id);
+    }
     sound.playPlayClick();
   } else if (t.kind === 'car') {
     const dc = vehicles.enter(t.veh);
@@ -888,8 +979,34 @@ function tryFire(w: Weapon, velocity: number) {
 
   semiPending = false;
   shotFx?.play(res);
-  if (res.melee) weaponAudio.swing();
-  else weaponAudio.shot(def.category);
+  if (res.melee) {
+    weaponAudio.swing();
+    avatar?.playAttack('melee');
+  } else {
+    weaponAudio.shot(def.category);
+  }
+
+  // Sincronizar disparo por red para que todos los jugadores vean fogonazo, trazadoras, impactos y escuchen el audio
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendPlayerShot({
+      weaponId: def.id,
+      category: def.category,
+      isMelee: res.melee,
+      muzzleX: res.muzzle.x,
+      muzzleY: res.muzzle.y,
+      muzzleZ: res.muzzle.z,
+      dirX: res.direction.x,
+      dirY: res.direction.y,
+      dirZ: res.direction.z,
+      pellets: res.pellets.map((p) => ({
+        endX: p.end.x,
+        endY: p.end.y,
+        endZ: p.end.z,
+        blocked: p.blocked,
+        hit: !!p.hit,
+      })),
+    });
+  }
 
   const out = zombies.applyShot(res);
   zombies.alertNoise(player.x, player.z, res.noiseRadius);
@@ -929,16 +1046,43 @@ function debugRefill() {
 }
 
 function debugSpawnZombies() {
-  zombies?.spawnTest(player.x, player.z, 6, 14);
+  if (!zombies) return;
+  const spawned = zombies.spawnTest(player.x, player.z, 6, 14);
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    for (const s of spawned) {
+      networkManager.sendZombieSpawn({
+        id: s.id,
+        x: s.x,
+        z: s.z,
+        rot: s.rot,
+        tier: s.tier,
+        heightVar: s.heightVar,
+      });
+    }
+  }
 }
 
 function debugSpawnExtreme() {
-  zombies?.spawnExtreme(player.x, player.z, 14);
+  if (!zombies) return;
+  const req = zombies.spawnExtreme(player.x, player.z, 14);
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendZombieSpawn({
+      id: req.id,
+      x: req.x,
+      z: req.z,
+      rot: req.rot,
+      tier: 'extreme',
+      heightVar: req.heightVar,
+    });
+  }
   showToast('Zombi extremo (1%) generado');
 }
 
 function debugClearZombies() {
   const n = zombies?.removeNear(player.x, player.z, 60) ?? 0;
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendZombieClear(player.x, player.z, 60);
+  }
   showToast(`${n} zombis eliminados`);
 }
 
@@ -974,6 +1118,17 @@ function debugSpawnCar() {
   const spawnX = player.x + fx * 4.0;
   const spawnZ = player.z + fz * 4.0;
   const dc = vehicles.spawnCar(spawnX, spawnZ, player.rot, selectedSpawnArchetype.value);
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendVehicleSpawn({
+      vehicleId: dc.id,
+      archetype: dc.config.archetype,
+      x: dc.x,
+      z: dc.z,
+      heading: dc.heading,
+      durability: dc.currentDurability,
+      fuel: dc.fuel,
+    });
+  }
   showToast(`${dc.config.name} (${dc.config.archetype}) creado (F para entrar)`);
   sound.playPlayClick();
 }
@@ -989,6 +1144,17 @@ function debugSpawnAndEnterCar() {
   vehicles.enter({ id: dc.id, status: 'open', d: 0, owned: dc });
   if (playerMesh) playerMesh.visible = false;
   carHud.driving = true;
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendVehicleSpawn({
+      vehicleId: dc.id,
+      archetype: dc.config.archetype,
+      x: dc.x,
+      z: dc.z,
+      heading: dc.heading,
+      durability: dc.currentDurability,
+      fuel: dc.fuel,
+    });
+  }
   showToast(`¡Abordaste ${dc.config.name}! Conduce con WASD / Espacio`);
   sound.playPlayClick();
 }
@@ -1001,6 +1167,17 @@ function debugSpawnProcedural() {
   const spawnX = player.x + fx * 4.0;
   const spawnZ = player.z + fz * 4.0;
   const dc = vehicles.spawnProcedural(biome, spawnX, spawnZ, player.rot);
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendVehicleSpawn({
+      vehicleId: dc.id,
+      archetype: dc.config.archetype,
+      x: dc.x,
+      z: dc.z,
+      heading: dc.heading,
+      durability: dc.currentDurability,
+      fuel: dc.fuel,
+    });
+  }
   showToast(`${dc.config.name} [${dc.lockState.toUpperCase()}] generado en bioma "${biome}"`);
   sound.playPlayClick();
 }
@@ -1024,7 +1201,17 @@ function debugDropWeapons() {
   const defs = allWeaponDefs();
   defs.forEach((d, i) => {
     const a = (i / defs.length) * Math.PI * 2;
-    world!.drops.dropAt({ weapon: d.id }, player.x + Math.cos(a) * 3.5, player.z + Math.sin(a) * 3.5);
+    const dropX = player.x + Math.cos(a) * 3.5;
+    const dropZ = player.z + Math.sin(a) * 3.5;
+    const dropId = world!.drops.dropAt({ weapon: d.id }, dropX, dropZ);
+    if (networkManager.isConnected && networkManager.currentRoom) {
+      networkManager.sendItemDrop({
+        id: dropId,
+        weaponId: d.id,
+        x: dropX,
+        z: dropZ,
+      });
+    }
   });
   showToast('Armas de prueba en el suelo a tu alrededor');
 }
@@ -1034,6 +1221,7 @@ function onMouseMove(e: MouseEvent) {
 }
 
 function onMouseDown(e: MouseEvent) {
+  if (isChatFocused.value) return;
   if (e.button !== 0) return;
   if (gameCanvas.value) aim.setFromEvent(e, gameCanvas.value);
   fireHeld = true;
@@ -1047,19 +1235,35 @@ function onMouseUp(e: MouseEvent) {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  if (isChatFocused.value) return;
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (k.startsWith('arrow') || e.key === ' ') e.preventDefault();
   if (e.key === 'Escape') exit();
+  if (k === 'c' && !e.repeat) {
+    isStealth.value = !isStealth.value;
+    showToast(isStealth.value ? 'Modo sigilo activado' : 'Modo caminata normal');
+  }
   if (k === 'r' && !e.repeat) reloadWeapon();
-  if (k === 'k' && !e.repeat) startWorld(newSeed());
+  if (k === 'k' && !e.repeat) {
+    if (networkManager.isConnected && networkManager.currentRoom) {
+      showToast('En multijugador la semilla está fijada por la sala');
+    } else {
+      startWorld(newSeed());
+    }
+  }
   if (k === 'l' && !e.repeat) debugDropWeapons();
   if (e.key === 'Tab') {
     e.preventDefault();
     if (!e.repeat) debugOpen.value = !debugOpen.value;
   }
   if (k === 'f' && !e.repeat) interact();
-  if (k === 'n' && !e.repeat) cycle?.skipPhase();
+  if (k === 'n' && !e.repeat) {
+    cycle?.skipPhase();
+    if (cycle && networkManager.isConnected && networkManager.currentRoom) {
+      networkManager.sendDayNightSync(cycle.time);
+    }
+  }
   if (/^[1-5]$/.test(e.key) && !vehicles?.driven) arsenal.select(Number(e.key) - 1);
 }
 
@@ -1109,11 +1313,22 @@ function loop(now: number) {
     if (keys['s'] || keys['arrowdown']) { mx -= fx; mz -= fz; }
     if (keys['d'] || keys['arrowright']) { mx += rx; mz += rz; }
     if (keys['a'] || keys['arrowleft']) { mx -= rx; mz -= rz; }
+    
+    // Joystick móvil
+    if (mobileMove.value.y !== 0) {
+      mx += mobileMove.value.y * fx;
+      mz += mobileMove.value.y * fz;
+    }
+    if (mobileMove.value.x !== 0) {
+      mx += mobileMove.value.x * rx;
+      mz += mobileMove.value.x * rz;
+    }
   }
 
   const moving = mx !== 0 || mz !== 0;
   const running = moving && keys['shift'] && playerStamina.value > 0;
-  const speed = running ? player.runSpeed : player.walkSpeed;
+  const stealthing = moving && !running && (isStealth.value || !!keys['control']);
+  const speed = running ? player.runSpeed : stealthing ? player.stealthSpeed : player.walkSpeed;
   if (moving) {
     const len = Math.hypot(mx, mz);
     player.x += (mx / len) * speed * dt;
@@ -1139,8 +1354,8 @@ function loop(now: number) {
   // Conduciendo: el jugador va dentro del carro (oculto) y la cámara sigue al carro
   if (drv && vehicles) {
     const input: DriveInput = {
-      throttle: (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0),
-      steer: (keys['a'] || keys['arrowleft'] ? 1 : 0) - (keys['d'] || keys['arrowright'] ? 1 : 0),
+      throttle: (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0) + mobileMove.value.y,
+      steer: (keys['a'] || keys['arrowleft'] ? 1 : 0) - (keys['d'] || keys['arrowright'] ? 1 : 0) - mobileMove.value.x,
       handbrake: !!keys[' '],
     };
     vehicles.update(dt, input, cycle?.lampFactor ?? 0);
@@ -1180,11 +1395,6 @@ function loop(now: number) {
 
   playerMesh.position.set(player.x, 0, player.z);
   playerMesh.rotation.y = player.rot;
-  if (avatar && !drv) {
-    // Correr al moverse (cadencia según la velocidad); idle al estar quieto
-    avatar.setState(moving ? 'run' : 'idle', speed);
-    avatar.update(dt);
-  }
 
   // Cámara siguiendo al jugador (o al carro) desde arriba; se aleja un poco al ir rápido.
   // El retroceso de las armas empuja temporalmente el pitch/yaw y se recupera con lerp (RecoilController).
@@ -1211,14 +1421,26 @@ function loop(now: number) {
     companion?.setWeapon(w ? w.def.id : null);
 
     // Punto del suelo bajo el cursor; el jugador gira hacia él
-    const hasAim = aim.update(camera);
+    let hasAim = aim.update(camera);
     let heading = player.rot;
-    if (hasAim) {
+    let aimDiff = 0;
+    
+    // Joystick móvil anula el apuntado con el ratón
+    if (mobileAim.value.active) {
+      hasAim = true;
+      const targetAim = Math.atan2(mobileAim.value.x, mobileAim.value.y);
+      heading = targetAim;
+      aim.point.x = player.x + Math.sin(heading) * 10;
+      aim.point.z = player.z + Math.cos(heading) * 10;
+    } else if (hasAim) {
       const ax = aim.point.x - player.x;
       const az = aim.point.z - player.z;
       if (ax * ax + az * az > 0.09) heading = Math.atan2(ax, az);
-      const diff = Math.atan2(Math.sin(heading - player.rot), Math.cos(heading - player.rot));
-      player.rot += diff * Math.min(1, dt * 20);
+    }
+
+    if (hasAim) {
+      aimDiff = Math.atan2(Math.sin(heading - player.rot), Math.cos(heading - player.rot));
+      player.rot += aimDiff * Math.min(1, dt * 20);
       playerMesh.rotation.y = player.rot;
     }
     aimHeading = heading;
@@ -1243,7 +1465,43 @@ function loop(now: number) {
     const dist = Math.hypot(aim.point.x - player.x, aim.point.z - player.z);
     reticle?.update(aim.point, w?.isMelee ? 0.3 : Math.tan(spread) * dist, hasAim, w?.reloading ? 0xff9a3c : 0xffffff);
 
-    if (w && fireHeld && (w.def.isAutomatic || semiPending)) tryFire(w, vel);
+    // Mobile fire input handling
+    if (mobileAim.value.fire && !lastMobileFire) semiPending = true;
+    lastMobileFire = mobileAim.value.fire;
+    
+    const isFiring = fireHeld || mobileAim.value.fire;
+    if (w && isFiring && (w.def.isAutomatic || semiPending)) {
+      tryFire(w, vel);
+    }
+
+    // Actualización dinámica del avatar: reacciona a movimiento, strafing, cámara y acciones
+    if (avatar) {
+      let moveHeadingDiff = 0;
+      if (moving) {
+        const moveAngle = Math.atan2(mx, mz);
+        let diff = moveAngle - player.rot;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        moveHeadingDiff = diff;
+      }
+      let turnDirection: 'left' | 'right' | null = null;
+      if (!moving && Math.abs(aimDiff) > 0.05) {
+        // En Three.js rotaciones positivas en Y suelen ser antihorarias (izquierda)
+        turnDirection = aimDiff > 0 ? 'left' : 'right';
+      }
+      avatar.setLocomotion({
+        moving,
+        speed,
+        moveHeadingDiff,
+        turnDirection,
+        isSprinting: running,
+        isStealth: stealthing,
+        isAiming: hasAim,
+        isReloading: !!(w && w.reloading),
+        hasGun: !!(w && !w.isMelee),
+        isBlocking: false,
+      });
+      avatar.update(dt);
+    }
   } else {
     companion?.update(tSec, player.x, player.z, player.rot, false);
     reticle?.update(aim.point, 0, false, 0xffffff);
@@ -1259,7 +1517,60 @@ function loop(now: number) {
   }
 
   world.update(player.x, player.z);
-  zombies?.update(dt, player.x, player.z, drv);
+  const otherPositions = remotePlayers?.getOtherPlayerPositions() ?? [];
+  zombies?.update(dt, player.x, player.z, drv, otherPositions, { isStealth: stealthing, isRunning: running });
+  remotePlayers?.update(dt);
+
+  // Transmisión de estado multijugador en tiempo real
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendPlayerState({
+      x: player.x,
+      y: 0,
+      z: player.z,
+      heading: player.rot,
+      speed: moving ? speed : 0,
+      isMoving: moving,
+      isRunning: running,
+      isStealth: stealthing,
+      currentAnim: moving ? (running ? 'run' : stealthing ? 'sneak' : 'walk') : 'idle',
+      equippedWeapon: arsenal.current?.def.id ?? null,
+      health: playerHealth.value,
+      maxHealth: 100,
+      isInVehicle: !!drv,
+      vehicleId: drv ? drv.id : null,
+    });
+
+    if (drv) {
+      networkManager.sendVehicleState({
+        vehicleId: drv.id,
+        archetype: drv.config.archetype,
+        x: drv.x,
+        y: 0,
+        z: drv.z,
+        heading: drv.heading,
+        speed: drv.currentSpeed,
+        steer: drv.steer,
+        durability: drv.currentDurability,
+        maxDurability: drv.config.maxDurability,
+        fuel: drv.fuel,
+        isEngineRunning: drv.isEngineRunning,
+      });
+    }
+
+    // Sincronización periódica de zombis activos (cada 10 frames)
+    if (frame % 10 === 0 && zombies) {
+      const activeZombies = zombies.getActiveZombiesSync(18, 30);
+      if (activeZombies.length > 0) {
+        networkManager.sendZombieSync(activeZombies);
+      }
+    }
+
+    // Sincronización periódica de ciclo día/noche (cada 240 frames, ~4s)
+    if (frame % 240 === 0 && cycle) {
+      networkManager.sendDayNightSync(cycle.time);
+    }
+  }
+
   if (cycle) lampLights?.update(world, player.x, player.z, cycle.lampFactor, now / 1000);
 
   if (frame % 4 === 0) {
@@ -1348,6 +1659,132 @@ onMounted(() => {
   playerMesh = createPlayerMesh();
   scene.add(playerMesh);
 
+  // Inicialización de jugadores remotos multijugador
+  remotePlayers = new RemotePlayerManager(scene);
+  if (networkManager.currentRoom) {
+    if (networkManager.currentRoom.dayNightTime !== undefined && cycle) {
+      cycle.setTime(networkManager.currentRoom.dayNightTime);
+    }
+    for (const p of networkManager.currentRoomPlayers) {
+      if (p.connectionId !== networkManager.connectionId) {
+        remotePlayers.updatePlayer(p);
+      }
+    }
+  }
+
+  networkManager.onRemotePlayerUpdate = (state) => {
+    remotePlayers?.updatePlayer(state);
+  };
+  networkManager.onPlayerJoined = (state) => {
+    remotePlayers?.updatePlayer(state);
+  };
+  networkManager.onPlayerLeft = (connId, nick) => {
+    remotePlayers?.removePlayer(connId);
+    showToast(`${nick} salió de la partida`);
+  };
+  networkManager.onJoinedRoom = (room, initialPlayers) => {
+    remotePlayers?.clear();
+    for (const p of initialPlayers) {
+      if (p.connectionId !== networkManager.connectionId) {
+        remotePlayers?.updatePlayer(p);
+      }
+    }
+    showToast(`Conectado a ${room.name}`);
+    if (room.seed && seed.value !== room.seed) {
+      seed.value = room.seed;
+      startWorld(room.seed);
+    }
+    if (room.dayNightTime !== undefined && cycle) {
+      cycle.setTime(room.dayNightTime);
+    }
+  };
+  networkManager.onRemoteVehicleUpdate = (state) => {
+    if (!vehicles) return;
+    let car = vehicles.getCar(state.vehicleId);
+    if (!car && state.x !== 0) {
+      car = vehicles.spawnCar(state.x, state.z, state.heading, state.archetype, state.vehicleId);
+    }
+    if (car && car !== vehicles.driven) {
+      car.x = state.x;
+      car.z = state.z;
+      car.heading = state.heading;
+      car.speed = state.speed;
+      car.steer = state.steer;
+      car.currentDurability = state.durability;
+      car.currentFuel = state.fuel;
+      car.isEngineRunning = state.isEngineRunning;
+      car.syncMesh();
+    }
+  };
+  networkManager.onZombieHitEvent = (hit) => {
+    if (hit.attackerConnectionId === networkManager.connectionId) return;
+    weaponAudio.hit(false);
+    if (hit.isKilled) {
+      sound.playEnemyDeath();
+    }
+    zombies?.applyRemoteHit(hit);
+  };
+  networkManager.onZombieAlertEvent = (zombieId, x, z) => {
+    zombies?.applyRemoteAlert(zombieId, x, z);
+  };
+  networkManager.onZombieSyncBatch = (batch) => {
+    zombies?.applyRemoteSync(batch);
+  };
+  networkManager.onZombieSpawnEvent = (spawn) => {
+    zombies?.spawnFromNetwork(spawn);
+  };
+  networkManager.onDayNightSyncEvent = (time) => {
+    cycle?.setTime(time);
+  };
+  networkManager.onVehicleSpawnEvent = (spawn) => {
+    if (!vehicles) return;
+    let car = vehicles.getCar(spawn.vehicleId);
+    if (!car) {
+      car = vehicles.spawnCar(spawn.x, spawn.z, spawn.heading, spawn.archetype, spawn.vehicleId);
+      car.currentDurability = spawn.durability;
+      car.fuel = spawn.fuel;
+      car.syncMesh();
+    }
+  };
+  networkManager.onZombieClearEvent = (x, z, r) => {
+    zombies?.removeNear(x, z, r);
+  };
+  networkManager.onItemDropEvent = (drop) => {
+    world?.drops.dropAtWithId(drop.id, { weapon: drop.weaponId as any, ammo: drop.ammo, reserve: drop.reserve }, drop.x, drop.z);
+  };
+  networkManager.onItemPickupEvent = (dropId) => {
+    world?.drops.take(dropId);
+  };
+  networkManager.onPlayerShotEvent = (shot) => {
+    if (shot.shooterConnectionId === networkManager.connectionId) return;
+
+    // Reproducir fogonazo, trazadoras y partículas de impacto
+    shotFx?.playRemote({
+      category: shot.category,
+      isMelee: shot.isMelee,
+      muzzle: new THREE.Vector3(shot.muzzleX, shot.muzzleY, shot.muzzleZ),
+      direction: new THREE.Vector3(shot.dirX, shot.dirY, shot.dirZ),
+      pellets: shot.pellets.map((p) => ({
+        end: new THREE.Vector3(p.endX, p.endY, p.endZ),
+        blocked: p.blocked,
+        hit: p.hit,
+      })),
+    });
+
+    // Reproducir animación de ataque en el personaje remoto
+    remotePlayers?.playAttack(shot.shooterConnectionId, shot.isMelee);
+
+    // Reproducir sonido espacial según la distancia del jugador local al tirador
+    const dist = Math.hypot(player.x - shot.muzzleX, player.z - shot.muzzleZ);
+    if (dist < 75) {
+      if (shot.isMelee) {
+        if (dist < 20) weaponAudio.swing();
+      } else {
+        weaponAudio.shot(shot.category as any);
+      }
+    }
+  };
+
   // Carga de Miku (modelo + animaciones); reemplaza a la cápsula cuando esté lista
   PlayerAvatar.load()
     .then((a) => {
@@ -1399,6 +1836,23 @@ onBeforeUnmount(() => {
   lampLights?.dispose();
   avatar?.dispose();
   avatar = null;
+  remotePlayers?.clear();
+  remotePlayers = null;
+  networkManager.onRemotePlayerUpdate = undefined;
+  networkManager.onPlayerJoined = undefined;
+  networkManager.onPlayerLeft = undefined;
+  networkManager.onJoinedRoom = undefined;
+  networkManager.onRemoteVehicleUpdate = undefined;
+  networkManager.onZombieHitEvent = undefined;
+  networkManager.onZombieAlertEvent = undefined;
+  networkManager.onZombieSyncBatch = undefined;
+  networkManager.onZombieSpawnEvent = undefined;
+  networkManager.onDayNightSyncEvent = undefined;
+  networkManager.onVehicleSpawnEvent = undefined;
+  networkManager.onZombieClearEvent = undefined;
+  networkManager.onItemDropEvent = undefined;
+  networkManager.onItemPickupEvent = undefined;
+  networkManager.onPlayerShotEvent = undefined;
   world?.dispose();
   renderer?.dispose();
   renderer = null;
