@@ -140,6 +140,24 @@ export const PROJECTS: Project[] = [
     status: 'wip',
   },
   {
+    id: 'zombie-game',
+    title: 'Zombie Game',
+    category: 'Juego',
+    summary: 'Prototipo de supervivencia zombi isométrica estilo Zomboid con estética industrial y visceral.',
+    description:
+      'Zombie Game es un prototipo de juego de supervivencia y terror en perspectiva isométrica 2.5D con estética post-apocalíptica. Con interfaz industrial de metal remachado, advertencias biológicas, salpicaduras de sangre, sintetizador sonoro procedural Web Audio y gestión táctica de armería y supervivencia.',
+    image: nekodriveImg,
+    previews: [],
+    technologies: [
+      { name: 'Vue.js',      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vuejs/vuejs-original.svg' },
+      { name: 'TypeScript',  icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg' },
+      { name: 'Canvas 2D',   icon: 'brush' },
+      { name: 'Web Audio',   icon: 'graphic_eq' },
+    ],
+    cta: { label: 'Jugar', icon: 'sports_esports', url: '/zombie-game/' },
+    status: 'wip',
+  },
+  {
     id: 'nekodrive',
     title: 'NekoDrive',
     category: 'Self-hosted Server Platform',

@@ -27,6 +27,7 @@ export default defineConfig({
                 doomgame: resolve(__dirname, 'doomgame/index.html'),
                 manga_reader: resolve(__dirname, 'manga_reader/index.html'),
                 the_dropper: resolve(__dirname, 'the-dropper/index.html'),
+                zombie_game: resolve(__dirname, 'zombie-game/index.html'),
             }
         }
     },

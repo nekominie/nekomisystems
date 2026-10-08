@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@theme {
+  --font-title: "Black Ops One", Impact, sans-serif;
+  --font-horror: "Nosifer", cursive;
+  --font-military: "Chakra Petch", sans-serif;
+  --font-mono: "Share Tech Mono", monospace;
+  --color-bunker-dark: #07080b;
+  --color-steel-base: #181b22;
+  --color-steel-light: #2c3240;
+  --color-rust: #8b321a;
+  --color-blood-dark: #4a0303;
+  --color-blood-bright: #b80c09;
+  --color-hazard-yellow: #f59e0b;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background-color: #050608;
+  color: #e5e7eb;
+  font-family: "Chakra Petch", sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Industrial diamond plate pattern */
+.bg-diamond-plate {
+  background-color: #0b0d12;
+  background-image: 
+    linear-gradient(135deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%), 
+    linear-gradient(225deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%), 
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%), 
+    linear-gradient(315deg, rgba(255, 255, 255, 0.03) 25%, #08090d 25%);
+  background-position: 10px 0, 10px 0, 0 0, 0 0;
+  background-size: 20px 20px;
+  background-repeat: repeat;
+}
+
+/* Hazard Stripes */
+.hazard-stripes {
+  background: repeating-linear-gradient(
+    -45deg,
+    #cca10b,
+    #cca10b 14px,
+    #14130c 14px,
+    #14130c 28px
+  );
+}
+
+.hazard-stripes-blood {
+  background: repeating-linear-gradient(
+    -45deg,
+    #991b1b,
+    #991b1b 14px,
+    #180808 14px,
+    #180808 28px
+  );
+}
+
+/* Heavy Steel Plate Component */
+.steel-panel {
+  background: linear-gradient(165deg, #222631 0%, #151821 40%, #10121a 100%);
+  border: 2px solid #3c4456;
+  box-shadow: 
+    inset 1px 1px 0px rgba(255, 255, 255, 0.15),
+    inset -2px -2px 0px rgba(0, 0, 0, 0.7),
+    0 10px 30px rgba(0, 0, 0, 0.85);
+  position: relative;
+}
+
+/* Metallic Bevel Button */
+.steel-btn {
+  background: linear-gradient(180deg, #2c3342 0%, #1a1e28 50%, #12151d 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(0, 0, 0, 0.6);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.9);
+  box-shadow: 
+    0 4px 10px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.steel-btn:hover {
+  background: linear-gradient(180deg, #384256 0%, #242a38 50%, #181d27 100%);
+  border-top-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 16px rgba(0, 0, 0, 0.75),
+    0 0 12px rgba(239, 68, 68, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.steel-btn:active {
+  transform: translateY(1px);
+  background: linear-gradient(180deg, #151821 0%, #1c212c 100%);
+  box-shadow: 
+    inset 0 3px 6px rgba(0, 0, 0, 0.8),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Play Button Highlight - Gory & Metallic */
+.play-btn-prominent {
+  background: linear-gradient(180deg, #7f1d1d 0%, #450a0a 45%, #2a0505 100%);
+  border-top: 2px solid #ef4444;
+  border-left: 2px solid #b91c1c;
+  border-right: 2px solid #450a0a;
+  border-bottom: 3px solid #000000;
+  box-shadow: 
+    0 0 25px rgba(220, 38, 38, 0.45),
+    inset 0 1px 2px rgba(255, 255, 255, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.85);
+  animation: play-pulse 3s infinite ease-in-out;
+}
+
+.play-btn-prominent:hover {
+  background: linear-gradient(180deg, #991b1b 0%, #5d0c0c 45%, #390707 100%);
+  border-top-color: #f87171;
+  box-shadow: 
+    0 0 35px rgba(239, 68, 68, 0.7),
+    0 0 15px rgba(220, 38, 38, 0.9),
+    inset 0 1px 3px rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px) scale(1.02);
+}
+
+.play-btn-prominent:active {
+  transform: translateY(1px) scale(0.99);
+  background: linear-gradient(180deg, #370606 0%, #520b0b 100%);
+  box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.9);
+}
+
+@keyframes play-pulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 20px rgba(185, 28, 28, 0.35),
+      0 6px 18px rgba(0, 0, 0, 0.75),
+      inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  }
+  50% {
+    box-shadow: 
+      0 0 35px rgba(239, 68, 68, 0.65),
+      0 8px 25px rgba(0, 0, 0, 0.9),
+      inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Rivets on metal plates */
+.rivet {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #64748b 0%, #334155 45%, #0f172a 100%);
+  box-shadow: 
+    1px 1px 1px rgba(0, 0, 0, 0.8),
+    inset -1px -1px 1px rgba(0, 0, 0, 0.9),
+    inset 1px 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+/* Flickering Emergency Bunker Light */
+@keyframes flicker-light {
+  0%, 100% { opacity: 0.95; }
+  3% { opacity: 0.4; }
+  6% { opacity: 0.9; }
+  7% { opacity: 0.2; }
+  8% { opacity: 0.85; }
+  9% { opacity: 0.15; }
+  10% { opacity: 0.95; }
+  89% { opacity: 0.95; }
+  90% { opacity: 0.5; }
+  91% { opacity: 0.9; }
+}
+
+.flicker-emergency {
+  animation: flicker-light 7s infinite;
+}
+
+/* CRT Scanline & noise effects */
+.scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.35) 50%
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+}
+
+/* Blood drip SVG mask & filter */
+.blood-drip-text {
+  text-shadow: 
+    0 0 10px rgba(185, 28, 28, 0.8),
+    0 4px 15px rgba(0, 0, 0, 0.9),
+    2px 2px 2px #000;
+}

@@ -26,6 +26,8 @@
     "dev/**/*.ts",
     "dev/**/*.vue",
     "portfolio/**/*.ts",
-    "portfolio/**/*.vue"
+    "portfolio/**/*.vue",
+    "zombie-game/**/*.ts",
+    "zombie-game/**/*.vue"
   ]
 }
