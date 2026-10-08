@@ -239,6 +239,31 @@ export class WorldManager {
     return this.generator.cities.nearestCity(px, pz);
   }
 
+  /**
+   * Tipo de terreno en el punto (x, z) para físicas de adherencia vehicular.
+   */
+  getTerrainType(x: number, z: number): 'asphalt' | 'dirt' | 'grass' {
+    if (this.generator.cities.cityNear(x, z, 1) || this.generator.highways.near(x, z, 4.5)) {
+      return 'asphalt';
+    }
+    if (this.generator.towns.townNear(x, z, 2.5)) {
+      return 'dirt';
+    }
+    return 'grass';
+  }
+
+  /**
+   * Bioma procedural aproximado en (x, z) para generación de vehículos y ambiente.
+   */
+  getBiomeAt(x: number, z: number): 'city' | 'town' | 'countryside' | 'camp' | 'cabin' {
+    if (this.generator.cities.cityNear(x, z, 8)) return 'city';
+    if (this.generator.towns.townNear(x, z, 12)) return 'town';
+    const cx = Math.floor(x / WORLD.chunkSize);
+    const cz = Math.floor(z / WORLD.chunkSize);
+    if (this.generator.camps.campOfChunk(cx, cz)) return 'camp';
+    return 'countryside';
+  }
+
   dispose() {
     for (const obj of this.chunks.values()) {
       this.scene.remove(obj.group);

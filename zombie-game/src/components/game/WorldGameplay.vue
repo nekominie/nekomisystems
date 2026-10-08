@@ -99,22 +99,62 @@
               </button>
             </div>
 
+            <!-- Selector de Modelo de Vehículo -->
+            <div class="mb-2">
+              <div class="text-[10px] text-stone-400 mb-1 flex justify-between">
+                <span>Catálogo de Vehículos:</span>
+                <span class="text-yellow-400 uppercase text-[9px]">{{ selectedSpawnArchetype }}</span>
+              </div>
+              <select
+                v-model="selectedSpawnArchetype"
+                class="w-full bg-stone-900 border border-stone-700 text-stone-200 text-[11px] p-1 rounded focus:outline-none focus:border-yellow-500"
+              >
+                <option v-for="opt in archetypeOptions" :key="opt.id" :value="opt.id">
+                  {{ opt.label }} - {{ opt.name }}
+                </option>
+              </select>
+            </div>
+
             <!-- Acciones de Carro -->
-            <div class="grid grid-cols-2 gap-1.5 mb-2.5">
+            <div class="grid grid-cols-3 gap-1 mb-2.5">
               <button
                 type="button"
                 class="border border-cyan-800 bg-cyan-950/40 text-cyan-200 py-1 px-1 text-center hover:border-cyan-400 hover:bg-cyan-900/50"
                 @click="debugSpawnCar"
+                title="Genera el modelo seleccionado frente a ti"
               >
-                🚗 Spawnear carro
+                🚗 Spawnear
               </button>
               <button
                 type="button"
                 class="border border-cyan-800 bg-cyan-950/40 text-cyan-200 py-1 px-1 text-center hover:border-cyan-400 hover:bg-cyan-900/50"
                 @click="debugSpawnAndEnterCar"
+                title="Genera y sube inmediatamente al vehículo"
               >
-                ⚡ Spawnear y subir
+                ⚡ Subir
               </button>
+              <button
+                type="button"
+                class="border border-purple-800 bg-purple-950/40 text-purple-200 py-1 px-1 text-center hover:border-purple-400 hover:bg-purple-900/50"
+                @click="debugSpawnProcedural"
+                title="Genera con probabilidades ponderadas del bioma actual"
+              >
+                🎲 Bioma
+              </button>
+            </div>
+
+            <!-- Telemetría en vivo del vehículo conducido -->
+            <div v-if="carHud.driving" class="mb-2.5 p-1.5 bg-stone-900/80 border border-stone-800 rounded-xs text-[9px] space-y-1">
+              <div class="flex justify-between items-center text-yellow-300 font-bold">
+                <span>{{ carHud.name }}</span>
+                <span class="text-[8px] px-1 bg-stone-800 uppercase text-stone-300">{{ carHud.archetype }}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-x-2 text-stone-400">
+                <div>Masa: <b class="text-stone-200">{{ carHud.mass }} kg</b></div>
+                <div>Terreno: <b class="text-stone-200 uppercase">{{ carHud.terrain }}</b></div>
+                <div>Ruido motor: <b class="text-stone-200">{{ Math.round(carHud.noiseRadius) }} m</b></div>
+                <div>Tracc. offroad: <b class="text-stone-200">{{ Math.round(carHud.offroadTraction * 100) }}%</b></div>
+              </div>
             </div>
 
             <!-- Sliders Parametrizables de Empuje -->
@@ -131,7 +171,7 @@
                   type="range"
                   min="0"
                   max="2.0"
-                  step="0.05"
+                  step="0.01"
                   v-model.number="carPushConfig.force"
                   @change="blurInput"
                   @pointerup="blurInput"
@@ -139,7 +179,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0× (sin empuje)</span>
-                  <span>0.65× (realista)</span>
+                  <span>0.05× (predeterminado)</span>
                   <span>2.0× (fuerte)</span>
                 </div>
               </div>
@@ -164,7 +204,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0 m/s (ras de suelo)</span>
-                  <span>0.8 m/s (rasante)</span>
+                  <span>0.1 m/s (rasante)</span>
                   <span>5.0 m/s (vuelo)</span>
                 </div>
               </div>
@@ -181,7 +221,7 @@
                   type="range"
                   min="0"
                   max="1.5"
-                  step="0.05"
+                  step="0.01"
                   v-model.number="carPushConfig.scatter"
                   @change="blurInput"
                   @pointerup="blurInput"
@@ -189,7 +229,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0 (recto)</span>
-                  <span>±0.25</span>
+                  <span>±0.05 (predeterminado)</span>
                   <span>±1.5 (abierto)</span>
                 </div>
               </div>
@@ -206,7 +246,7 @@
                   type="range"
                   min="0"
                   max="6.0"
-                  step="0.5"
+                  step="0.1"
                   v-model.number="carPushConfig.tumble"
                   @change="blurInput"
                   @pointerup="blurInput"
@@ -214,7 +254,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0 (rígido)</span>
-                  <span>2.0 (natural)</span>
+                  <span>0.5 (suave)</span>
                   <span>6.0 (trompo)</span>
                 </div>
               </div>
@@ -329,25 +369,65 @@
       <!-- Tablero del carro (solo al conducir) -->
       <div
         v-if="carHud.driving"
-        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-black/85 border border-stone-700 px-5 py-3 font-mono text-xs flex items-center gap-6"
+        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-black/90 border border-stone-700 px-5 py-3 font-mono text-xs flex items-center gap-6 shadow-2xl rounded-xs"
       >
-        <div class="text-center">
+        <div class="text-center min-w-16">
           <div class="text-3xl font-bold text-stone-100 leading-none">{{ carHud.speed }}</div>
           <div class="text-[10px] text-stone-500 uppercase">km/h</div>
+          <div class="text-[9px] text-stone-400 mt-1 uppercase tracking-wider font-bold">
+            {{ carHud.terrain }}
+          </div>
         </div>
-        <div class="w-44">
-          <div class="flex justify-between text-[10px] uppercase mb-0.5" :class="carHud.fuelPct <= 0.15 ? 'text-red-400' : 'text-stone-400'">
-            <span>⛽ Gasolina</span>
-            <span>{{ carHud.fuel.toFixed(1) }} L</span>
+
+        <div class="flex flex-col gap-1.5 w-52">
+          <!-- Modelo y Estado del Motor -->
+          <div class="flex justify-between items-baseline">
+            <span class="font-bold text-stone-100 text-[11px] truncate">{{ carHud.name }}</span>
+            <span
+              class="text-[9px] px-1 py-0.2 uppercase border"
+              :class="carHud.durability <= 0 ? 'border-red-600 bg-red-950/60 text-red-300' : carHud.engineRunning ? 'border-emerald-600 bg-emerald-950/60 text-emerald-300' : 'border-stone-700 text-stone-500'"
+            >
+              {{ carHud.durability <= 0 ? 'AVERIADO' : carHud.engineRunning ? 'MOTOR ON' : 'MOTOR OFF' }}
+            </span>
           </div>
-          <div class="h-2.5 bg-stone-900 border border-stone-700 overflow-hidden">
-            <div
-              class="h-full"
-              :class="carHud.fuelPct <= 0.15 ? 'bg-red-600' : 'bg-yellow-400'"
-              :style="{ width: `${Math.round(carHud.fuelPct * 100)}%` }"
-            ></div>
+
+          <!-- Barra de Durabilidad / Chasis -->
+          <div>
+            <div class="flex justify-between text-[10px] uppercase mb-0.5" :class="carHud.durabilityPct <= 0.25 ? 'text-red-400' : 'text-stone-400'">
+              <span>🛡️ Chasis</span>
+              <span>{{ Math.round(carHud.durability) }} / {{ carHud.maxDurability }}</span>
+            </div>
+            <div class="h-2 bg-stone-900 border border-stone-700 overflow-hidden">
+              <div
+                class="h-full transition-all duration-150"
+                :class="carHud.durabilityPct <= 0.25 ? 'bg-red-600' : carHud.durabilityPct <= 0.55 ? 'bg-amber-500' : 'bg-emerald-500'"
+                :style="{ width: `${Math.round(carHud.durabilityPct * 100)}%` }"
+              ></div>
+            </div>
           </div>
-          <div v-if="carHud.fuel <= 0" class="mt-1 text-red-400 uppercase animate-pulse">Sin gasolina</div>
+
+          <!-- Barra de Gasolina -->
+          <div>
+            <div class="flex justify-between text-[10px] uppercase mb-0.5" :class="carHud.fuelPct <= 0.15 ? 'text-red-400' : 'text-stone-400'">
+              <span>⛽ Gasolina</span>
+              <span>{{ carHud.fuel.toFixed(1) }} L</span>
+            </div>
+            <div class="h-2 bg-stone-900 border border-stone-700 overflow-hidden">
+              <div
+                class="h-full transition-all duration-100"
+                :class="carHud.fuelPct <= 0.15 ? 'bg-red-600' : 'bg-yellow-400'"
+                :style="{ width: `${Math.round(carHud.fuelPct * 100)}%` }"
+              ></div>
+            </div>
+          </div>
+
+          <!-- Alerta de zombis por ruido de motor -->
+          <div v-if="carHud.engineRunning" class="text-[9px] text-stone-400 flex justify-between">
+            <span>Alerta sonora:</span>
+            <span :class="carHud.noiseRadius > 25 ? 'text-amber-400 font-bold' : 'text-stone-300'">
+              {{ Math.round(carHud.noiseRadius) }} m
+            </span>
+          </div>
         </div>
       </div>
 
@@ -434,8 +514,35 @@ const debugWeapons = allWeaponDefs().map((d) => ({
 const hitMark = ref<{ text: string; tone: 'hit' | 'head' | 'kill' } | null>(null);
 type Tone = 'ok' | 'bad' | 'info';
 const prompt = ref<{ text: string; tone: Tone } | null>(null);
+import type { VehicleArchetype } from '../../game/vehicles';
+
+const selectedSpawnArchetype = ref<VehicleArchetype>('sedan');
+const archetypeOptions: { id: VehicleArchetype; label: string; name: string }[] = [
+  { id: 'compact', label: '🚙 Compacto', name: 'Mini Hatchback' },
+  { id: 'sedan', label: '🚗 Sedán', name: 'Sedán Clásico' },
+  { id: 'offroad', label: '🛻 4x4 Offroad', name: 'Pickup 4x4 Sierra' },
+  { id: 'truck', label: '🚛 Camión', name: 'Camión de Carga' },
+  { id: 'sport', label: '🏎️ Deportivo', name: 'Coupé V8' },
+  { id: 'emergency', label: '🚑 Emergencia', name: 'Ambulancia Rural' },
+];
+
 const toast = ref('');
-const carHud = reactive({ driving: false, speed: 0, fuel: 0, fuelPct: 0 });
+const carHud = reactive({
+  driving: false,
+  speed: 0,
+  fuel: 0,
+  fuelPct: 0,
+  name: '—',
+  archetype: 'sedan',
+  durability: 100,
+  maxDurability: 100,
+  durabilityPct: 1,
+  engineRunning: false,
+  noiseRadius: 0,
+  terrain: 'asphalt',
+  mass: 1400,
+  offroadTraction: 0.55,
+});
 const refuelHud = reactive({ active: false, added: 0, pct: 0, left: 0 });
 const seed = ref(newSeed());
 const hud = reactive({ x: 0, z: 0, cx: 0, cz: 0, chunks: 0, city: '—', zombies: 0, kills: 0, clock: '06:00', night: false });
@@ -554,6 +661,11 @@ function startWorld(newSeedValue: number) {
   zombies = new ZombieManager(scene, world);
   zombies.carPushConfig = carPushConfig;
   vehicles = new VehicleManager(scene, world);
+  vehicles.onPlayerDamaged = (damage: number) => {
+    playerHealth.value = Math.max(0, playerHealth.value - damage);
+    showToast(`¡Impacto crítico! -${damage} Salud por colisión violenta`);
+    showHitMark(`-${damage}`, 'kill');
+  };
   refuel = new RefuelSession(scene, world);
   player.x = 0;
   player.z = 0;
@@ -859,10 +971,10 @@ function debugSpawnCar() {
   if (!vehicles) return;
   const fx = Math.sin(player.rot);
   const fz = Math.cos(player.rot);
-  const spawnX = player.x + fx * 3.8;
-  const spawnZ = player.z + fz * 3.8;
-  vehicles.spawnCar(spawnX, spawnZ, player.rot);
-  showToast('Carro utilizable creado (F para entrar)');
+  const spawnX = player.x + fx * 4.0;
+  const spawnZ = player.z + fz * 4.0;
+  const dc = vehicles.spawnCar(spawnX, spawnZ, player.rot, selectedSpawnArchetype.value);
+  showToast(`${dc.config.name} (${dc.config.archetype}) creado (F para entrar)`);
   sound.playPlayClick();
 }
 
@@ -873,11 +985,23 @@ function debugSpawnAndEnterCar() {
   const fz = Math.cos(player.rot);
   const spawnX = player.x + fx * 1.5;
   const spawnZ = player.z + fz * 1.5;
-  const dc = vehicles.spawnCar(spawnX, spawnZ, player.rot);
+  const dc = vehicles.spawnCar(spawnX, spawnZ, player.rot, selectedSpawnArchetype.value);
   vehicles.enter({ id: dc.id, status: 'open', d: 0, owned: dc });
   if (playerMesh) playerMesh.visible = false;
   carHud.driving = true;
-  showToast('¡Carro abordado! Conduce con WASD');
+  showToast(`¡Abordaste ${dc.config.name}! Conduce con WASD / Espacio`);
+  sound.playPlayClick();
+}
+
+function debugSpawnProcedural() {
+  if (!vehicles || !world) return;
+  const biome = world.getBiomeAt(player.x, player.z);
+  const fx = Math.sin(player.rot);
+  const fz = Math.cos(player.rot);
+  const spawnX = player.x + fx * 4.0;
+  const spawnZ = player.z + fz * 4.0;
+  const dc = vehicles.spawnProcedural(biome, spawnX, spawnZ, player.rot);
+  showToast(`${dc.config.name} [${dc.lockState.toUpperCase()}] generado en bioma "${biome}"`);
   sound.playPlayClick();
 }
 
@@ -1023,6 +1147,11 @@ function loop(now: number) {
     player.x = drv.x;
     player.z = drv.z;
     player.rot = drv.heading;
+
+    // Alerta zombis circundantes por el radio de ruido dinámico del motor
+    if (drv.currentNoiseRadius > 0 && frame % 12 === 0) {
+      zombies?.alertNoise(drv.x, drv.z, drv.currentNoiseRadius);
+    }
   }
 
   // Recarga de gasolina (si la hay): consume la estación, llena el tanque y anima el chorro
@@ -1141,6 +1270,16 @@ function loop(now: number) {
       carHud.speed = Math.round(Math.abs(drv.speed) * 3.6);
       carHud.fuel = drv.fuel;
       carHud.fuelPct = drv.fuelFraction;
+      carHud.name = drv.config.name;
+      carHud.archetype = drv.config.archetype;
+      carHud.durability = drv.currentDurability;
+      carHud.maxDurability = drv.config.maxDurability;
+      carHud.durabilityPct = drv.durabilityFraction;
+      carHud.engineRunning = drv.isEngineRunning;
+      carHud.noiseRadius = drv.currentNoiseRadius;
+      carHud.terrain = world.getTerrainType(drv.x, drv.z);
+      carHud.mass = drv.config.mass;
+      carHud.offroadTraction = drv.config.offroadTractionMultiplier;
     }
   }
 

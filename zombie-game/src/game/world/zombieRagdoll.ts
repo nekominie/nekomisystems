@@ -133,7 +133,7 @@ export class ZombieRagdoll {
           impulse.z * factor,
         );
         // Torsión angular ajustable para rotar al caer
-        const t = tumble ?? 2.0;
+        const t = tumble ?? 0.5;
         body.angularVelocity.set(
           (Math.random() - 0.5) * t * 2,
           (Math.random() - 0.5) * t * 2,
@@ -174,7 +174,7 @@ export class ZombieRagdoll {
   /** Aplica un impulso cinético (p. ej. si un carro atropella un cadáver en el suelo) */
   applyImpulse(impulse: THREE.Vector3, tumble?: number) {
     this.settled = false;
-    const t = tumble ?? 2.0;
+    const t = tumble ?? 0.5;
     for (const { body } of this.boneBodies.values()) {
       body.wakeUp();
       body.velocity.x += impulse.x;

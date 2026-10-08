@@ -78,10 +78,10 @@ export interface CarPushConfig {
 }
 
 export const DEFAULT_CAR_PUSH_CONFIG: CarPushConfig = {
-  force: 0.65,
-  lift: 0.8,
-  scatter: 0.25,
-  tumble: 2.0,
+  force: 0.05,
+  lift: 0.1,
+  scatter: 0.05,
+  tumble: 0.5,
 };
 
 const ZOMBIE = {
@@ -179,6 +179,8 @@ interface Zombie {
   hit: THREE.Mesh;
   baseScale: number;
   ragdoll?: ZombieRagdoll | null;
+  carAttackTimer?: number;
+  carHitCooldown?: number;
 }
 
 export class ZombieManager {
@@ -212,7 +214,7 @@ export class ZombieManager {
   kills = 0;
 
   update(dt: number, px: number, pz: number, drv?: DrivableCar | null) {
-    if (drv) this.checkCarCollisions(drv);
+    if (drv) this.checkCarCollisions(drv, dt);
     this.ragdolls.update(dt);
     if (!this.assets) return; // los zombis aparecen cuando el modelo ya está cargado
 
@@ -481,9 +483,8 @@ export class ZombieManager {
    * Detecta atropellos con el vehículo en movimiento.
    * Empuja y convierte en ragdoll a los zombis según los parámetros configurables.
    */
-  private checkCarCollisions(drv: DrivableCar) {
+  private checkCarCollisions(drv: DrivableCar, dt: number) {
     const spd = Math.abs(drv.speed);
-    if (spd < 1.0) return; // Rodando a menos de 1 m/s no arrolla
 
     const fx = Math.sin(drv.heading);
     const fz = Math.cos(drv.heading);
@@ -497,6 +498,11 @@ export class ZombieManager {
     const cfg = this.carPushConfig;
 
     for (const z of this.zombies) {
+      // Disminuir enfriamiento de impacto de este zombi si está activo
+      if (z.carHitCooldown !== undefined && z.carHitCooldown > 0) {
+        z.carHitCooldown -= dt;
+      }
+
       const dx = z.x - drv.x;
       const dz = z.z - drv.z;
       if (Math.hypot(dx, dz) > maxReach) continue;
@@ -506,30 +512,57 @@ export class ZombieManager {
       const localRight = dx * rx + dz * rz;
 
       if (Math.abs(localForward) < halfL && Math.abs(localRight) < halfW) {
-        // Velocidad lineal del carro en el mundo
-        const vx = fx * drv.speed;
-        const vz = fz * drv.speed;
-
-        // Vector de empuje dictado directamente por los sliders configurables
-        const impulse = new THREE.Vector3(
-          vx * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
-          cfg.lift,
-          vz * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
-        );
-
-        if (z.dead) {
-          // Si ya era un cadáver y lo atropella, lo proyecta de nuevo
-          z.ragdoll?.applyImpulse(impulse, cfg.tumble);
+        if (spd < 1.0) {
+          // Si el vehículo está detenido o rodando muy despacio (< 1 m/s), los zombis vivos atacan
+          if (!z.dead) {
+            z.carAttackTimer = (z.carAttackTimer ?? (0.2 + Math.random() * 0.6)) - dt;
+            if (z.carAttackTimer <= 0) {
+              // Cada zombi ataca con un intervalo pausado (1.0 a 1.4s)
+              z.carAttackTimer = 1.0 + Math.random() * 0.4;
+              drv.onAttackedByZombie(1.2);
+            }
+          }
           continue;
         }
 
-        // Atropello mortal
-        z.health = 0;
-        this.kill(z, impulse, cfg.tumble);
-        this.kills++;
+        // Si ya era un cadáver y el coche pasa por encima:
+        if (z.dead) {
+          // Proyectar ragdoll si aún se mueve, pero NUNCA desgastar el coche ni frenarlo bruscamente
+          const corpseImpulse = new THREE.Vector3(
+            fx * drv.speed * 0.25 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
+            cfg.lift * 0.35,
+            fz * drv.speed * 0.25 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
+          );
+          z.ragdoll?.applyImpulse(corpseImpulse, cfg.tumble);
+          continue;
+        }
 
-        // Amortiguación ligera en el carro al colisionar con la masa de los zombis
-        drv.speed *= 0.94;
+        // Zombi VIVO atropellado a velocidad (spd >= 1.0):
+        if ((z.carHitCooldown ?? 0) > 0) {
+          continue;
+        }
+        z.carHitCooldown = 0.5; // Evita acumular impactos en múltiples frames continuos
+
+        // Atropello cinético: calcula daño al zombi, desgaste moderado, abolladura y vector de empuje
+        const hitResult = drv.onHitZombie(z, drv.speed, localRight);
+
+        const impulse = new THREE.Vector3(
+          hitResult.impulse.x * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
+          cfg.lift,
+          hitResult.impulse.z * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
+        );
+
+        // A velocidades normales de marcha (> 1.8 m/s), el impacto arrolla y elimina al zombi
+        if (spd >= 1.8) {
+          z.health = 0;
+        } else {
+          z.health = Math.max(0, z.health - hitResult.zombieDamage);
+        }
+
+        if (z.health <= 0) {
+          this.kill(z, impulse, cfg.tumble);
+          this.kills++;
+        }
       }
     }
   }
