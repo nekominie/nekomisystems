@@ -26,8 +26,8 @@
     <div ref="container" class="relative flex-1 overflow-hidden">
       <canvas ref="gameCanvas" class="w-full h-full block cursor-crosshair"></canvas>
 
-      <!-- Menú de debug de armas (Tab). mousedown.prevent evita que los botones roben el foco del teclado -->
-      <div class="absolute top-3 right-4 z-30 flex flex-col items-end gap-2" @mousedown.prevent>
+      <!-- Menú de debug de armas y físicas (Tab). onDebugMouseDown evita que los botones roben el foco del teclado sin bloquear los sliders -->
+      <div class="absolute top-3 right-4 z-30 flex flex-col items-end gap-2" @mousedown="onDebugMouseDown">
         <button
           type="button"
           class="px-3 py-1 text-[11px] font-mono font-bold uppercase border bg-black/80"
@@ -133,6 +133,8 @@
                   max="2.0"
                   step="0.05"
                   v-model.number="carPushConfig.force"
+                  @change="blurInput"
+                  @pointerup="blurInput"
                   class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
@@ -156,6 +158,8 @@
                   max="5.0"
                   step="0.1"
                   v-model.number="carPushConfig.lift"
+                  @change="blurInput"
+                  @pointerup="blurInput"
                   class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
@@ -179,6 +183,8 @@
                   max="1.5"
                   step="0.05"
                   v-model.number="carPushConfig.scatter"
+                  @change="blurInput"
+                  @pointerup="blurInput"
                   class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
@@ -202,6 +208,8 @@
                   max="6.0"
                   step="0.5"
                   v-model.number="carPushConfig.tumble"
+                  @change="blurInput"
+                  @pointerup="blurInput"
                   class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
@@ -825,6 +833,20 @@ function debugClearZombies() {
 function debugReset() {
   arsenal = makeArsenal();
   showToast('Inventario reiniciado');
+}
+
+function onDebugMouseDown(e: MouseEvent) {
+  e.stopPropagation();
+  const target = e.target as HTMLElement | null;
+  // Previene que los botones roben el foco del teclado (para mantener WASD y Espacio activos),
+  // pero permite la interacción nativa con los sliders (<input type="range">) y el scroll del panel.
+  if (target?.closest('button')) {
+    e.preventDefault();
+  }
+}
+
+function blurInput(e: Event) {
+  (e.target as HTMLElement | null)?.blur();
 }
 
 function resetPushSliders() {
