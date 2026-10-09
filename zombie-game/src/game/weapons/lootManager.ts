@@ -14,28 +14,45 @@ export interface LootEntry {
 }
 
 /**
- * Tablas de botín. Referencian armas por id; las que todavía no están implementadas (hacha, SMG,
- * francotirador de asalto) caen a la equivalente existente, y pasan a usarse solas en cuanto se
+ * Tablas de botín. Referencian armas por id; las que todavía no están implementadas
+ * caen a la equivalente existente (`fallback`), y pasan a usarse solas en cuanto se
  * registre el arma con ese id.
  */
 export const DEFAULT_LOOT_TABLES: Record<ContainerType, LootEntry[]> = {
-  // Suelo de zonas residenciales: cuerpo a cuerpo 60%, pistola 30%, escopeta 10%
+  // Suelo residencial: inicio (melee común, pistolas básicas, alguna escopeta)
   residential_ground: [
-    { weight: 60, weapon: WEAPON_IDS.bat },
-    { weight: 30, weapon: WEAPON_IDS.pistol },
-    { weight: 10, weapon: WEAPON_IDS.shotgun },
+    { weight: 40, weapon: WEAPON_IDS.bat },
+    { weight: 22, weapon: WEAPON_IDS.combatKnife },
+    { weight: 12, weapon: WEAPON_IDS.pipeWrench },
+    { weight: 22, weapon: WEAPON_IDS.pistol },
+    { weight: 6, weapon: WEAPON_IDS.pistolSuppressed },
+    { weight: 6, weapon: WEAPON_IDS.revolver357 },
+    { weight: 8, weapon: WEAPON_IDS.shotgun },
+    { weight: 4, weapon: WEAPON_IDS.shotgunSawed },
   ],
-  // Cabañas rurales: hachas 40%, rifle de caza 35%, escopeta 25%
+  // Cabañas rurales: melee pesado, caza y escopetas clásicas
   cabin_rural: [
-    { weight: 40, weapon: 'axe', fallback: WEAPON_IDS.bat },
-    { weight: 35, weapon: WEAPON_IDS.huntingRifle },
-    { weight: 25, weapon: WEAPON_IDS.shotgun },
+    { weight: 30, weapon: WEAPON_IDS.fireAxe },
+    { weight: 8, weapon: WEAPON_IDS.katana },
+    { weight: 6, weapon: WEAPON_IDS.combatKnife },
+    { weight: 24, weapon: WEAPON_IDS.huntingRifle },
+    { weight: 14, weapon: WEAPON_IDS.shotgun },
+    { weight: 12, weapon: WEAPON_IDS.shotgunDouble },
+    { weight: 8, weapon: WEAPON_IDS.rifleCarbine },
   ],
-  // Cajas militares: rifles de asalto 50%, SMG 30%, francotirador 20%
+  // Cajas militares: automáticas, SMG, tácticas y rarezas (.50, Desert)
   military_crate: [
-    { weight: 50, weapon: WEAPON_IDS.assaultRifle },
-    { weight: 30, weapon: 'smg', fallback: WEAPON_IDS.assaultRifle },
-    { weight: 20, weapon: 'sniper_rifle', fallback: WEAPON_IDS.huntingRifle },
+    { weight: 26, weapon: WEAPON_IDS.assaultRifle },
+    { weight: 16, weapon: WEAPON_IDS.rifleScar },
+    { weight: 12, weapon: WEAPON_IDS.rifleBurst },
+    { weight: 12, weapon: WEAPON_IDS.smgMac10 },
+    { weight: 10, weapon: WEAPON_IDS.smgTommy },
+    { weight: 10, weapon: WEAPON_IDS.smgP90 },
+    { weight: 8, weapon: WEAPON_IDS.shotgunSpas },
+    { weight: 8, weapon: WEAPON_IDS.sniperMarksman },
+    { weight: 6, weapon: WEAPON_IDS.pistolDesert },
+    { weight: 4, weapon: WEAPON_IDS.revolver357 },
+    { weight: 3, weapon: WEAPON_IDS.sniperHeavy50 },
   ],
 };
 

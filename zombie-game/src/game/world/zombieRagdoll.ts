@@ -41,6 +41,98 @@ const BONE_LINKS: [string, string][] = [
   ['RightUpLeg', 'RightLeg'],
 ];
 
+/**
+ * Perfil de impacto por hueso: el paragolpes golpea a la altura de las
+ * piernas, así que las piernas salen despedidas primero, el torso pivota
+ * sobre ellas y la cabeza/brazos flamean por inercia. Sin este diferencial
+ * todos los cuerpos recibían la misma velocidad y el cuerpo volaba como un
+ * bloque rígido en la pose de caminar congelada.
+ * fwd/up = multiplicador sobre el impulso; rand = dispersión propia;
+ * spin = multiplicador de giro (brazos/antebrazos giran más).
+ */
+const IMPACT_PROFILE: Record<string, { fwd: number; up: number; rand: number; spin: number }> = {
+  Hips: { fwd: 1.0, up: 1.0, rand: 0.25, spin: 1.0 },
+  Spine: { fwd: 0.88, up: 1.12, rand: 0.3, spin: 1.1 },
+  Spine1: { fwd: 0.82, up: 1.15, rand: 0.35, spin: 1.2 },
+  Spine2: { fwd: 0.78, up: 1.18, rand: 0.35, spin: 1.2 },
+  Head: { fwd: 0.62, up: 1.28, rand: 0.55, spin: 1.6 },
+  LeftArm: { fwd: 0.7, up: 1.1, rand: 0.8, spin: 1.8 },
+  LeftForeArm: { fwd: 0.6, up: 1.0, rand: 1.1, spin: 2.2 },
+  RightArm: { fwd: 0.7, up: 1.1, rand: 0.8, spin: 1.8 },
+  RightForeArm: { fwd: 0.6, up: 1.0, rand: 1.1, spin: 2.2 },
+  LeftUpLeg: { fwd: 1.28, up: 0.9, rand: 0.3, spin: 1.1 },
+  LeftLeg: { fwd: 1.38, up: 0.7, rand: 0.4, spin: 1.3 },
+  RightUpLeg: { fwd: 1.28, up: 0.9, rand: 0.3, spin: 1.1 },
+  RightLeg: { fwd: 1.38, up: 0.7, rand: 0.4, spin: 1.3 },
+};
+
+const LIMB_FLAIL_KEYS = new Set(['LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftLeg', 'RightLeg', 'Head']);
+
+/** Velocidad de seguridad para no explotar el solver con diferenciales grandes. */
+const MAX_BODY_SPEED = 26;
+
+/**
+ * Aplica el impulso del carro a UN cuerpo con perfil diferencial por hueso.
+ * Se llama en la creación (set = fija velocidad inicial distinta por hueso)
+ * o en re-empujes (add = suma sobre la velocidad actual).
+ */
+function applyCarImpulseToBody(
+  body: CANNON.Body,
+  key: string,
+  impulse: THREE.Vector3,
+  tumble: number | undefined,
+  mode: 'set' | 'add',
+) {
+  const p = IMPACT_PROFILE[key] ?? { fwd: 1.0, up: 1.0, rand: 0.4, spin: 1.2 };
+  const impLen = Math.hypot(impulse.x, impulse.y, impulse.z);
+  // Jitter lateral propio por hueso: a más velocidad, más caos entre miembros.
+  const jitterScale = 2 + impLen * 0.28;
+  const jx = (Math.random() - 0.5) * 2 * p.rand * jitterScale * 0.45;
+  const jz = (Math.random() - 0.5) * 2 * p.rand * jitterScale * 0.45;
+  const jy = (Math.random() - 0.5) * p.rand * (1 + impLen * 0.12);
+
+  let vx = impulse.x * p.fwd + jx;
+  let vy = impulse.y * p.up + jy;
+  let vz = impulse.z * p.fwd + jz;
+  const sp = Math.hypot(vx, vy, vz);
+  if (sp > MAX_BODY_SPEED) {
+    const k = MAX_BODY_SPEED / sp;
+    vx *= k;
+    vy *= k;
+    vz *= k;
+  }
+
+  if (mode === 'set') {
+    body.velocity.set(vx, vy, vz);
+  } else {
+    body.velocity.x += vx;
+    body.velocity.y += vy;
+    body.velocity.z += vz;
+  }
+
+  // Giro: base aleatoria por miembro + voltereta hacia adelante alrededor del
+  // eje lateral del coche (las piernas salen primero y el torso pivota).
+  const t = tumble ?? 3.0;
+  const hLen = Math.max(0.001, Math.hypot(impulse.x, impulse.z));
+  const dirX = impulse.x / hLen;
+  const dirZ = impulse.z / hLen;
+  // Eje lateral (derecha del coche) = perpendicular a la marcha.
+  const rightX = dirZ;
+  const rightZ = -dirX;
+  const flipMag = Math.min(9, impLen * 0.5) * (0.6 + Math.random() * 0.8) * (Math.random() < 0.75 ? 1 : -1);
+  const rx = (Math.random() - 0.5) * t * 2 * p.spin + rightX * flipMag;
+  const ry = (Math.random() - 0.5) * t * 2 * p.spin;
+  const rz = (Math.random() - 0.5) * t * 2 * p.spin + rightZ * flipMag;
+
+  if (mode === 'set') {
+    body.angularVelocity.set(rx, ry, rz);
+  } else {
+    body.angularVelocity.x += rx * 0.6;
+    body.angularVelocity.y += ry * 0.6;
+    body.angularVelocity.z += rz * 0.6;
+  }
+}
+
 interface BoneEntry {
   key: string;
   body: CANNON.Body;
@@ -67,6 +159,26 @@ export class ZombieRagdoll {
     tumble?: number,
   ) {
     this.build(impulse, tumble);
+  }
+
+  public get isSettled(): boolean {
+    return this.settled;
+  }
+
+  public get age(): number {
+    return this.lifeTime;
+  }
+
+  public get disposed(): boolean {
+    return this.isDisposed;
+  }
+
+  public getHipsPosition(): { x: number; z: number } | null {
+    const hips = this.boneBodies.get('Hips');
+    if (hips && Number.isFinite(hips.body.position.x) && Number.isFinite(hips.body.position.z)) {
+      return { x: hips.body.position.x, z: hips.body.position.z };
+    }
+    return null;
   }
 
   private findBone(names: string[]): THREE.Bone | undefined {
@@ -118,27 +230,18 @@ export class ZombieRagdoll {
       });
       body.quaternion.set(boneQuat.x, boneQuat.y, boneQuat.z, boneQuat.w);
 
-      body.linearDamping = 0.35;
-      body.angularDamping = 0.65;
+      // En el aire queremos flameo (poco freno); en el suelo la fricción
+      // del material ya lo detiene y el settled pone a dormir los cuerpos.
+      body.linearDamping = 0.06;
+      body.angularDamping = 0.24;
       body.collisionFilterGroup = 2; // Grupo de zombis
       body.collisionFilterMask = 1; // Choca exclusivamente con el suelo (1)
 
-      // Aplicar impulso si fue atropellado o disparado
+      // Impulso DIFERENCIAL desde el primer frame: cada hueso recibe una
+      // velocidad distinta según la altura del paragolpes + jitter propio,
+      // así el cuerpo se desarma en el aire en vez de viajar congelado.
       if (impulse) {
-        // Ligera variación por masa/extremidad
-        const factor = cfg.key === 'Hips' || cfg.key === 'Spine2' ? 1.0 : 0.85;
-        body.velocity.set(
-          impulse.x * factor,
-          impulse.y * factor,
-          impulse.z * factor,
-        );
-        // Torsión angular ajustable para rotar al caer
-        const t = tumble ?? 0.5;
-        body.angularVelocity.set(
-          (Math.random() - 0.5) * t * 2,
-          (Math.random() - 0.5) * t * 2,
-          (Math.random() - 0.5) * t * 2,
-        );
+        applyCarImpulseToBody(body, cfg.key, impulse, tumble);
       }
 
       this.world.addBody(body);
@@ -174,15 +277,9 @@ export class ZombieRagdoll {
   /** Aplica un impulso cinético (p. ej. si un carro atropella un cadáver en el suelo) */
   applyImpulse(impulse: THREE.Vector3, tumble?: number) {
     this.settled = false;
-    const t = tumble ?? 0.5;
-    for (const { body } of this.boneBodies.values()) {
-      body.wakeUp();
-      body.velocity.x += impulse.x;
-      body.velocity.y += impulse.y;
-      body.velocity.z += impulse.z;
-      body.angularVelocity.x += (Math.random() - 0.5) * t * 2;
-      body.angularVelocity.y += (Math.random() - 0.5) * t * 2;
-      body.angularVelocity.z += (Math.random() - 0.5) * t * 2;
+    for (const entry of this.boneBodies.values()) {
+      entry.body.wakeUp();
+      applyCarImpulseToBody(entry.body, entry.key, impulse, tumble, 'add');
     }
   }
 
@@ -191,17 +288,42 @@ export class ZombieRagdoll {
     this.lifeTime += dt;
 
     if (!this.settled) {
-      // Verificar si ya reposó en el suelo
+      // Verificar si ya reposó en el suelo (caderas bajas y casi quietas).
+      // El timeout (4.5 s) garantiza que un cuerpo que rueda cuesta abajo o
+      // queda apoyado raro también se marque como reposado y pueda levantarse.
       const hips = this.boneBodies.get('Hips');
       if (hips) {
         const vel = hips.body.velocity.length();
         const y = hips.body.position.y;
-        if ((vel < 0.12 && y < 0.4 && this.lifeTime > 0.8) || this.lifeTime > 4.5) {
+        if (!Number.isFinite(vel) || !Number.isFinite(y)) {
+          this.settled = true;
+        } else if ((vel < 0.35 && y < 0.6 && this.lifeTime > 0.8) || this.lifeTime > 4.5) {
           this.settled = true;
           // Poner a dormir los cuerpos para liberar CPU
           for (const { body } of this.boneBodies.values()) {
-            body.sleep();
+            try {
+              body.sleep();
+            } catch {
+              /* cuerpo ya eliminado */
+            }
           }
+        }
+      } else if (this.lifeTime > 1.0) {
+        this.settled = true;
+      }
+      // Flameo en vuelo: durante los primeros ~0.75 s los brazos/piernas/
+      // cabeza reciben micro-patadas angulares para que la pose no viaje
+      // congelada; al acercarse al suelo el damping + fricción lo calman.
+      if (!this.settled && this.lifeTime < 0.75) {
+        const kick = dt * 11;
+        for (const entry of this.boneBodies.values()) {
+          if (!LIMB_FLAIL_KEYS.has(entry.key)) continue;
+          const b = entry.body;
+          // No despertar cuerpos dormidos ni mover cadáveres ya quietos.
+          if (b.sleepState === CANNON.Body.SLEEPING) continue;
+          b.angularVelocity.x += (Math.random() - 0.5) * kick * 2.2;
+          b.angularVelocity.y += (Math.random() - 0.5) * kick * 1.4;
+          b.angularVelocity.z += (Math.random() - 0.5) * kick * 2.2;
         }
       }
       this.syncPhysicsToBones();
@@ -318,8 +440,11 @@ export class RagdollManager {
 
     if (!skeleton) return null;
 
-    // Limitar ragdolls simultáneos activos para rendimiento óptimo
-    if (this.ragdolls.length > 24) {
+    // Limitar ragdolls simultáneos por rendimiento. 48 cubre una horda
+    // atropellada + cadáveres recientes; los tumbados se recuperan en ~2-3 s
+    // y liberan su slot, así que raramente se expulsa un cuerpo activo.
+    // Si se expulsa, ZombieManager lo recupera por timeout (downTime > 6 s).
+    if (this.ragdolls.length > 48) {
       const oldest = this.ragdolls.shift();
       oldest?.dispose();
     }

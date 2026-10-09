@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { disposeMikuInstance, instantiateMiku, loadMikuTemplate, type MikuInstance } from './mikuAssets';
-import { loadAnimation } from './animationAssets';
+import { loadAnimation, splitClip } from './animationAssets';
 
 /** Velocidad base de referencia (m/s) para ajustar la cadencia de pasos. */
 const WALK_CLIP_SPEED = 1.4;
@@ -26,8 +26,6 @@ export type ActionClip =
   | 'punch'
   | 'kick'
   | 'elbow'
-  | 'hit_reaction'
-  | 'hit_reaction_2'
   | 'death';
 
 export interface LocomotionInput {
@@ -41,28 +39,40 @@ export interface LocomotionInput {
   isStealth?: boolean;
   isAiming: boolean;
   isReloading: boolean;
+  /** Duración total de la recarga en curso (s). Sirve para calzar los brazos con el arma. 0 = desconocida. */
+  reloadDuration?: number;
   hasGun: boolean;
   isBlocking: boolean;
 }
 
 /**
  * Controlador de animación dinámico para el personaje.
- * Reacciona a la cámara, velocidad, dirección de desplazamiento (strafe, retroceso),
- * acciones de combate, recarga y reacciones a impactos.
+ * Reacciona a la cámara, velocidad, dirección de desplazamiento,
+ * acciones de combate cuerpo a cuerpo y recarga. Sin animación de daño:
+ * el daño se comunica con sangre en pantalla, nunca interrumpe la marcha.
  */
 export class PlayerAvatar {
   readonly root: THREE.Group;
   private inst: MikuInstance;
   private mixer: THREE.AnimationMixer;
 
-  // Acciones de animación cacheadas
-  private locomotionActions = new Map<LocomotionClip, THREE.AnimationAction>();
-  private actionActions = new Map<ActionClip, THREE.AnimationAction>();
+  // Acciones de animación cacheadas (separadas por tren superior e inferior)
+  private lowerLocomotionActions = new Map<LocomotionClip, THREE.AnimationAction>();
+  private upperLocomotionActions = new Map<LocomotionClip, THREE.AnimationAction>();
+  
+  private lowerActionActions = new Map<ActionClip, THREE.AnimationAction>();
+  private upperActionActions = new Map<ActionClip, THREE.AnimationAction>();
 
-  private currentLocomotion: LocomotionClip = 'idle';
+  private currentLowerLocomotion: LocomotionClip = 'idle';
+  private currentUpperLocomotion: LocomotionClip = 'idle';
   private activeAction: ActionClip | null = null;
   private actionTimer = 0;
   private isDead = false;
+  /** Duración original de cada clip de locomoción (para calzar recargas). */
+  private locomotionDurations = new Map<LocomotionClip, number>();
+  /** Materiales originales durante el resplandor de resurrección. */
+  private reviveMats: { mesh: THREE.Mesh; orig: THREE.Material | THREE.Material[] }[] = [];
+  private reviveLight: THREE.PointLight | null = null;
 
   private constructor(
     inst: MikuInstance,
@@ -75,23 +85,37 @@ export class PlayerAvatar {
 
     // Registrar clips de locomoción (en loop)
     for (const [key, clip] of Object.entries(locomotionClips) as [LocomotionClip, THREE.AnimationClip][]) {
-      const action = this.mixer.clipAction(clip);
-      action.setLoop(THREE.LoopRepeat, Infinity);
-      this.locomotionActions.set(key, action);
+      this.locomotionDurations.set(key, clip.duration);
+      const { upper, lower } = splitClip(clip);
+      
+      const lowerAction = this.mixer.clipAction(lower);
+      lowerAction.setLoop(THREE.LoopRepeat, Infinity);
+      this.lowerLocomotionActions.set(key, lowerAction);
+
+      const upperAction = this.mixer.clipAction(upper);
+      upperAction.setLoop(THREE.LoopRepeat, Infinity);
+      this.upperLocomotionActions.set(key, upperAction);
     }
 
     // Registrar clips de acción (un solo disparo)
     for (const [key, clip] of Object.entries(actionClips) as [ActionClip, THREE.AnimationClip][]) {
-      const action = this.mixer.clipAction(clip);
-      action.setLoop(THREE.LoopOnce, 1);
-      action.clampWhenFinished = true;
-      this.actionActions.set(key, action);
+      const { upper, lower } = splitClip(clip);
+
+      const lowerAction = this.mixer.clipAction(lower);
+      lowerAction.setLoop(THREE.LoopOnce, 1);
+      lowerAction.clampWhenFinished = true;
+      this.lowerActionActions.set(key, lowerAction);
+
+      const upperAction = this.mixer.clipAction(upper);
+      upperAction.setLoop(THREE.LoopOnce, 1);
+      upperAction.clampWhenFinished = true;
+      this.upperActionActions.set(key, upperAction);
     }
 
-    const initial = this.locomotionActions.get('idle');
-    if (initial) {
-      initial.play();
-    }
+    const initialLower = this.lowerLocomotionActions.get('idle');
+    const initialUpper = this.upperLocomotionActions.get('idle');
+    if (initialLower) initialLower.play();
+    if (initialUpper) initialUpper.play();
   }
 
   static async load(): Promise<PlayerAvatar> {
@@ -116,8 +140,6 @@ export class PlayerAvatar {
       punchClip,
       kickClip,
       elbowClip,
-      hit1Clip,
-      hit2Clip,
       deathClip,
     ] = await Promise.all([
       loadAnimation('idle'),
@@ -136,8 +158,6 @@ export class PlayerAvatar {
       loadAnimation('punetazo'),
       loadAnimation('patada_derecha'),
       loadAnimation('golpes_codo'),
-      loadAnimation('reaccion_golpe'),
-      loadAnimation('reaccion_golpe_2'),
       loadAnimation('muerte'),
     ]);
 
@@ -165,8 +185,6 @@ export class PlayerAvatar {
       punch: punchClip,
       kick: kickClip,
       elbow: elbowClip,
-      hit_reaction: hit1Clip,
-      hit_reaction_2: hit2Clip,
       death: deathClip,
     };
 
@@ -179,68 +197,97 @@ export class PlayerAvatar {
   setLocomotion(input: LocomotionInput) {
     if (this.isDead) return;
 
-    let targetClip: LocomotionClip = 'idle';
+    let targetLower: LocomotionClip = 'idle';
+    let targetUpper: LocomotionClip = 'idle';
 
-    if (input.isBlocking) {
-      targetClip = 'block';
-    } else if (input.isReloading && input.moving) {
-      targetClip = input.isSprinting ? 'run_reload' : 'walk_reload';
-    } else if (!input.moving) {
-      if (input.turnDirection === 'left') {
-        targetClip = 'turn_left';
-      } else if (input.turnDirection === 'right') {
-        targetClip = 'turn_right';
-      } else {
-        targetClip = 'idle';
-      }
+    const absDiff = Math.abs(input.moveHeadingDiff);
+    const forward = absDiff <= Math.PI * 0.35;
+
+    // 1. Tren inferior: las piernas dependen SOLO de la marcha (caminar, correr,
+    // sigilo), nunca de la dirección ni de la pose de apuntar. Así no hay
+    // agachones al girar la vista: de lado o de espaldas las piernas hacen el
+    // mismo ciclo de marcha y solo el torso apunta.
+    if (!input.moving) {
+      if (input.turnDirection === 'left') targetLower = 'turn_left';
+      else if (input.turnDirection === 'right') targetLower = 'turn_right';
+      else targetLower = 'idle';
+    } else if (input.isStealth) {
+      targetLower = 'sneak';
+    } else if (input.isSprinting) {
+      targetLower = 'run';
     } else {
-      // Movimiento direccional según la orientación del cuerpo (cámara y cursor)
-      const absDiff = Math.abs(input.moveHeadingDiff);
-
-      if (input.isStealth) {
-        // En sigilo, postura agachada y sigilosa
-        targetClip = 'sneak';
-      } else if (absDiff <= Math.PI * 0.35) {
-        // Hacia adelante normal o corriendo
-        if (input.isSprinting) {
-          targetClip = input.hasGun ? 'run_rifle_low' : 'run';
-        } else {
-          targetClip = 'walk';
-        }
-      } else if (absDiff >= Math.PI * 0.65) {
-        // Hacia atrás
-        targetClip = 'walk_back';
-      } else if (input.moveHeadingDiff > 0) {
-        // Desplazamiento lateral derecho (Strafe derecha)
-        targetClip = 'strafe_right';
-      } else {
-        // Desplazamiento lateral izquierdo (Strafe izquierda)
-        targetClip = 'strafe_left';
-      }
+      targetLower = 'walk';
     }
 
-    // Ajustar cadencia de pasos al ritmo de la velocidad física
-    const nextAction = this.locomotionActions.get(targetClip);
-    if (nextAction) {
-      if (targetClip === 'run' || targetClip === 'run_rifle_low' || targetClip === 'run_reload') {
-        nextAction.timeScale = THREE.MathUtils.clamp(input.speed / RUN_CLIP_SPEED, 0.6, 2.0);
-      } else if (targetClip === 'walk' || targetClip === 'sneak' || targetClip === 'walk_back' || targetClip === 'strafe_left' || targetClip === 'strafe_right') {
-        nextAction.timeScale = THREE.MathUtils.clamp(input.speed / WALK_CLIP_SPEED, 0.6, 2.2);
+    // 2. Tren superior: lo que hacen los brazos, independiente de las piernas.
+    // (Los clips agachados strafe/walk_back quedan fuera de la selección para
+    // que el torso nunca se agache a medio giro; la pose de apuntar es el
+    // upper de walk_back sobre piernas normales.)
+    // Por defecto el torso sigue la cadencia de las piernas; la recarga impone la suya.
+    let upperFollowsLegs = true;
+    if (input.isBlocking) {
+      targetUpper = 'block';
+    } else if (input.isReloading) {
+      targetUpper = input.isSprinting && input.moving ? 'run_reload' : 'walk_reload';
+      upperFollowsLegs = false;
+    } else if (input.hasGun) {
+      if (input.isSprinting && input.moving && forward) {
+        // Al esprintar de frente se baja el rifle aunque se esté apuntando.
+        targetUpper = 'run_rifle_low';
+      } else if (input.isAiming) {
+        // Pose de apuntar sobre piernas normales (misma que en reposo).
+        targetUpper = 'walk_back';
       } else {
-        nextAction.timeScale = 1.0;
+        targetUpper = 'run_rifle_low';
       }
+    } else if (input.isStealth) {
+      targetUpper = 'sneak';
+    } else if (input.moving) {
+      // Sin arma el torso espeja a las piernas (clip original completo).
+      targetUpper = targetLower;
+    } else {
+      targetUpper = 'idle';
     }
 
-    if (targetClip !== this.currentLocomotion) {
-      const prevAction = this.locomotionActions.get(this.currentLocomotion);
-      if (nextAction && prevAction) {
-        nextAction.reset().play();
-        // Si no hay una acción especial activa, fundir suavemente
-        if (!this.activeAction) {
-          nextAction.crossFadeFrom(prevAction, 0.18, false);
-        }
+    // 3. Ajustar cadencias (Lower por velocidad; Upper sigue a las piernas
+    // salvo en recarga, que va a ritmo del arma para terminar a la par).
+    const nextLower = this.lowerLocomotionActions.get(targetLower);
+    const nextUpper = this.upperLocomotionActions.get(targetUpper);
+
+    if (nextLower) {
+      if (targetLower === 'run') nextLower.timeScale = THREE.MathUtils.clamp(input.speed / RUN_CLIP_SPEED, 0.6, 2.0);
+      else if (targetLower === 'walk' || targetLower === 'sneak' || targetLower === 'walk_back' || targetLower === 'strafe_left' || targetLower === 'strafe_right') nextLower.timeScale = THREE.MathUtils.clamp(input.speed / WALK_CLIP_SPEED, 0.6, 2.2);
+      else nextLower.timeScale = 1.0;
+    }
+
+    if (nextUpper) {
+      if (!upperFollowsLegs) {
+        // Recarga: calzar los brazos con la duración real del arma.
+        const clipDur = this.locomotionDurations.get(targetUpper) ?? 1.0;
+        const reloadDur = input.reloadDuration ?? 0;
+        nextUpper.timeScale = reloadDur > 0.2 ? clipDur / reloadDur : 1.0;
+      } else if (targetUpper === 'run' || targetUpper === 'run_rifle_low' || targetUpper === 'run_reload') nextUpper.timeScale = THREE.MathUtils.clamp(input.speed / RUN_CLIP_SPEED, 0.6, 2.0);
+      else if (targetUpper === 'walk' || targetUpper === 'sneak' || targetUpper === 'walk_back' || targetUpper === 'walk_reload' || targetUpper === 'strafe_left' || targetUpper === 'strafe_right') nextUpper.timeScale = THREE.MathUtils.clamp(input.speed / WALK_CLIP_SPEED, 0.6, 2.2);
+      else nextUpper.timeScale = 1.0;
+    }
+
+    // 4. Fundidos (Crossfades)
+    if (targetLower !== this.currentLowerLocomotion) {
+      const prevLower = this.lowerLocomotionActions.get(this.currentLowerLocomotion);
+      if (nextLower && prevLower) {
+        nextLower.reset().play();
+        if (!this.activeAction) nextLower.crossFadeFrom(prevLower, 0.18, false);
       }
-      this.currentLocomotion = targetClip;
+      this.currentLowerLocomotion = targetLower;
+    }
+    
+    if (targetUpper !== this.currentUpperLocomotion) {
+      const prevUpper = this.upperLocomotionActions.get(this.currentUpperLocomotion);
+      if (nextUpper && prevUpper) {
+        nextUpper.reset().play();
+        if (!this.activeAction) nextUpper.crossFadeFrom(prevUpper, 0.18, false);
+      }
+      this.currentUpperLocomotion = targetUpper;
     }
   }
 
@@ -264,6 +311,7 @@ export class PlayerAvatar {
 
   /**
    * Dispara una acción de combate cuerpo a cuerpo (swing de bate, puñetazo, patada o codazo).
+   * La duración se toma del clip para que el golpe y el arma vayan calzados.
    */
   playAttack(type: 'melee' | 'punch' | 'kick' | 'elbow' = 'melee') {
     if (this.isDead) return;
@@ -275,16 +323,7 @@ export class PlayerAvatar {
       elbow: 'elbow',
     };
     const clipKey = actionMap[type] || 'melee_attack';
-    this.triggerOneShotAction(clipKey, 0.55);
-  }
-
-  /**
-   * Reacción a impacto recibido (zombi golpeando al personaje).
-   */
-  playHitReaction() {
-    if (this.isDead) return;
-    const clipKey: ActionClip = Math.random() < 0.5 ? 'hit_reaction' : 'hit_reaction_2';
-    this.triggerOneShotAction(clipKey, 0.4);
+    this.triggerOneShotAction(clipKey);
   }
 
   /**
@@ -295,33 +334,42 @@ export class PlayerAvatar {
     this.isDead = true;
 
     if (this.activeAction) {
-      const cur = this.actionActions.get(this.activeAction);
-      cur?.stop();
+      this.lowerActionActions.get(this.activeAction)?.stop();
+      this.upperActionActions.get(this.activeAction)?.stop();
     }
-    const currentLoc = this.locomotionActions.get(this.currentLocomotion);
-    const deathAction = this.actionActions.get('death');
+    const currentLower = this.lowerLocomotionActions.get(this.currentLowerLocomotion);
+    const currentUpper = this.upperLocomotionActions.get(this.currentUpperLocomotion);
+    
+    const deathLower = this.lowerActionActions.get('death');
+    const deathUpper = this.upperActionActions.get('death');
 
-    if (deathAction) {
-      deathAction.reset().play();
-      if (currentLoc) {
-        deathAction.crossFadeFrom(currentLoc, 0.2, false);
-      }
+    if (deathLower && currentLower) {
+      deathLower.reset().play();
+      deathLower.crossFadeFrom(currentLower, 0.2, false);
+    }
+    if (deathUpper && currentUpper) {
+      deathUpper.reset().play();
+      deathUpper.crossFadeFrom(currentUpper, 0.2, false);
     }
   }
 
-  private triggerOneShotAction(clipKey: ActionClip, duration: number) {
-    const action = this.actionActions.get(clipKey);
-    if (!action) return;
+  private triggerOneShotAction(clipKey: ActionClip) {
+    const lowerAction = this.lowerActionActions.get(clipKey);
+    const upperAction = this.upperActionActions.get(clipKey);
+    if (!lowerAction || !upperAction) return;
 
-    const baseAction = this.locomotionActions.get(this.currentLocomotion);
-    action.reset().play();
+    const baseLower = this.lowerLocomotionActions.get(this.currentLowerLocomotion);
+    const baseUpper = this.upperLocomotionActions.get(this.currentUpperLocomotion);
 
-    if (baseAction) {
-      action.crossFadeFrom(baseAction, 0.1, false);
-    }
+    lowerAction.reset().play();
+    upperAction.reset().play();
+
+    if (baseLower) lowerAction.crossFadeFrom(baseLower, 0.1, false);
+    if (baseUpper) upperAction.crossFadeFrom(baseUpper, 0.1, false);
 
     this.activeAction = clipKey;
-    this.actionTimer = duration;
+    // El golpe dura lo que dura su clip (bate y puños calzados).
+    this.actionTimer = upperAction.getClip().duration;
   }
 
   update(dt: number) {
@@ -331,18 +379,107 @@ export class PlayerAvatar {
       this.actionTimer -= dt;
       if (this.actionTimer <= 0) {
         // Regresar a la locomoción base suavemente
-        const action = this.actionActions.get(this.activeAction);
-        const baseAction = this.locomotionActions.get(this.currentLocomotion);
-        if (action && baseAction) {
-          baseAction.reset().play();
-          baseAction.crossFadeFrom(action, 0.2, false);
+        const lowerAction = this.lowerActionActions.get(this.activeAction);
+        const upperAction = this.upperActionActions.get(this.activeAction);
+        const baseLower = this.lowerLocomotionActions.get(this.currentLowerLocomotion);
+        const baseUpper = this.upperLocomotionActions.get(this.currentUpperLocomotion);
+        
+        if (lowerAction && baseLower) {
+          baseLower.reset().play();
+          baseLower.crossFadeFrom(lowerAction, 0.2, false);
+        }
+        if (upperAction && baseUpper) {
+          baseUpper.reset().play();
+          baseUpper.crossFadeFrom(upperAction, 0.2, false);
         }
         this.activeAction = null;
       }
     }
   }
+  getRightHandBone(): THREE.Object3D | null {
+    return this.inst.model.getObjectByName('mixamorigRightHand') || null;
+  }
+
+  /**
+   * Posición mundial de la mano derecha (origen de golpes y referencia para
+   * pegar el arma). Si el modelo aún no resolvió el hueso, estima a la altura
+   * del pecho sobre la raíz.
+   */
+  getRightHandWorldPosition(out = new THREE.Vector3()): THREE.Vector3 {
+    const bone = this.inst.model.getObjectByName('mixamorigRightHand');
+    if (bone) return bone.getWorldPosition(out);
+    return out.set(this.root.position.x, 1.1, this.root.position.z);
+  }
+
+  /**
+   * Inicia el resplandor de canalización de resurrección: clona los materiales
+   * del modelo (son compartidos con zombis y resto de instancias) y suma una
+   * luz puntual que crece con setReviveGlow(0..1). Llamar a clearReviveGlow()
+   * al terminar para restaurar los materiales originales.
+   */
+  beginReviveGlow() {
+    this.clearReviveGlow();
+    this.inst.model.traverse((o: any) => {
+      if (!o.isMesh) return;
+      const mesh = o as THREE.Mesh;
+      const orig = mesh.material;
+      const copy = Array.isArray(orig) ? orig.map((m) => m.clone()) : (orig as THREE.Material).clone();
+      this.reviveMats.push({ mesh, orig });
+      mesh.material = copy as any;
+    });
+    const light = new THREE.PointLight(0xffe6a3, 0, 16, 1.6);
+    light.position.set(0, 1.4, 0);
+    this.root.add(light);
+    this.reviveLight = light;
+    this.setReviveGlow(0);
+  }
+
+  /** Intensidad del resplandor de canalización (0 apagado → 1 cegador). */
+  setReviveGlow(t: number) {
+    const e = THREE.MathUtils.clamp(t, 0, 1);
+    const k = e * e;
+    for (const { mesh } of this.reviveMats) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats as THREE.MeshLambertMaterial[]) {
+        if (m.emissive) m.emissive.setRGB(k, 0.85 * k, 0.55 * k);
+      }
+    }
+    if (this.reviveLight) this.reviveLight.intensity = k * 60;
+  }
+
+  /** Restaura materiales originales y apaga la luz de canalización. */
+  clearReviveGlow() {
+    for (const { mesh, orig } of this.reviveMats) {
+      const cur = mesh.material;
+      mesh.material = orig as any;
+      if (Array.isArray(cur)) cur.forEach((m) => m.dispose?.());
+      else (cur as THREE.Material)?.dispose?.();
+    }
+    this.reviveMats = [];
+    if (this.reviveLight) {
+      this.root.remove(this.reviveLight);
+      this.reviveLight.dispose();
+      this.reviveLight = null;
+    }
+  }
+
+  /** Devuelve al personaje a la vida (nueva partida): sin muerte ni resplandor, en idle. */
+  resetLife() {
+    this.isDead = false;
+    this.clearReviveGlow();
+    this.activeAction = null;
+    this.actionTimer = 0;
+    this.mixer.stopAllAction();
+    const lower = this.lowerLocomotionActions.get('idle');
+    const upper = this.upperLocomotionActions.get('idle');
+    if (lower) lower.reset().play();
+    if (upper) upper.reset().play();
+    this.currentLowerLocomotion = 'idle';
+    this.currentUpperLocomotion = 'idle';
+  }
 
   dispose() {
+    this.clearReviveGlow();
     this.mixer.stopAllAction();
     this.mixer.uncacheRoot(this.inst.model);
     disposeMikuInstance(this.inst);

@@ -92,6 +92,14 @@ export const weaponAudio = {
         break;
     }
   },
+  /** Explosión: estruendo grave con cola (big = C4/.50 y radio grande). */
+  explosion(big = false) {
+    const c = ac();
+    if (!c) return;
+    burst(c, { dur: big ? 0.9 : 0.55, freq: 320, q: 0.4, type: 'lowpass', gain: 0.7 });
+    burst(c, { dur: 0.12, freq: 2800, q: 0.6, gain: 0.35 });
+    thump(c, { f0: big ? 70 : 90, f1: 24, dur: big ? 0.7 : 0.45, gain: 0.7 });
+  },
   /** Gatillo sin balas. */
   empty() {
     const c = ac();

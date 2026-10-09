@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { WeaponId } from './weaponTypes';
-import { WEAPON_IDS } from './weaponDefs';
+import type { WeaponDef, WeaponId } from './weaponTypes';
+import { getWeaponDef, WEAPON_IDS } from './weaponDefs';
 
 /**
  * Modelos de armas hechos con primitivas (sin assets). Convención: el cañón / la punta apunta a +Z,
@@ -88,7 +88,69 @@ const generic = (g: THREE.Group) => {
   box(g, 0.04, 0.09, 0.07, 0, -0.07, -0.1, DARK);
 };
 
+// ---------- Modelos data-driven (buildWeaponMesh) ----------
+
+/** Materiales estándar compartidos por color (evita cientos de materiales huérfanos en la GPU). */
+const stdMats = new Map<number, THREE.MeshStandardMaterial>();
+function stdMat(color: number): THREE.MeshStandardMaterial {
+  let m = stdMats.get(color);
+  if (!m) stdMats.set(color, (m = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.6 })));
+  return m;
+}
+
+/** Geometrías compartidas por dimensiones (crear/destruir drops no deja geometría huérfana). */
+const stdGeos = new Map<string, THREE.BufferGeometry>();
+function stdBoxGeo(w: number, h: number, l: number): THREE.BufferGeometry {
+  const key = `pb${w},${h},${l}`;
+  let g = stdGeos.get(key);
+  if (!g) stdGeos.set(key, (g = new THREE.BoxGeometry(w, h, l)));
+  return g;
+}
+function stdCylGeo(rTop: number, rBottom: number, len: number, seg = 12): THREE.BufferGeometry {
+  const key = `pc${rTop},${rBottom},${len},${seg}`;
+  let g = stdGeos.get(key);
+  if (!g) stdGeos.set(key, (g = new THREE.CylinderGeometry(rTop, rBottom, len, seg)));
+  return g;
+}
+
+/**
+ * Construye la malla 3D de un arma desde su `proceduralModel` declarativo:
+ * recorre `parts`, crea Box/Cylinder según `type`, aplica color, posición y
+ * rotación, y devuelve el grupo con sombras activas, listo para anclarse a la
+ * mano del jugador o colocarse en el suelo como loot. Convención heredada del
+ * motor: el cañón / la punta apunta a +Z con el origen al centro del arma.
+ */
+export function buildWeaponMesh(def: WeaponDef): THREE.Group {
+  const root = new THREE.Group();
+  // Las armas cuerpo a cuerpo del dataset vienen modeladas en vertical (+Y,
+  // mango abajo y filo arriba); se rotan a la convención +Z del motor para
+  // que el ancla de la mano (ajustada con el bate) las oriente igual.
+  const inner = new THREE.Group();
+  root.add(inner);
+  if (def.category === 'melee') inner.rotation.x = Math.PI / 2;
+
+  for (const part of def.proceduralModel?.parts ?? []) {
+    let mesh: THREE.Mesh;
+    if (part.type === 'box') {
+      const [w, h, l] = part.dims;
+      mesh = new THREE.Mesh(stdBoxGeo(w, h, l), stdMat(part.color));
+    } else {
+      const [rTop, rBottom, len, seg] = part.dims;
+      mesh = new THREE.Mesh(stdCylGeo(rTop, rBottom, len, seg ?? 12), stdMat(part.color));
+    }
+    if (part.offset) mesh.position.set(part.offset[0], part.offset[1], part.offset[2]);
+    if (part.rot) mesh.rotation.set(part.rot[0], part.rot[1], part.rot[2]);
+    mesh.castShadow = true;
+    inner.add(mesh);
+  }
+  return root;
+}
+
 export function createWeaponModel(id: WeaponId): THREE.Group {
+  const def = getWeaponDef(id);
+  // Las armas con modelo declarativo se generan por datos; el resto conserva
+  // sus constructores heredados (las 5 originales) o el genérico.
+  if (def?.proceduralModel) return buildWeaponMesh(def);
   const g = new THREE.Group();
   (builders[id] ?? generic)(g);
   return g;

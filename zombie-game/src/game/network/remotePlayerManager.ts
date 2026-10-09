@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PlayerAvatar } from '../world/playerAvatar';
 import { WeaponCompanion } from '../weapons/weaponCompanion';
 import type { WeaponId } from '../weapons/weaponTypes';
+import { getWeaponDef } from '../weapons/weaponDefs';
 import type { PlayerNetworkState } from './networkTypes';
 
 interface RemotePlayerEntry {
@@ -61,7 +62,8 @@ export class RemotePlayerManager {
 
     // Actualizar arma equipada
     if (state.equippedWeapon !== undefined) {
-      entry.companion.setWeapon((state.equippedWeapon as WeaponId) || null);
+      const def = getWeaponDef(state.equippedWeapon as WeaponId);
+      entry.companion.setWeapon((state.equippedWeapon as WeaponId) || null, def?.category === 'melee');
     }
   }
 
@@ -88,7 +90,8 @@ export class RemotePlayerManager {
     // 3. Arma equipada visual
     const companion = new WeaponCompanion(this.scene);
     if (state.equippedWeapon) {
-      companion.setWeapon(state.equippedWeapon as WeaponId);
+      const def = getWeaponDef(state.equippedWeapon as WeaponId);
+      companion.setWeapon(state.equippedWeapon as WeaponId, def?.category === 'melee');
     }
 
     const entry: RemotePlayerEntry = {
@@ -123,6 +126,7 @@ export class RemotePlayerManager {
           entry.fallbackMesh = undefined;
         }
         root.add(avatar.root);
+        entry.companion.setHandBone(avatar.getRightHandBone());
         avatar.root.visible = !state.isInVehicle;
       })
       .catch((err) => {
@@ -238,6 +242,20 @@ export class RemotePlayerManager {
     if (entry && entry.avatar) {
       entry.avatar.playAttack(isMelee ? 'melee' : 'punch');
     }
+  }
+
+  /**
+   * IDs de vehículos con conductor remoto a bordo (para tratarlos como
+   * sólidos/atacables por los zombis locales en multijugador).
+   */
+  getInVehicleRiders(): { vehicleId: string }[] {
+    const list: { vehicleId: string }[] = [];
+    for (const p of this.players.values()) {
+      if (p.state.isInVehicle && p.state.vehicleId) {
+        list.push({ vehicleId: p.state.vehicleId });
+      }
+    }
+    return list;
   }
 
   /**

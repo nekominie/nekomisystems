@@ -10,6 +10,22 @@ export interface RecoilForce {
   yawVariation: number;
 }
 
+/** Pieza del modelo procedural de un arma (ver buildWeaponMesh en weaponModels.ts). */
+export interface ProceduralPart {
+  type: 'box' | 'cylinder';
+  /** box: [ancho, alto, largo]; cylinder: [radioSup, radioInf, alto, segmentos?] */
+  dims: number[];
+  color: number;
+  offset?: [number, number, number];
+  /** Rotación euleriana XYZ en radianes. */
+  rot?: [number, number, number];
+}
+
+/** Modelo 3D declarativo del arma: se construye pieza por pieza. */
+export interface ProceduralModel {
+  parts: ProceduralPart[];
+}
+
 /** Definición estática (datos puros) de un arma. El estado en partida vive en la clase Weapon. */
 export interface WeaponDef {
   id: WeaponId;
@@ -50,4 +66,6 @@ export interface WeaponDef {
   meleeArc?: number;
   /** Máximo de enemigos que puede golpear un solo ataque cuerpo a cuerpo (por defecto 2). */
   meleeMaxTargets?: number;
+  /** Modelo 3D declarativo (si se omite se usa el constructor heredado por id en weaponModels.ts). */
+  proceduralModel?: ProceduralModel;
 }

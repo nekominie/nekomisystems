@@ -35,8 +35,10 @@ export const ANIMATION_URLS = {
 
   // Zombis
   zombie_lento: new URL('../../animations/zombies/caminata_lentisima.glb', import.meta.url).href,
+  zombie_walk_fast: new URL('../../animations/zombies/walk/walk_fast.glb', import.meta.url).href,
   zombie_correr_1: new URL('../../animations/zombies/run/zombie_correr_1.glb', import.meta.url).href,
   zombie_correr_2: new URL('../../animations/zombies/run/zombie_correr_2.glb', import.meta.url).href,
+  zombie_attack: new URL('../../animations/zombies/attack/attack.glb', import.meta.url).href,
 };
 
 export type AnimationKey = keyof typeof ANIMATION_URLS;
@@ -140,4 +142,27 @@ export async function loadAnimation(urlOrKey: AnimationKey | string): Promise<TH
     clipCache.set(url, p);
   }
   return p;
+}
+export function splitClip(clip: THREE.AnimationClip): { upper: THREE.AnimationClip; lower: THREE.AnimationClip } {
+  const upperTracks: THREE.KeyframeTrack[] = [];
+  const lowerTracks: THREE.KeyframeTrack[] = [];
+
+  const lowerBones = [
+    'Hips', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase', 'LeftToe_End',
+    'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase', 'RightToe_End'
+  ];
+
+  for (const track of clip.tracks) {
+    const parts = track.name.split('.');
+    const boneName = parts[0].replace('mixamorig', '');
+    if (lowerBones.includes(boneName)) {
+      lowerTracks.push(track);
+    } else {
+      upperTracks.push(track);
+    }
+  }
+
+  const upperClip = new THREE.AnimationClip(clip.name + '_upper', clip.duration, upperTracks);
+  const lowerClip = new THREE.AnimationClip(clip.name + '_lower', clip.duration, lowerTracks);
+  return { upper: upperClip, lower: lowerClip };
 }

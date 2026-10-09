@@ -8,17 +8,17 @@
           MUNDO PROCEDURAL INFINITO // CÁMARA SUPERIOR
         </span>
         <span class="text-[10px] font-mono px-2 py-0.5 bg-stone-900 border border-stone-700 text-stone-400">
-          WASD: Moverse | C: Sigilo / Normal | Shift: Correr | F: Interactuar (cajas, carros, bombas) | Espacio: freno de mano | Q/E: Rotar cámara | Rueda: Zoom | Clic: Disparar | R: Recargar | 1-5: Armas | L: Armas de prueba | N: Saltar día/noche | K: Nuevo mundo
+          WASD: Moverse | C: Sigilo / Normal | Shift: Correr | F: Interactuar (cajas, carros, bombas) | Espacio: freno de mano | Q/E: Rotar cámara | Rueda: Zoom | Clic: Disparar | R: Recargar | 1-5: Armas | G: Lanzar/plantar | H: Explosivo | T: Detonar C4 | L: Armas de prueba | N: Saltar día/noche | K: Nuevo mundo
         </span>
       </div>
 
       <button
         type="button"
         class="steel-btn px-4 py-1.5 text-xs font-mono font-bold uppercase text-stone-300 hover:text-white flex items-center gap-2"
-        @click="exit"
+        @click="isPaused = true"
       >
-        <i class="bi bi-box-arrow-left"></i>
-        <span>Volver al Menú (ESC)</span>
+        <i class="bi bi-pause-fill"></i>
+        <span>Pausar (ESC)</span>
       </button>
     </header>
 
@@ -33,6 +33,48 @@
         @keyPress="handleMobileKey" 
         @keyState="handleMobileKeyState" 
       />
+
+      <!-- Pause Menu Overlay -->
+      <div v-if="isPaused" class="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-[#0f1115] border-2 border-stone-700 p-8 rounded shadow-2xl max-w-sm w-full mx-4 flex flex-col items-center">
+          <h2 class="text-3xl font-mono font-bold text-white mb-8 tracking-widest uppercase">PAUSA</h2>
+          
+          <div class="flex flex-col w-full gap-4">
+            <button 
+              @click="isPaused = false; gameCanvas?.requestPointerLock()" 
+              class="w-full py-3 steel-btn text-lg font-bold text-stone-200 hover:text-white uppercase tracking-wider"
+            >
+              Reanudar
+            </button>
+            <button 
+              @click="showSettings = true" 
+              class="w-full py-3 steel-btn text-lg font-bold text-stone-200 hover:text-white uppercase tracking-wider"
+            >
+              Ajustes
+            </button>
+            <button 
+              @click="exit" 
+              class="w-full py-3 bg-red-900/40 border border-red-700/50 hover:bg-red-800/60 text-lg font-bold text-red-100 hover:text-white uppercase tracking-wider transition-colors"
+            >
+              Salir
+            </button>
+          </div>
+        </div>
+
+        <!-- Ajustes Overlay (dentro del menú de pausa) -->
+        <div v-if="showSettings" class="absolute inset-0 bg-[#0f1115]/95 backdrop-blur-md flex items-center justify-center p-4">
+          <div class="max-w-lg w-full bg-stone-900 border border-stone-700 p-6 rounded shadow-xl">
+            <h3 class="text-2xl font-mono text-white mb-6">Ajustes</h3>
+            <p class="text-stone-400 mb-6 font-mono">En desarrollo...</p>
+            <button 
+              @click="showSettings = false" 
+              class="w-full py-2 steel-btn text-stone-200 hover:text-white uppercase font-bold"
+            >
+              Volver
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- Menú de debug de armas y físicas (Tab). onDebugMouseDown evita que los botones roben el foco del teclado sin bloquear los sliders -->
       <div class="absolute top-3 right-4 z-30 flex flex-col items-end gap-2" @mousedown="onDebugMouseDown">
@@ -79,6 +121,9 @@
             </button>
             <button type="button" class="border border-stone-600 py-1 hover:border-yellow-500 hover:text-yellow-300" @click="debugGiveAll">
               Todas las armas
+            </button>
+            <button type="button" class="col-span-2 border border-orange-800 bg-orange-950/40 text-orange-200 py-1 hover:border-orange-400 hover:bg-orange-900/50" @click="debugRefillExplosives">
+              🧨 Reponer explosivos
             </button>
             <button type="button" class="border border-stone-600 py-1 hover:border-yellow-500 hover:text-yellow-300" @click="debugSpawnZombies">
               +6 zombis (14 m)
@@ -187,7 +232,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0× (sin empuje)</span>
-                  <span>0.05× (predeterminado)</span>
+                  <span>1.0× (predeterminado)</span>
                   <span>2.0× (fuerte)</span>
                 </div>
               </div>
@@ -212,8 +257,8 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0 m/s (ras de suelo)</span>
-                  <span>0.1 m/s (rasante)</span>
-                  <span>5.0 m/s (vuelo)</span>
+                  <span>3.0 m/s (vuelo)</span>
+                  <span>5.0 m/s (alto)</span>
                 </div>
               </div>
 
@@ -237,7 +282,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0 (recto)</span>
-                  <span>±0.05 (predeterminado)</span>
+                  <span>±0.60 (predeterminado)</span>
                   <span>±1.5 (abierto)</span>
                 </div>
               </div>
@@ -262,7 +307,7 @@
                 />
                 <div class="flex justify-between text-[9px] text-stone-500">
                   <span>0 (rígido)</span>
-                  <span>0.5 (suave)</span>
+                  <span>3.0 (vuelo)</span>
                   <span>6.0 (trompo)</span>
                 </div>
               </div>
@@ -290,6 +335,13 @@
           <div class="text-[10px] text-stone-500 uppercase mb-0.5">ESTAMINA</div>
           <div class="w-32 h-2.5 bg-stone-900 border border-stone-700 overflow-hidden">
             <div class="h-full bg-yellow-500" :style="{ width: `${playerStamina}%` }"></div>
+          </div>
+        </div>
+        <!-- Vidas -->
+        <div>
+          <div class="text-[10px] text-stone-500 uppercase mb-0.5">VIDAS</div>
+          <div class="text-lg leading-none tracking-widest">
+            <span v-for="i in 3" :key="i" :class="i <= playerLives ? 'text-red-500' : 'text-stone-700'">❤</span>
           </div>
         </div>
         <!-- Postura / Sigilo -->
@@ -334,6 +386,10 @@
             {{ weaponHud.melee ? 'Cuerpo a cuerpo' : `${weaponHud.ammo} / ${weaponHud.reserve}` }}
           </span>
         </div>
+        <div class="flex justify-between items-baseline mt-1 pt-1 border-t border-stone-800">
+          <span class="font-bold text-orange-300">🧨 {{ explosiveHudName }}</span>
+          <span class="text-stone-300">×{{ explosiveCounts[selectedExplosive] ?? 0 }} <span class="text-stone-500">[G lanzar · H cambiar · T C4]</span></span>
+        </div>
         <div v-if="weaponHud.reloading" class="mt-1">
           <div class="text-[10px] text-stone-400 uppercase">Recargando...</div>
           <div class="h-1.5 bg-stone-900 border border-stone-700 overflow-hidden">
@@ -342,13 +398,31 @@
         </div>
       </div>
 
-      <!-- Marcador de impacto -->
+      <!-- Sangre en los bordes: crece con la vida perdida y flashea al recibir daño -->
       <div
-        v-if="hitMark"
-        class="absolute top-1/3 left-1/2 -translate-x-1/2 z-20 font-mono text-sm font-bold uppercase tracking-widest"
-        :class="{ 'text-stone-100': hitMark.tone === 'hit', 'text-yellow-300': hitMark.tone === 'head', 'text-red-400': hitMark.tone === 'kill' }"
-      >
-        {{ hitMark.text }}
+        class="absolute inset-0 z-20 pointer-events-none"
+        :style="{
+          opacity: bloodOpacity,
+          background:
+            'radial-gradient(ellipse at center, transparent 42%, rgba(139,0,0,0.42) 72%, rgba(120,0,0,0.88) 100%),' +
+            'radial-gradient(circle at 0% 0%, rgba(140,0,0,0.9) 0%, transparent 22%),' +
+            'radial-gradient(circle at 100% 0%, rgba(140,0,0,0.9) 0%, transparent 24%),' +
+            'radial-gradient(circle at 0% 100%, rgba(140,0,0,0.9) 0%, transparent 26%),' +
+            'radial-gradient(circle at 100% 100%, rgba(140,0,0,0.9) 0%, transparent 23%)',
+        }"
+      ></div>
+
+      <!-- Texto de combate flotante (bajas, cabezas, impactos, daño recibido) -->
+      <div class="absolute top-1/3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-1">
+        <div
+          v-for="h in hitFeed"
+          :key="h.id"
+          class="hit-float font-mono font-black uppercase"
+          :class="{ 'hit-tone-hit': h.tone === 'hit', 'hit-tone-head': h.tone === 'head', 'hit-tone-kill': h.tone === 'kill' }"
+          :style="{ marginLeft: `${h.dx}px`, '--tilt': `${h.tilt}deg` }"
+        >
+          {{ h.text }}
+        </div>
       </div>
 
       <!-- Prompt de interacción (cajas, carros, bombas) -->
@@ -370,6 +444,14 @@
         class="absolute top-6 left-1/2 -translate-x-1/2 z-20 bg-black/85 border border-stone-500 px-4 py-2 font-mono text-xs text-stone-100 uppercase tracking-wider"
       >
         {{ toast }}
+      </div>
+
+      <!-- Canalización de resurrección en curso -->
+      <div
+        v-if="reviving"
+        class="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-black/85 border border-amber-400/70 px-4 py-2 font-mono text-xs text-amber-200 uppercase tracking-widest animate-pulse"
+      >
+        ✚ Canalizando resurrección — ¡aguanta!
       </div>
 
       <!-- Recarga de gasolina en curso -->
@@ -476,11 +558,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import * as THREE from 'three';
 import { sound } from '../../audio/soundEngine';
 import { WorldManager } from '../../game/world/worldManager';
-import { ZombieManager, DEFAULT_CAR_PUSH_CONFIG, type CarPushConfig } from '../../game/world/zombies';
+import { ZombieManager, DEFAULT_CAR_PUSH_CONFIG, type CarPushConfig, type RemoteCarInfo } from '../../game/world/zombies';
+import { ExplosivesManager } from '../../game/explosives/explosivesManager';
+import { EXPLOSIVE_IDS, getExplosiveDef } from '../../game/explosives/explosiveDefs';
 import { updateFadeTarget } from '../../game/world/fadeMaterial';
 import { DayNightCycle } from '../../game/world/dayNight';
 import { LampLights } from '../../game/world/lampLights';
@@ -512,6 +596,8 @@ const emit = defineEmits<{
 const container = ref<HTMLDivElement | null>(null);
 const gameCanvas = ref<HTMLCanvasElement | null>(null);
 const isChatFocused = ref(false);
+const isPaused = ref(false);
+const showSettings = ref(false);
 
 const mobileMove = ref({ x: 0, y: 0 });
 const mobileAim = ref({ x: 0, y: 0, active: false, fire: false });
@@ -537,6 +623,78 @@ function handleMobileKeyState(key: string, pressed: boolean) {
 let remotePlayers: RemotePlayerManager | null = null;
 const playerHealth = ref(100);
 const playerStamina = ref(100);
+// Vidas y canalización de resurrección: al vaciarse la salud se pierde una vida
+// y el jugador canaliza 5 s inmóvil (invulnerable, brillando) hasta soltar la
+// onda de choque. Sin vidas restantes, muerte definitiva.
+const playerLives = ref(3);
+const reviving = ref(false);
+let reviveT = 0;
+const REVIVE_DURATION = 5;
+const REVIVE_BLAST_RADIUS = 9;
+const REVIVE_BLAST_POWER = 10;
+// Sangre en bordes de pantalla: base por vida perdida + destello al recibir daño.
+// Sin animación de daño en el personaje: la marcha nunca se interrumpe.
+const bloodFlash = ref(0);
+const bloodOpacity = computed(() => {
+  const missing = 1 - playerHealth.value / 100;
+  return Math.min(1, missing * 0.9 + bloodFlash.value).toFixed(3);
+});
+function flashBlood(damage: number) {
+  bloodFlash.value = Math.min(1, bloodFlash.value + 0.25 + Math.min(0.45, damage * 0.02));
+}
+
+/**
+ * Daño al jugador con sistema de vidas. Devuelve 'ok' (sigue en pie),
+ * 'reviving' (perdió una vida y canaliza), 'invulnerable' (ya canalizando o
+ * muerto: sin efecto) o 'dead' (sin vidas: muerte definitiva).
+ */
+function hurtPlayer(damage: number): 'ok' | 'reviving' | 'invulnerable' | 'dead' {
+  if (reviving.value || playerHealth.value <= 0) return reviving.value ? 'reviving' : 'dead';
+  playerHealth.value = Math.max(0, playerHealth.value - damage);
+  flashBlood(damage);
+  if (playerHealth.value > 0) return 'ok';
+  if (playerLives.value > 1) {
+    playerLives.value -= 1;
+    reviving.value = true;
+    reviveT = 0;
+    avatar?.beginReviveGlow();
+    return 'reviving';
+  }
+  playerLives.value = 0;
+  return 'dead';
+}
+
+/**
+ * Daño al jugador por explosiones/fuego, con el mismo feedback que el resto
+ * (hitmark, toasts de vida/muerte). Lo usan los drains del ExplosivesManager.
+ */
+function blastHurtPlayer(damage: number) {
+  const d = Math.round(damage);
+  if (d <= 0) return;
+  const r = hurtPlayer(d);
+  if (r === 'invulnerable') return;
+  if (r === 'reviving') {
+    showToast('¡Aguanta! Canalizando resurrección...');
+    return;
+  }
+  if (r === 'dead') {
+    avatar?.playDeath();
+    showToast('¡Volaste en pedazos!');
+    return;
+  }
+  showHitMark(`-${d}`, 'kill');
+}
+
+// --- Explosivos y arrojadizos (conteo + selección; el vuelo lo lleva el manager) ---
+const EXPLOSIVE_ORDER = ['frag_grenade', 'molotov', 'pipe_bomb', 'landmine', 'c4_charge'];
+const EXPLOSIVE_INITIAL: Record<string, number> = {
+  frag_grenade: 2, molotov: 2, pipe_bomb: 1, landmine: 2, c4_charge: 1,
+};
+const selectedExplosive = ref('frag_grenade');
+const explosiveCounts = reactive<Record<string, number>>({ ...EXPLOSIVE_INITIAL });
+const explosiveHudName = computed(() => getExplosiveDef(selectedExplosive.value)?.name ?? '—');
+let burnAccum = 0;
+let burnTickT = 0;
 const weaponHud = reactive({
   slots: [] as ({ name: string } | null)[],
   equipped: 0,
@@ -566,7 +724,9 @@ const debugWeapons = allWeaponDefs().map((d) => ({
   noise: d.noiseRadius,
   auto: d.isAutomatic,
 }));
-const hitMark = ref<{ text: string; tone: 'hit' | 'head' | 'kill' } | null>(null);
+interface HitFeedItem { id: number; text: string; tone: 'hit' | 'head' | 'kill'; dx: number; tilt: number }
+const hitFeed = ref<HitFeedItem[]>([]);
+let hitFeedId = 0;
 type Tone = 'ok' | 'bad' | 'info';
 const prompt = ref<{ text: string; tone: Tone } | null>(null);
 import type { VehicleArchetype } from '../../game/vehicles';
@@ -626,9 +786,9 @@ let lampLights: LampLights | null = null;
 let avatar: PlayerAvatar | null = null;
 let vehicles: VehicleManager | null = null;
 let refuel: RefuelSession | null = null;
+let explosives: ExplosivesManager | null = null;
 let camExtra = 0; // la cámara se aleja un poco al ir rápido en carro
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
-let hitTimer: ReturnType<typeof setTimeout> | null = null;
 
 // --- Armas ---
 function makeArsenal() {
@@ -712,6 +872,7 @@ function startWorld(newSeedValue: number) {
   refuel?.dispose();
   vehicles?.dispose();
   zombies?.dispose();
+  explosives?.dispose();
   world?.dispose();
   seed.value = newSeedValue;
   world = new WorldManager(scene, newSeedValue);
@@ -733,34 +894,53 @@ function startWorld(newSeedValue: number) {
     }
   };
   zombies.onPlayerAttacked = (z, damage) => {
-    if (playerHealth.value <= 0) return;
-    playerHealth.value = Math.max(0, playerHealth.value - damage);
-    avatar?.playHitReaction();
-    showHitMark(`-${damage}`, 'hit');
-    if (playerHealth.value <= 0) {
+    const r = hurtPlayer(damage);
+    if (r === 'invulnerable') return;
+    if (r === 'reviving') {
+      showToast('¡Aguanta! Canalizando resurrección...');
+      return;
+    }
+    if (r === 'dead') {
       avatar?.playDeath();
       showToast('¡Has caído ante la horda de zombis!');
+      return;
     }
+    showHitMark(`-${damage}`, 'hit');
   };
   vehicles = new VehicleManager(scene, world);
   vehicles.onPlayerDamaged = (damage: number) => {
-    if (playerHealth.value <= 0) return;
-    playerHealth.value = Math.max(0, playerHealth.value - damage);
-    avatar?.playHitReaction();
-    showToast(`¡Impacto crítico! -${damage} Salud por colisión violenta`);
-    showHitMark(`-${damage}`, 'kill');
-    if (playerHealth.value <= 0) {
+    const r = hurtPlayer(damage);
+    if (r === 'invulnerable') return;
+    if (r === 'reviving') {
+      showToast('¡Aguanta! Canalizando resurrección...');
+      return;
+    }
+    if (r === 'dead') {
       avatar?.playDeath();
       showToast('¡Has muerto por impacto vehicular!');
+      return;
     }
+    showToast(`¡Impacto crítico! -${damage} Salud por colisión violenta`);
+    showHitMark(`-${damage}`, 'kill');
   };
   refuel = new RefuelSession(scene, world);
+  explosives = new ExplosivesManager(scene, world, zombies, vehicles);
   player.x = 0;
   player.z = 0;
   arsenal = makeArsenal();
   prompt.value = null;
   carHud.driving = false;
   refuelHud.active = false;
+  bloodFlash.value = 0;
+  playerLives.value = 3;
+  playerHealth.value = 100;
+  reviving.value = false;
+  avatar?.resetLife();
+  clearShockRings();
+  Object.assign(explosiveCounts, EXPLOSIVE_INITIAL);
+  selectedExplosive.value = EXPLOSIVE_IDS.frag;
+  burnAccum = 0;
+  burnTickT = 0;
   if (playerMesh) playerMesh.visible = true;
 }
 
@@ -848,6 +1028,7 @@ function updatePrompt() {
 
 function interact() {
   if (!world || !vehicles || !refuel) return;
+  if (reviving.value) return; // canalizando: sin interacciones
   if (vehicles.driven) return exitCar();
   if (refuel.isActive) {
     refuel.stop('cancel');
@@ -936,10 +1117,125 @@ function reloadWeapon() {
   if (w && w.startReload()) weaponAudio.reload();
 }
 
+// --- Explosivos y arrojadizos (G lanzar/plantar, H cambiar, T detonar C4) ---
+
+/** Rota la selección al siguiente explosivo del catálogo. */
+function cycleExplosive() {
+  const i = EXPLOSIVE_ORDER.indexOf(selectedExplosive.value);
+  selectedExplosive.value = EXPLOSIVE_ORDER[(i + 1) % EXPLOSIVE_ORDER.length];
+  const def = getExplosiveDef(selectedExplosive.value);
+  if (def) showToast(`🧨 ${def.name} ×${explosiveCounts[def.id] ?? 0}`);
+}
+
+/** Usa el explosivo seleccionado: lo lanza al cursor o lo planta a los pies. */
+function useSelectedExplosive() {
+  if (!explosives || !world || reviving.value) return;
+  if (vehicles?.driven) {
+    showToast('Baja del carro para usar explosivos');
+    return;
+  }
+  const def = getExplosiveDef(selectedExplosive.value);
+  if (!def) return;
+  if ((explosiveCounts[def.id] ?? 0) <= 0) {
+    showToast(`Sin ${def.name}`);
+    return;
+  }
+  if (def.type === 'deployable') {
+    if (!explosives.plantExplosive(def, player.x, player.z)) return;
+    explosiveCounts[def.id]--;
+    showToast(
+      def.triggerType === 'remote'
+        ? `${def.name} plantada · [T] para detonar`
+        : def.triggerType === 'proximity'
+          ? `${def.name} armada · cuidado donde pisas`
+          : `${def.name} plantada`,
+    );
+    sound.playPlayClick();
+    return;
+  }
+  // Arrojadizo hacia el cursor (o al frente si el cursor está encima)
+  let tx = aim.point.x;
+  let tz = aim.point.z;
+  if (Math.hypot(tx - player.x, tz - player.z) < 1.2) {
+    tx = player.x + Math.sin(player.rot) * 8;
+    tz = player.z + Math.cos(player.rot) * 8;
+  }
+  if (!explosives.throwExplosive(def, player.x, player.z, tx, tz)) return; // enfriando
+  explosiveCounts[def.id]--;
+  avatar?.playAttack('melee');
+  sound.playPlayClick();
+}
+
+/** Detona las C4 plantadas (detonador remoto). */
+function detonateC4() {
+  if (!explosives || reviving.value) return;
+  const n = explosives.detonateRemote();
+  showToast(n > 0 ? `¡Detonando ${n} C4!` : 'Sin C4 plantados');
+}
+
+/** Recarga el inventario de explosivos (menú debug). */
+function debugRefillExplosives() {
+  Object.assign(explosiveCounts, EXPLOSIVE_INITIAL);
+  showToast('Explosivos repuestos');
+}
+
 function showHitMark(text: string, tone: 'hit' | 'head' | 'kill') {
-  hitMark.value = { text, tone };
-  if (hitTimer) clearTimeout(hitTimer);
-  hitTimer = setTimeout(() => (hitMark.value = null), 450);
+  const id = ++hitFeedId;
+  hitFeed.value.push({
+    id,
+    text,
+    tone,
+    dx: Math.round((Math.random() - 0.5) * 140),
+    tilt: Math.round((Math.random() - 0.5) * 14),
+  });
+  // Tope anti-spam (SMGs a 950 RPM): conserva solo los últimos
+  if (hitFeed.value.length > 8) hitFeed.value.splice(0, hitFeed.value.length - 8);
+  setTimeout(() => {
+    hitFeed.value = hitFeed.value.filter((h) => h.id !== id);
+  }, 950);
+}
+
+/** Anillos expansivos de la onda de choque de resurrección. */
+interface ShockRing { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; geo: THREE.BufferGeometry; t: number }
+const shockRings: ShockRing[] = [];
+function spawnShockRing(x: number, z: number, maxR: number) {
+  if (!scene) return;
+  const geo = new THREE.RingGeometry(0.9, 1.0, 48);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffe6a3, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, 0.15, z);
+  mesh.scale.setScalar(1);
+  mesh.userData.maxR = maxR;
+  scene.add(mesh);
+  shockRings.push({ mesh, mat, geo, t: 0 });
+}
+function updateShockRings(dt: number) {
+  for (let i = shockRings.length - 1; i >= 0; i--) {
+    const r = shockRings[i];
+    r.t += dt;
+    const k = r.t / 0.7;
+    if (k >= 1) {
+      scene?.remove(r.mesh);
+      r.geo.dispose();
+      r.mat.dispose();
+      shockRings.splice(i, 1);
+      continue;
+    }
+    const s = 1 + k * ((r.mesh.userData.maxR as number) - 1);
+    r.mesh.scale.setScalar(s);
+    r.mat.opacity = 0.9 * (1 - k);
+  }
+}
+function clearShockRings() {
+  for (const r of shockRings) {
+    scene?.remove(r.mesh);
+    r.geo.dispose();
+    r.mat.dispose();
+  }
+  shockRings.length = 0;
 }
 
 /** Un intento de disparo: raycast contra zombis cercanos y obstáculos, daño, ruido, FX y sonido. */
@@ -949,9 +1245,12 @@ function tryFire(w: Weapon, velocity: number) {
   let origin: THREE.Vector3;
   let dir: THREE.Vector3;
   if (w.isMelee) {
-    // El golpe sale del pecho del jugador hacia donde mira
+    // El golpe sale de la mano derecha animada (sigue el swing del bate) hacia donde mira
     dir = new THREE.Vector3(Math.sin(aimHeading), 0, Math.cos(aimHeading));
-    origin = new THREE.Vector3(player.x + dir.x * 0.3, 1.0, player.z + dir.z * 0.3);
+    const hand = avatar?.getRightHandWorldPosition();
+    origin = hand
+      ? new THREE.Vector3(hand.x + dir.x * 0.3, hand.y, hand.z + dir.z * 0.3)
+      : new THREE.Vector3(player.x + dir.x * 0.3, 1.0, player.z + dir.z * 0.3);
   } else {
     dir = aimDir;
     origin = muzzlePos.clone();
@@ -1239,12 +1538,26 @@ function handleKeyDown(e: KeyboardEvent) {
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (k.startsWith('arrow') || e.key === ' ') e.preventDefault();
-  if (e.key === 'Escape') exit();
+  if (e.key === 'Escape') {
+    if (showSettings.value) {
+      showSettings.value = false;
+    } else {
+      isPaused.value = !isPaused.value;
+      if (!isPaused.value && document.pointerLockElement !== gameCanvas.value) {
+        gameCanvas.value?.requestPointerLock();
+      }
+    }
+  }
+  if (isPaused.value) return; // No procesar más teclas si está en pausa
+  
   if (k === 'c' && !e.repeat) {
     isStealth.value = !isStealth.value;
     showToast(isStealth.value ? 'Modo sigilo activado' : 'Modo caminata normal');
   }
   if (k === 'r' && !e.repeat) reloadWeapon();
+  if (k === 'g' && !e.repeat) useSelectedExplosive();
+  if (k === 'h' && !e.repeat) cycleExplosive();
+  if (k === 't' && !e.repeat) detonateC4();
   if (k === 'k' && !e.repeat) {
     if (networkManager.isConnected && networkManager.currentRoom) {
       showToast('En multijugador la semilla está fijada por la sala');
@@ -1300,6 +1613,21 @@ function loop(now: number) {
   const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
   lastTime = now;
 
+  // Si el juego está en pausa:
+  if (isPaused.value) {
+    // Si estamos en multijugador, la lógica sigue corriendo pero ignoramos los inputs del jugador.
+    // Si es un solo jugador, congelamos el mundo entero.
+    if (!networkManager.currentRoom) {
+      renderer.render(scene, camera);
+      return;
+    }
+    // Para multijugador, forzamos inputs a 0
+    for (const k in keys) keys[k] = false;
+    mobileMove.value = { x: 0, y: 0 };
+    mobileAim.value = { x: 0, y: 0, active: false, fire: false };
+    fireHeld = false;
+  }
+
   // Movimiento relativo a la cámara: W = hacia "arriba" en pantalla.
   const fx = -Math.sin(cam.yaw);
   const fz = -Math.cos(cam.yaw);
@@ -1308,7 +1636,8 @@ function loop(now: number) {
   let mx = 0;
   let mz = 0;
   const drv = vehicles?.driven ?? null;
-  if (!drv) {
+  // Canalizando resurrección: sin control de movimiento (tampoco joystick).
+  if (!drv && !reviving.value) {
     if (keys['w'] || keys['arrowup']) { mx += fx; mz += fz; }
     if (keys['s'] || keys['arrowdown']) { mx -= fx; mz -= fz; }
     if (keys['d'] || keys['arrowright']) { mx += rx; mz += rz; }
@@ -1347,17 +1676,22 @@ function loop(now: number) {
     0,
     100,
   );
+  // El destello de sangre se apaga solo (~0.8 s)
+  if (bloodFlash.value > 0) bloodFlash.value = Math.max(0, bloodFlash.value - dt * 1.3);
 
   if (keys['q']) cam.yaw -= 1.6 * dt;
   if (keys['e']) cam.yaw += 1.6 * dt;
 
   // Conduciendo: el jugador va dentro del carro (oculto) y la cámara sigue al carro
   if (drv && vehicles) {
-    const input: DriveInput = {
-      throttle: (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0) + mobileMove.value.y,
-      steer: (keys['a'] || keys['arrowleft'] ? 1 : 0) - (keys['d'] || keys['arrowright'] ? 1 : 0) - mobileMove.value.x,
-      handbrake: !!keys[' '],
-    };
+    // Canalizando: el carro va solo (sin acelerador ni giro) hasta detenerse.
+    const input: DriveInput = reviving.value
+      ? { throttle: 0, steer: 0, handbrake: false }
+      : {
+        throttle: (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0) + mobileMove.value.y,
+        steer: (keys['a'] || keys['arrowleft'] ? 1 : 0) - (keys['d'] || keys['arrowright'] ? 1 : 0) - mobileMove.value.x,
+        handbrake: !!keys[' '],
+      };
     vehicles.update(dt, input, cycle?.lampFactor ?? 0);
     player.x = drv.x;
     player.z = drv.z;
@@ -1418,7 +1752,7 @@ function loop(now: number) {
   if (!drv) {
     arsenal.update(dt);
     const w = arsenal.current;
-    companion?.setWeapon(w ? w.def.id : null);
+    companion?.setWeapon(w ? w.def.id : null, w ? w.isMelee : false);
 
     // Punto del suelo bajo el cursor; el jugador gira hacia él
     let hasAim = aim.update(camera);
@@ -1444,6 +1778,38 @@ function loop(now: number) {
       playerMesh.rotation.y = player.rot;
     }
     aimHeading = heading;
+
+    // Avatar primero: sus huesos (manos) ya quedan en la pose de este frame y
+    // el arma/muzzle que se calculan después nacen de la mano, sin un frame de lag.
+    if (avatar) {
+      let moveHeadingDiff = 0;
+      if (moving) {
+        const moveAngle = Math.atan2(mx, mz);
+        let diff = moveAngle - player.rot;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        moveHeadingDiff = diff;
+      }
+      let turnDirection: 'left' | 'right' | null = null;
+      if (!moving && Math.abs(aimDiff) > 0.05) {
+        // En Three.js rotaciones positivas en Y suelen ser antihorarias (izquierda)
+        turnDirection = aimDiff > 0 ? 'left' : 'right';
+      }
+      avatar.setLocomotion({
+        moving,
+        speed,
+        moveHeadingDiff,
+        turnDirection,
+        isSprinting: running,
+        isStealth: stealthing,
+        isAiming: hasAim,
+        isReloading: !!(w && w.reloading),
+        reloadDuration: w && !w.isMelee ? w.def.reloadDuration : 0,
+        hasGun: !!(w && !w.isMelee),
+        isBlocking: false,
+      });
+      avatar.update(dt);
+    }
+
     companion?.update(tSec, player.x, player.z, heading, true);
     companion?.muzzle(muzzlePos);
 
@@ -1469,45 +1835,49 @@ function loop(now: number) {
     if (mobileAim.value.fire && !lastMobileFire) semiPending = true;
     lastMobileFire = mobileAim.value.fire;
     
-    const isFiring = fireHeld || mobileAim.value.fire;
+    const isFiring = (fireHeld || mobileAim.value.fire) && !reviving.value;
     if (w && isFiring && (w.def.isAutomatic || semiPending)) {
       tryFire(w, vel);
-    }
-
-    // Actualización dinámica del avatar: reacciona a movimiento, strafing, cámara y acciones
-    if (avatar) {
-      let moveHeadingDiff = 0;
-      if (moving) {
-        const moveAngle = Math.atan2(mx, mz);
-        let diff = moveAngle - player.rot;
-        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-        moveHeadingDiff = diff;
-      }
-      let turnDirection: 'left' | 'right' | null = null;
-      if (!moving && Math.abs(aimDiff) > 0.05) {
-        // En Three.js rotaciones positivas en Y suelen ser antihorarias (izquierda)
-        turnDirection = aimDiff > 0 ? 'left' : 'right';
-      }
-      avatar.setLocomotion({
-        moving,
-        speed,
-        moveHeadingDiff,
-        turnDirection,
-        isSprinting: running,
-        isStealth: stealthing,
-        isAiming: hasAim,
-        isReloading: !!(w && w.reloading),
-        hasGun: !!(w && !w.isMelee),
-        isBlocking: false,
-      });
-      avatar.update(dt);
     }
   } else {
     companion?.update(tSec, player.x, player.z, player.rot, false);
     reticle?.update(aim.point, 0, false, 0xffffff);
   }
   shotFx?.update(dt);
+  updateShockRings(dt);
   world.drops.update(tSec);
+
+  // Explosivos: física de vuelo, mechas, minas, fuego y VFX
+  if (explosives) {
+    explosives.setPlayerPos(player.x, player.z);
+    explosives.update(dt);
+    const blastDmg = explosives.drainPlayerBlasts(player.x, player.z);
+    if (blastDmg > 0) blastHurtPlayer(blastDmg);
+    // Fuego bajo los pies: se acumula y golpea cada 0.5 s (un flash por golpe)
+    burnAccum += explosives.drainFireDamage();
+    burnTickT += dt;
+    if (burnAccum >= 3 && burnTickT >= 0.5) {
+      const d = burnAccum;
+      burnAccum = 0;
+      burnTickT = 0;
+      blastHurtPlayer(d);
+    }
+  }
+
+  // Canalización de resurrección: 5 s inmóvil brillando; al completar,
+  // onda de choque radial (no letal) + salud restaurada.
+  if (reviving.value) {
+    reviveT += dt;
+    avatar?.setReviveGlow(reviveT / REVIVE_DURATION);
+    if (reviveT >= REVIVE_DURATION) {
+      reviving.value = false;
+      avatar?.clearReviveGlow();
+      zombies?.blastWave(player.x, player.z, REVIVE_BLAST_RADIUS, REVIVE_BLAST_POWER);
+      spawnShockRing(player.x, player.z, REVIVE_BLAST_RADIUS);
+      playerHealth.value = 100;
+      showToast(`¡Resucitado! Te quedan ${playerLives.value} ${playerLives.value === 1 ? 'vida' : 'vidas'}`);
+    }
+  }
 
   if (cycle) {
     cycle.update(dt);
@@ -1518,7 +1888,30 @@ function loop(now: number) {
 
   world.update(player.x, player.z);
   const otherPositions = remotePlayers?.getOtherPlayerPositions() ?? [];
-  zombies?.update(dt, player.x, player.z, drv, otherPositions, { isStealth: stealthing, isRunning: running });
+  // Carros con conductor remoto (fantasmas sincronizados): sólidos para los
+  // zombis locales y atacables con animación. El daño real a su chapa lo
+  // aplica el conductor (autoridad del vehículo); los atropellos los replica
+  // el conductor por evento (applyRemoteHit → knockDown), así que aquí no se
+  // generan golpes nuevos para ellos.
+  const remoteCars: RemoteCarInfo[] = [];
+  if (remotePlayers && vehicles) {
+    for (const rider of remotePlayers.getInVehicleRiders()) {
+      const car = vehicles.getCar(rider.vehicleId);
+      if (!car || car === vehicles.driven) continue;
+      remoteCars.push({
+        x: car.x,
+        z: car.z,
+        heading: car.heading,
+        halfL: car.dims.L * 0.5,
+        halfW: car.dims.W * 0.5,
+      });
+      // Sus motores también atraen a la horda (como el local de arriba).
+      if (car.isEngineRunning && frame % 12 === 0) {
+        zombies?.alertNoise(car.x, car.z, 8 + Math.min(25, Math.abs(car.speed) * 1.1));
+      }
+    }
+  }
+  zombies?.update(dt, player.x, player.z, drv, otherPositions, { isStealth: stealthing, isRunning: running }, remoteCars);
   remotePlayers?.update(dt);
 
   // Transmisión de estado multijugador en tiempo real
@@ -1795,6 +2188,7 @@ onMounted(() => {
       playerMesh.clear();
       playerMesh.add(a.root);
       avatar = a;
+      companion?.setHandBone(a.getRightHandBone());
     })
     .catch((err) => console.error('[zombie-game] No se pudo cargar el avatar de Miku:', err));
 
@@ -1825,7 +2219,7 @@ onBeforeUnmount(() => {
   gameCanvas.value?.removeEventListener('mousedown', onMouseDown);
   window.removeEventListener('mouseup', onMouseUp);
   if (toastTimer) clearTimeout(toastTimer);
-  if (hitTimer) clearTimeout(hitTimer);
+  hitFeed.value = [];
   companion?.dispose();
   shotFx?.dispose();
   reticle?.dispose();
@@ -1833,6 +2227,8 @@ onBeforeUnmount(() => {
   refuel?.dispose();
   vehicles?.dispose();
   zombies?.dispose();
+  explosives?.dispose();
+  explosives = null;
   lampLights?.dispose();
   avatar?.dispose();
   avatar = null;
@@ -1866,3 +2262,52 @@ onBeforeUnmount(() => {
   cycle = null;
 });
 </script>
+
+<style scoped>
+/* Texto de combate flotante estilo Fortnite: rebote con overshoot, subida y fundido */
+.hit-float {
+  letter-spacing: 0.12em;
+  animation: hit-pop 0.95s cubic-bezier(0.22, 1.4, 0.36, 1) forwards;
+  /* Contorno oscuro para legibilidad sobre cualquier fondo */
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.85),
+    1px -1px 0 rgba(0, 0, 0, 0.85),
+    -1px 1px 0 rgba(0, 0, 0, 0.85),
+    1px 1px 0 rgba(0, 0, 0, 0.85),
+    0 0 12px rgba(0, 0, 0, 0.6);
+}
+.hit-tone-hit {
+  font-size: 15px;
+  color: #f5f5f4;
+}
+.hit-tone-head {
+  font-size: 24px;
+  color: #fde047;
+}
+.hit-tone-kill {
+  font-size: 31px;
+  color: #f87171;
+}
+@keyframes hit-pop {
+  0% {
+    transform: rotate(var(--tilt, 0deg)) scale(0.4);
+    opacity: 0;
+  }
+  22% {
+    transform: translateY(-14px) rotate(var(--tilt, 0deg)) scale(1.28);
+    opacity: 1;
+  }
+  42% {
+    transform: translateY(-22px) rotate(var(--tilt, 0deg)) scale(0.94);
+    opacity: 1;
+  }
+  62% {
+    transform: translateY(-32px) rotate(var(--tilt, 0deg)) scale(1.07);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-58px) rotate(var(--tilt, 0deg)) scale(1);
+    opacity: 0;
+  }
+}
+</style>

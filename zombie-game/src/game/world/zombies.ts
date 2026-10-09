@@ -90,11 +90,61 @@ export const ZOMBIE_TIERS: Record<ZombieTier, ZombieTierProfile> = {
   },
 };
 
+/**
+ * Configuración general de comportamiento de todos los zombis.
+ * Puedes modificar estos valores para ajustar la experiencia global.
+ * Para restaurar los valores por defecto, copia los de los comentarios.
+ */
+export const ZOMBIE_BEHAVIOR = {
+  // --- Deambular (cuando no detectan al jugador) ---
+  wander: {
+    // Probabilidad (0 a 1) de elegir la caminata súper lenta. Por defecto: 0.70
+    superSlowProb: 0.70,
+    
+    // Velocidad de la caminata súper lenta (m/s). Por defecto: 0.4
+    superSlowSpeed: 0.2,
+    
+    // Velocidad de la caminata rápida (m/s). Por defecto: 0.48
+    fastSpeed: 0.3,
+  },
+
+  // --- Distribución de Spawns ---
+  // Probabilidades acumulativas (0 a 1) para decidir el tipo de zombi.
+  spawnThresholds: {
+    extreme: 0.01,
+    superFast: 0.30,
+    fast: 0.70,
+  },
+
+  // --- Detección y Alerta ---
+  detection: {
+    // Distancia base (m) a la que te detectan "sí o sí" aunque no hagas ruido ni te vean (360 grados).
+    immediateProximity: 1.8,
+    // Si estás en sigilo, te puedes acercar mucho más por la espalda sin ser detectado.
+    stealthProximity: 0.5,
+    // Si estás en sigilo y en su campo de visión frontal, su rango de vista se multiplica por esto (0.5 = ven la mitad).
+    stealthVisionMultiplier: 0.5,
+    // Segundos que el zombi te sigue persiguiendo después de perderte de vista (y sonido). Por defecto: 10
+    alertMemoryDuration: 10, 
+  }
+};
+
+/** Carro de otro jugador (fantasma sincronizado por red) para que los zombis
+ *  locales lo traten como sólido y lo ataquen visualmente. El daño real a su
+ *  durabilidad lo aplica solo el conductor (autoridad); aquí solo animación.
+ *  halfL/halfW = mitades de la carrocería (sin expandir). */
+export interface RemoteCarInfo {
+  x: number;
+  z: number;
+  heading: number;
+  halfL: number;
+  halfW: number;
+}
 /** Parámetros ajustables del empuje e impacto de carro sobre los zombis. */
 export interface CarPushConfig {
   /** Multiplicador de empuje horizontal en la dirección de marcha del carro */
   force: number;
-  /** Impulso vertical hacia arriba en m/s (0 = ras de suelo sin elevarse) */
+  /** Extra de vuelo vertical, escalado por velocidad (0 = solo base del coche) */
   lift: number;
   /** Dispersión lateral X/Z aleatoria en m/s (0 = línea recta pura) */
   scatter: number;
@@ -103,11 +153,51 @@ export interface CarPushConfig {
 }
 
 export const DEFAULT_CAR_PUSH_CONFIG: CarPushConfig = {
-  force: 0.05,
-  lift: 0.1,
-  scatter: 0.05,
-  tumble: 0.5,
+  force: 1.0,
+  lift: 3.0,
+  scatter: 0.6,
+  tumble: 3.0,
 };
+
+/**
+ * ¿El segmento p0→p1 (en espacio local del carro: x=lateral, y=frontal)
+ * toca la caja [-hx,hx]×[-hz,hz]? Sirve para no alargar la caja hacia
+ * adelante (eso golpeaba 2 m antes del contacto) y aun así no atravesar
+ * zombis a alta velocidad o con lag.
+ */
+function segmentHitsBox(
+  x0: number, y0: number, x1: number, y1: number, hx: number, hz: number,
+): boolean {
+  if (Math.abs(x1) <= hx && Math.abs(y1) <= hz) return true;
+  if (Math.abs(x0) <= hx && Math.abs(y0) <= hz) return true;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let tmin = 0;
+  let tmax = 1;
+  // Eje X (lateral)
+  if (Math.abs(dx) < 1e-9) {
+    if (x0 < -hx || x0 > hx) return false;
+  } else {
+    let t1 = (-hx - x0) / dx;
+    let t2 = (hx - x0) / dx;
+    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  // Eje Y (frontal)
+  if (Math.abs(dy) < 1e-9) {
+    if (y0 < -hz || y0 > hz) return false;
+  } else {
+    let t1 = (-hz - y0) / dy;
+    let t2 = (hz - y0) / dy;
+    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return false;
+  }
+  return true;
+}
 
 const ZOMBIE = {
   radius: 0.4,
@@ -131,10 +221,9 @@ const ZOMBIE = {
 
   // --- Combate ---
   health: 100,
-  alertDuration: 10,
-  /** Segundos que tarda en caer y que el cadáver permanece antes de desaparecer. */
+  /** Segundos que tarda en caer y que el cadáver permanece antes de desaparecer (30 min). */
   fallTime: 0.45,
-  corpseTime: 14,
+  corpseTime: 1800,
 };
 
 interface Assets {
@@ -157,11 +246,11 @@ function loadAssets(): Promise<Assets> {
       loadAnimation('zombie_lento'),
       loadAnimation('zombie_correr_1'),
       loadAnimation('zombie_correr_2'),
-      loadAnimation('caminar'),
+      loadAnimation('zombie_walk_fast'),
       loadAnimation('correr'),
-      loadAnimation('idle'),
+      loadAnimation('zombie_lento'),
       loadAnimation('reaccion_golpe'),
-      loadAnimation('bat_swing'),
+      loadAnimation('zombie_attack'),
     ]).then(([base, slowWalk, run1, run2, walk, run, idle, hit, attack]) => ({
       base,
       slowWalk,
@@ -191,7 +280,7 @@ interface SpawnRequest {
 
 export type ZombieAnimState = 'idle' | 'walk' | 'run';
 
-interface Zombie {
+export interface Zombie {
   id: string;
   inst: MikuInstance;
   mixer: THREE.AnimationMixer;
@@ -220,6 +309,10 @@ interface Zombie {
   health: number;
   dead: boolean;
   deadTime: number;
+  knockedDown?: boolean;
+  recoverTimer?: number;
+  /** Tiempo total desde que cayó (seguridad: fuerza la recuperación aunque la física no repose). */
+  downTime?: number;
   /** Punto de ruido / jugador hacia el que va; null = deambula normal. */
   alert: { x: number; z: number; timer: number } | null;
   /** Aturdimiento tras un impacto (s). */
@@ -239,6 +332,11 @@ export class ZombieManager {
   private assets: Assets | null = null;
   private ragdolls = new RagdollManager();
   private disposed = false;
+  /** Última posición del carro conducido: para el test barrido que evita
+   *  túneles sin disparar el golpe metros antes del contacto visual. */
+  private lastCarId: string | null = null;
+  private lastCarX = 0;
+  private lastCarZ = 0;
   carPushConfig: CarPushConfig = { ...DEFAULT_CAR_PUSH_CONFIG };
   public onZombieHit?: (z: Zombie, damage: number, killed: boolean, impulse: THREE.Vector3, isCar: boolean) => void;
   public onPlayerAttacked?: (z: Zombie, damage: number) => void;
@@ -271,6 +369,7 @@ export class ZombieManager {
     drv?: DrivableCar | null,
     otherPlayers?: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[],
     localPlayerStatus?: { isStealth: boolean; isRunning: boolean },
+    remoteCars?: RemoteCarInfo[],
   ) {
     if (drv) this.checkCarCollisions(drv, dt);
     this.ragdolls.update(dt);
@@ -329,7 +428,14 @@ export class ZombieManager {
         }
         continue;
       }
-      this.wander(z, dt, px, pz, otherPlayers, localPlayerStatus);
+      // Tumbado por un carro: la física ragdoll manda. No deambula ni anima;
+      // sigue a las caderas físicas y espera a reponerse donde caiga.
+      if (z.knockedDown) {
+        this.updateKnockedDown(z, dt);
+        this.applyShadows(z);
+        continue;
+      }
+      this.wander(z, dt, px, pz, otherPlayers, localPlayerStatus, drv, remoteCars);
       this.applyShadows(z);
       if (z.d <= ZOMBIE.animDist) animatable.push(z);
     }
@@ -360,7 +466,7 @@ export class ZombieManager {
 
       // Distribución: 1% extremo ("solo 1% súper veloz"), 29% súper rápido (máx 90% jugador), 40% rápido, 30% lento
       const tierRoll = rng();
-      const tier: ZombieTier = tierRoll < 0.01 ? 'extreme' : tierRoll < 0.30 ? 'super_fast' : tierRoll < 0.70 ? 'fast' : 'slow';
+      const tier: ZombieTier = tierRoll < ZOMBIE_BEHAVIOR.spawnThresholds.extreme ? 'extreme' : tierRoll < ZOMBIE_BEHAVIOR.spawnThresholds.superFast ? 'super_fast' : tierRoll < ZOMBIE_BEHAVIOR.spawnThresholds.fast ? 'fast' : 'slow';
       const profile = ZOMBIE_TIERS[tier];
 
       const wanderSpeed = profile.minWanderSpeed + rng() * (profile.maxWanderSpeed - profile.minWanderSpeed);
@@ -456,7 +562,7 @@ export class ZombieManager {
       const a = (i / count) * Math.PI * 2 + Math.random() * 0.4;
       const tierRoll = Math.random();
       // Distribución: 1% extremo, 29% súper rápido, 40% rápido, 30% lento
-      const tier: ZombieTier = tierRoll < 0.01 ? 'extreme' : tierRoll < 0.30 ? 'super_fast' : tierRoll < 0.70 ? 'fast' : 'slow';
+      const tier: ZombieTier = tierRoll < ZOMBIE_BEHAVIOR.spawnThresholds.extreme ? 'extreme' : tierRoll < ZOMBIE_BEHAVIOR.spawnThresholds.superFast ? 'super_fast' : tierRoll < ZOMBIE_BEHAVIOR.spawnThresholds.fast ? 'fast' : 'slow';
       const profile = ZOMBIE_TIERS[tier];
       const wanderSpeed = profile.minWanderSpeed + Math.random() * (profile.maxWanderSpeed - profile.minWanderSpeed);
       const alertSpeed = profile.alertSpeed * (0.94 + Math.random() * 0.12);
@@ -539,7 +645,7 @@ export class ZombieManager {
   getHitTargets(ox: number, oz: number, dx: number, dz: number, range: number): THREE.Object3D[] {
     const out: THREE.Object3D[] = [];
     for (const z of this.zombies) {
-      if (z.dead || !z.visible) continue;
+      if (z.dead || z.knockedDown || !z.visible) continue;
       const rx = z.x - ox;
       const rz = z.z - oz;
       const along = rx * dx + rz * dz;
@@ -564,11 +670,25 @@ export class ZombieManager {
       z.health -= od.damage;
       hits++;
       if (od.zone === 'head') headshots++;
-      z.stun = res.melee ? 0.5 : 0.25;
-      z.alert = { x: res.muzzle.x, z: res.muzzle.z, timer: ZOMBIE.alertDuration };
       const dir = res.direction.clone().normalize();
       const bulletImpulse = dir.multiplyScalar(res.melee ? 6.5 : 4.0);
       bulletImpulse.y += res.melee ? 2.5 : 1.2;
+
+      // Si estaba tumbado por un carro, el disparo empuja el ragdoll en vuelo/suelo.
+      if (z.knockedDown) {
+        z.ragdoll?.applyImpulse(bulletImpulse, 2.0);
+        if (z.health <= 0) {
+          this.kill(z, bulletImpulse);
+          kills++;
+          this.onZombieHit?.(z, od.damage, true, bulletImpulse, false);
+        } else {
+          this.onZombieHit?.(z, od.damage, false, bulletImpulse, false);
+        }
+        continue;
+      }
+
+      z.stun = res.melee ? 0.5 : 0.25;
+      z.alert = { x: res.muzzle.x, z: res.muzzle.z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
 
       if (z.health <= 0) {
         this.kill(z, bulletImpulse);
@@ -585,24 +705,48 @@ export class ZombieManager {
 
   /**
    * Detecta atropellos con el vehículo en movimiento.
-   * Empuja y convierte en ragdoll a los zombis según los parámetros configurables.
+   * - El golpe salta EN el contacto visual (caja ajustada al chasis), no metros
+   *   antes: el anti-túnel es un segmento prev→curr, no una caja alargada.
+   * - El vuelo depende de la velocidad y masa del carro: toque lento = empujón
+   *   corto; a velocidad lo lanza lejos y alto.
+   * - Donde cae, tras reposar un instante, se levanta y retoma la persecución.
+   * - Parado o muy despacio (< 2 m/s), los zombis atacan el carro en vez de volar.
    */
   private checkCarCollisions(drv: DrivableCar, dt: number) {
-    const spd = Math.abs(drv.speed);
+    const spd = drv.speed; // con signo: + adelante, - reversa
+    const absSpd = Math.abs(spd);
 
     const fx = Math.sin(drv.heading);
     const fz = Math.cos(drv.heading);
     const rx = Math.cos(drv.heading);
     const rz = -Math.sin(drv.heading);
 
-    const halfL = drv.dims.L * 0.5 + 0.45;
-    const halfW = drv.dims.W * 0.5 + 0.45;
-    const maxReach = drv.dims.L + 2.0;
+    // Caja de contacto visual: morro real (paragolpes ≈ +0.14) + radio del
+    // zombi (~0.4) menos un pequeño solape para que se vea el toque.
+    // Antes: +0.45 más un barrido de hasta +2.2 m → volaba con 2 m de hueco.
+    const halfL = drv.dims.L * 0.5 + 0.32;
+    const halfW = drv.dims.W * 0.5 + 0.28;
+
+    // Desplazamiento del carro este frame (para el segmento barrido).
+    let carDispX = 0;
+    let carDispZ = 0;
+    if (this.lastCarId === (drv as { id?: string }).id) {
+      carDispX = drv.x - this.lastCarX;
+      carDispZ = drv.z - this.lastCarZ;
+    }
+    this.lastCarId = (drv as { id?: string }).id ?? null;
+    this.lastCarX = drv.x;
+    this.lastCarZ = drv.z;
+    const carDisp = Math.hypot(carDispX, carDispZ);
+    const hasSweep = carDisp > 0.02;
+
+    const diag = Math.hypot(halfL, halfW);
+    const maxReach = diag + carDisp + 0.6;
 
     const cfg = this.carPushConfig;
+    const ATTACK_SPEED = 2.0;
 
     for (const z of this.zombies) {
-      // Disminuir enfriamiento de impacto de este zombi si está activo
       if (z.carHitCooldown !== undefined && z.carHitCooldown > 0) {
         z.carHitCooldown -= dt;
       }
@@ -611,65 +755,87 @@ export class ZombieManager {
       const dz = z.z - drv.z;
       if (Math.hypot(dx, dz) > maxReach) continue;
 
-      // Coordenadas locales respecto al carro
-      const localForward = dx * fx + dz * fz;
+      // Coordenadas locales respecto al carro (+adelante, +derecha)
+      const localFwd = dx * fx + dz * fz;
       const localRight = dx * rx + dz * rz;
+      const insideNow = Math.abs(localFwd) <= halfL && Math.abs(localRight) <= halfW;
 
-      if (Math.abs(localForward) < halfL && Math.abs(localRight) < halfW) {
-        if (spd < 1.0) {
-          // Si el vehículo está detenido o rodando muy despacio (< 1 m/s), los zombis vivos atacan
-          if (!z.dead) {
-            z.carAttackTimer = (z.carAttackTimer ?? (0.2 + Math.random() * 0.6)) - dt;
-            if (z.carAttackTimer <= 0) {
-              // Cada zombi ataca con un intervalo pausado (1.0 a 1.4s)
-              z.carAttackTimer = 1.0 + Math.random() * 0.4;
-              drv.onAttackedByZombie(1.2);
-            }
-          }
-          continue;
-        }
+      let hit = insideNow;
+      if (!hit && hasSweep) {
+        // ¿El segmento prev→curr del carro atravesó al zombi este frame?
+        // Se evalúa en el marco local actual (el giro por frame es mínimo).
+        const pdx = dx + carDispX;
+        const pdz = dz + carDispZ;
+        const prevFwd = pdx * fx + pdz * fz;
+        const prevRight = pdx * rx + pdz * rz;
+        hit = segmentHitsBox(prevRight, prevFwd, localRight, localFwd, halfW, halfL);
+      }
+      if (!hit) continue;
 
-        // Si ya era un cadáver y el coche pasa por encima:
-        if (z.dead) {
-          // Proyectar ragdoll si aún se mueve, pero NUNCA desgastar el coche ni frenarlo bruscamente
-          const corpseImpulse = new THREE.Vector3(
-            fx * drv.speed * 0.25 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
-            cfg.lift * 0.35,
-            fz * drv.speed * 0.25 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
-          );
-          z.ragdoll?.applyImpulse(corpseImpulse, cfg.tumble);
-          continue;
-        }
+      // --- Carro parado o rodando muy despacio: los zombis vivos lo atacan ---
+      // El daño lo aplica el ataque cuerpo a cuerpo en wander() (0.1% por
+      // golpe); aquí solo se evita que el contacto a baja velocidad los
+      // atraviese o los tumbe. Se comparte el enfriamiento para no duplicar.
+      if (absSpd < ATTACK_SPEED) {
+        if (z.dead || z.knockedDown) continue; // cadáveres y tumbados no atacan
+        continue;
+      }
 
-        // Zombi VIVO atropellado a velocidad (spd >= 1.0):
-        if ((z.carHitCooldown ?? 0) > 0) {
-          continue;
-        }
-        z.carHitCooldown = 0.5; // Evita acumular impactos en múltiples frames continuos
-
-        // Atropello cinético: calcula daño al zombi, desgaste moderado, abolladura y vector de empuje
-        const hitResult = drv.onHitZombie(z, drv.speed, localRight);
-
-        const impulse = new THREE.Vector3(
-          hitResult.impulse.x * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
-          cfg.lift,
-          hitResult.impulse.z * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
+      // --- Cadáver en el suelo: solo se arrastra si el coche va con fuerza ---
+      if (z.dead) {
+        if (absSpd < 3.0 || (z.carHitCooldown ?? 0) > 0 || !z.ragdoll) continue;
+        z.carHitCooldown = 0.5; // no re-empujar cada frame mientras lo pisa
+        const corpseLift = Math.min(3.0, 0.3 + cfg.lift * (absSpd / 18));
+        const corpseImpulse = new THREE.Vector3(
+          fx * spd * 0.85 * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
+          corpseLift,
+          fz * spd * 0.85 * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
         );
+        z.ragdoll.applyImpulse(corpseImpulse, cfg.tumble);
+        continue;
+      }
 
-        // A velocidades normales de marcha (> 1.8 m/s), el impacto arrolla y elimina al zombi
-        if (spd >= 1.8) {
-          z.health = 0;
-        } else {
-          z.health = Math.max(0, z.health - hitResult.zombieDamage);
-        }
+      // --- Zombi ya tumbado y volando: no re-aplicar daño, solo arrastrar ---
+      if (z.knockedDown) {
+        if ((z.carHitCooldown ?? 0) > 0 || !z.ragdoll) continue;
+        if (absSpd < 4.0) continue; // rodando sobre él despacio no lo relanza
+        z.carHitCooldown = 0.4;
+        const dragLift = Math.min(3.0, 0.3 + cfg.lift * (absSpd / 18));
+        const dragImpulse = new THREE.Vector3(
+          fx * spd * 0.7 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
+          dragLift,
+          fz * spd * 0.7 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
+        );
+        z.ragdoll.applyImpulse(dragImpulse, cfg.tumble);
+        continue;
+      }
 
-        if (z.health <= 0) {
-          this.kill(z, impulse, cfg.tumble);
-          this.kills++;
-          this.onZombieHit?.(z, hitResult.zombieDamage, true, impulse, true);
-        } else {
-          this.onZombieHit?.(z, hitResult.zombieDamage, false, impulse, true);
-        }
+      // --- Zombi VIVO de pie atropellado a velocidad ---
+      if ((z.carHitCooldown ?? 0) > 0) continue;
+      z.carHitCooldown = 0.6; // evita acumular impactos en frames continuos
+
+      const hitResult = drv.onHitZombie(z, spd, localRight);
+
+      // Horizontal: empuje del coche (ya ∝ velocidad × masa) × slider.
+      // Vertical: base del coche (∝ velocidad) + extra del slider escalado por
+      // velocidad, para que a 2 m/s apenas salte y a 12+ m/s vuele alto.
+      // Toque a ~2 m/s ≈ 0.6 m/s arriba (saltito); a 10 m/s ≈ 4 m/s (vuelo).
+      const impulseY = Math.min(7.5, hitResult.impulse.y * 0.65 + cfg.lift * (absSpd / 14));
+      const impulse = new THREE.Vector3(
+        hitResult.impulse.x * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
+        impulseY,
+        hitResult.impulse.z * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
+      );
+
+      z.health = Math.max(0, z.health - hitResult.zombieDamage);
+
+      if (z.health <= 0) {
+        this.kill(z, impulse, cfg.tumble);
+        this.kills++;
+        this.onZombieHit?.(z, hitResult.zombieDamage, true, impulse, true);
+      } else {
+        this.knockDown(z, impulse, cfg.tumble);
+        this.onZombieHit?.(z, hitResult.zombieDamage, false, impulse, true);
       }
     }
   }
@@ -678,7 +844,7 @@ export class ZombieManager {
   alertNoise(x: number, z: number, radius: number) {
     for (const zb of this.zombies) {
       if (zb.dead) continue;
-      if (Math.hypot(zb.x - x, zb.z - z) <= radius) zb.alert = { x, z, timer: ZOMBIE.alertDuration };
+      if (Math.hypot(zb.x - x, zb.z - z) <= radius) zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
     }
   }
 
@@ -689,13 +855,76 @@ export class ZombieManager {
     z.moving = false;
     z.running = false;
     z.alert = null;
+    z.knockedDown = false;
+    z.recoverTimer = 0;
+    z.downTime = 0;
     z.mixer.stopAllAction();
     z.mixer.uncacheRoot(z.inst.model);
     if (z.hit) {
       z.hit.visible = false;
-      z.inst.root.remove(z.hit);
+      // Quitar del root si aún es hijo (puede haberse ocultado en knockDown)
+      if (z.hit.parent === z.inst.root) z.inst.root.remove(z.hit);
+    }
+    // Si venía tumbado, reutilizar su posición actual y liberar el ragdoll viejo
+    // para no crear dos simulaciones superpuestas del mismo cuerpo.
+    if (z.ragdoll) {
+      const hipsPos = z.ragdoll.getHipsPosition();
+      if (hipsPos) {
+        const fixed = this.world.resolveCollision(hipsPos.x, hipsPos.z, ZOMBIE.radius);
+        z.x = fixed.x;
+        z.z = fixed.z;
+        z.inst.root.position.set(z.x, 0, z.z);
+      }
+      z.inst.model.position.set(0, 0, 0);
+      z.inst.model.quaternion.identity();
+      this.ragdolls.removeRagdoll(z.ragdoll);
+      z.ragdoll = null;
     }
     z.ragdoll = this.ragdolls.createRagdoll(z.inst.model, impulse, tumble);
+  }
+
+  /** Zombis (vivos por defecto) dentro de un radio. Lo usa el sistema de explosivos. */
+  getZombiesNear(x: number, z: number, radius: number, aliveOnly = true): Zombie[] {
+    const out: Zombie[] = [];
+    for (const zb of this.zombies) {
+      if (aliveOnly && (zb.dead || zb.knockedDown)) continue;
+      if (Math.hypot(zb.x - x, zb.z - z) <= radius) out.push(zb);
+    }
+    return out;
+  }
+
+  /**
+   * Daño de área con impulso (explosiones): si mata, ragdoll con el impulso;
+   * si no, tumba igual que un atropello. Emite onZombieHit (isCar=true) para
+   * replicar el vuelo en red por la vía existente de golpes con derribo.
+   */
+  applyBlastHit(z: Zombie, damage: number, impulse: THREE.Vector3) {
+    if (!z || z.dead) return;
+    z.health -= damage;
+    z.stun = 0;
+    if (z.health <= 0) {
+      this.kill(z, impulse, 3.0);
+      this.kills++;
+      this.onZombieHit?.(z, damage, true, impulse, true);
+    } else {
+      this.knockDown(z, impulse, 3.0);
+      this.onZombieHit?.(z, damage, false, impulse, true);
+    }
+  }
+
+  /**
+   * Tick de quemadura (fuego/DoT): daña sin aturdir ni tumbar para no
+   * congelar al zombi; al morir cae con un leve impulso hacia arriba.
+   */
+  applyBurnTick(z: Zombie, damage: number) {
+    if (!z || z.dead || z.knockedDown) return;
+    z.health -= damage;
+    if (z.health <= 0) {
+      const up = new THREE.Vector3((Math.random() - 0.5) * 2, 2.5, (Math.random() - 0.5) * 2);
+      this.kill(z, up, 2.0);
+      this.kills++;
+      this.onZombieHit?.(z, damage, true, up, false);
+    }
   }
 
   /** Si tiene ragdoll las físicas de Cannon controlan el cuerpo; de lo contrario usa caída matemática de respaldo. */
@@ -716,13 +945,21 @@ export class ZombieManager {
    */
   private setMotion(z: Zombie, moving: boolean, running: boolean, speed: number) {
     z.currentSpeed = moving ? speed : 0;
-    const targetState: ZombieAnimState = !moving ? 'idle' : running ? 'run' : 'walk';
+    // Si la velocidad es muy baja (<= 0.45), usamos 'idle' (caminata lentísima)
+    // Si es mayor, usamos 'walk' (walk_fast). Si está corriendo, 'run'.
+    let targetState: ZombieAnimState = 'idle';
+    if (moving && speed > 0.45) {
+      targetState = running ? 'run' : 'walk';
+    }
 
     // Ajustar cadencia según la velocidad actual
     if (targetState === 'run') {
       z.runAction.timeScale = THREE.MathUtils.clamp(speed / ZOMBIE.runClipSpeed, 0.45, 2.5);
     } else if (targetState === 'walk') {
       z.walkAction.timeScale = THREE.MathUtils.clamp(speed / ZOMBIE.walkClipSpeed, 0.45, 2.0);
+    } else if (targetState === 'idle') {
+      // Para caminata lentísima, ajustamos su timeScale para que no patine
+      z.idleAction.timeScale = THREE.MathUtils.clamp((speed || 0.5) / 0.8, 0.5, 1.5);
     }
 
     if (z.animState === targetState) {
@@ -765,14 +1002,23 @@ export class ZombieManager {
     const dz = tz - z.z;
     const dist = Math.hypot(dx, dz);
 
-    // 1. Proximidad física inmediata (menos de 1.8 metros: enseguida del zombi).
-    // Si estás pegado a él, te detecta incondicionalmente aunque estés en sigilo.
-    if (dist <= 1.8) {
+    // 1. Proximidad física inmediata (enseguida del zombi).
+    // Si estás en sigilo, puedes acercarte más por la espalda sin ser detectado.
+    const proxLimit = isStealth 
+      ? ZOMBIE_BEHAVIOR.detection.stealthProximity 
+      : ZOMBIE_BEHAVIOR.detection.immediateProximity;
+      
+    if (dist <= proxLimit) {
       return true;
     }
 
-    // 2. Campo de visión corto frontal
-    if (dist <= profile.visionDist) {
+    // 2. Campo de visión frontal
+    // Si estás en sigilo, su rango de visión disminuye drásticamente.
+    const actualVisionDist = isStealth 
+      ? profile.visionDist * ZOMBIE_BEHAVIOR.detection.stealthVisionMultiplier 
+      : profile.visionDist;
+
+    if (dist <= actualVisionDist) {
       // Vector frontal del zombi (en Three.js con rotación Y: x = sin(rot), z = cos(rot))
       const fwdX = Math.sin(z.rot);
       const fwdZ = Math.cos(z.rot);
@@ -785,7 +1031,7 @@ export class ZombieManager {
         const obs = this.world.raycastObstacle(z.x, z.z, toTargetX, toTargetZ, dist);
         const hasLineOfSight = obs === null || obs >= dist - 0.2;
         if (hasLineOfSight) {
-          // El zombi te ve directamente en su campo de visión corto (incluso si estás en sigilo)
+          // El zombi te ve directamente en su campo de visión (incluso en sigilo si estás muy cerca de frente)
           return true;
         }
       }
@@ -806,13 +1052,81 @@ export class ZombieManager {
     return false;
   }
 
+  /**
+   * Empuja al zombi fuera de un rectángulo de carro (círculo vs OBB).
+   * Así los carros son sólidos para ellos: los rodean en vez de atravesarlos.
+   * Devuelve true si corrigió posición.
+   */
+  private pushOutOfCarRect(
+    z: Zombie, cx: number, cz: number, heading: number, halfL: number, halfW: number,
+  ): boolean {
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
+    const rx = Math.cos(heading);
+    const rz = -Math.sin(heading);
+    // Centro del zombi contra carro expandido por el radio corporal.
+    const solidHalfL = halfL + ZOMBIE.radius;
+    const solidHalfW = halfW + ZOMBIE.radius;
+    const dx = z.x - cx;
+    const dz = z.z - cz;
+    const lf = dx * fx + dz * fz;
+    const lr = dx * rx + dz * rz;
+    if (Math.abs(lf) > solidHalfL || Math.abs(lr) > solidHalfW) return false;
+    const penFwd = solidHalfL - Math.abs(lf);
+    const penRight = solidHalfW - Math.abs(lr);
+    if (penFwd < penRight) {
+      const s = lf >= 0 ? 1 : -1;
+      z.x += fx * s * penFwd;
+      z.z += fz * s * penFwd;
+    } else {
+      const s = lr >= 0 ? 1 : -1;
+      z.x += rx * s * penRight;
+      z.z += rz * s * penRight;
+    }
+    return true;
+  }
+
+  private pushOutOfDrivenCar(z: Zombie, drv: DrivableCar): boolean {
+    return this.pushOutOfCarRect(z, drv.x, drv.z, drv.heading, drv.dims.L * 0.5, drv.dims.W * 0.5);
+  }
+
+  /**
+   * Distancia del centro del zombi a la chapa de un carro + punto más cercano
+   * de la carrocería en mundo. Sirve para detenerse a golpear el borde en vez
+   * de caminar hasta el centro donde está el jugador.
+   */
+  private carRectEdgeInfo(
+    zx: number, zz: number, cx: number, cz: number, heading: number, halfL: number, halfW: number,
+  ): { surfaceDist: number; nx: number; nz: number } {
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
+    const rx = Math.cos(heading);
+    const rz = -Math.sin(heading);
+    const dx = zx - cx;
+    const dz = zz - cz;
+    const lf = dx * fx + dz * fz;
+    const lr = dx * rx + dz * rz;
+    const clf = THREE.MathUtils.clamp(lf, -halfL, halfL);
+    const clr = THREE.MathUtils.clamp(lr, -halfW, halfW);
+    const surfaceDist = Math.hypot(lf - clf, lr - clr);
+    const c = Math.cos(heading);
+    const s = Math.sin(heading);
+    return { surfaceDist, nx: cx + clr * c + clf * s, nz: cz - clr * s + clf * c };
+  }
+
+  private carEdgeInfo(z: Zombie, drv: DrivableCar): { surfaceDist: number; nx: number; nz: number } {
+    return this.carRectEdgeInfo(z.x, z.z, drv.x, drv.z, drv.heading, drv.dims.L * 0.5, drv.dims.W * 0.5);
+  }
+
   private wander(
     z: Zombie,
     dt: number,
     px: number,
     pz: number,
     otherPlayers?: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[],
-    localPlayerStatus?: { isStealth: boolean; isRunning: boolean }
+    localPlayerStatus?: { isStealth: boolean; isRunning: boolean },
+    drv?: DrivableCar | null,
+    remoteCars?: RemoteCarInfo[],
   ) {
     // Aturdido por un impacto: se queda quieto un instante
     if (z.stun > 0) {
@@ -855,7 +1169,7 @@ export class ZombieManager {
     }
 
     if (alertTarget) {
-      z.alert = { x: alertTarget.x, z: alertTarget.z, timer: ZOMBIE.alertDuration };
+      z.alert = { x: alertTarget.x, z: alertTarget.z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
     }
 
     // Alertado por un ruido o jugador: va hacia allí a su velocidad de carrera/alerta
@@ -864,41 +1178,102 @@ export class ZombieManager {
       if (z.attackCooldown > 0) {
         z.attackCooldown -= dt;
       }
-      const ax = z.alert.x - z.x;
-      const az = z.alert.z - z.z;
-      const distToAlert = Math.hypot(ax, az);
+      // ¿El objetivo es un jugador dentro de un carro (local o remoto)?
+      // player.x/z == carro cuando se conduce, así que el alert cae en el
+      // centro del coche: hay que pelear contra la chapa, no contra el centro.
+      let chaseLocalCar = false;
+      let chaseRemote: RemoteCarInfo | null = null;
+      if (drv && Math.hypot(z.alert.x - drv.x, z.alert.z - drv.z) < Math.hypot(drv.dims.L, drv.dims.W) * 0.5 + 1.0) {
+        chaseLocalCar = true;
+      } else if (remoteCars) {
+        for (const rc of remoteCars) {
+          if (Math.hypot(z.alert.x - rc.x, z.alert.z - rc.z) < Math.hypot(rc.halfL * 2, rc.halfW * 2) * 0.5 + 1.0) {
+            chaseRemote = rc;
+            break;
+          }
+        }
+      }
+      const carProtects =
+        chaseLocalCar && !!drv && drv.currentDurability > 0 && drv.lockState !== 'broken';
 
       if (z.alert.timer <= 0) {
         z.alert = null;
         z.timer = 0;
-      } else if (distToAlert < 1.35) {
-        // Al estar a distancia de contacto, reduce velocidad y ataca al jugador
-        z.targetRot = Math.atan2(ax, az);
-        this.setMotion(z, true, false, z.wanderSpeed * 0.35);
-        if (z.attackCooldown <= 0) {
-          z.attackAction.reset().play();
-          z.attackCooldown = 1.25;
-          this.onPlayerAttacked?.(z, 10);
+      } else if (carProtects && drv) {
+        // Jugador local protegido: el zombi rodea el carro (sólido) y golpea la
+        // carrocería (~0.1% por golpe) en vez de herir al conductor.
+        const edge = this.carEdgeInfo(z, drv);
+        if (edge.surfaceDist < 1.55) {
+          z.targetRot = Math.atan2(edge.nx - z.x, edge.nz - z.z);
+          this.setMotion(z, true, false, z.wanderSpeed * 0.35);
+          if (z.attackCooldown <= 0) {
+            z.attackAction.reset().play();
+            z.attackCooldown = 1.25;
+            drv.onAttackedByZombie(drv.config.maxDurability * 0.001);
+          }
+        } else {
+          z.targetRot = Math.atan2(edge.nx - z.x, edge.nz - z.z);
+          this.setMotion(z, true, true, z.alertSpeed);
+        }
+      } else if (chaseRemote) {
+        // Carro de OTRO jugador: sólido y con animación de ataque al borde,
+        // pero sin daño local (el daño a su chapa lo aplica el conductor,
+        // autoridad del vehículo; aquí solo lo visual).
+        const rc = chaseRemote;
+        const edge = this.carRectEdgeInfo(z.x, z.z, rc.x, rc.z, rc.heading, rc.halfL, rc.halfW);
+        if (edge.surfaceDist < 1.55) {
+          z.targetRot = Math.atan2(edge.nx - z.x, edge.nz - z.z);
+          this.setMotion(z, true, false, z.wanderSpeed * 0.35);
+          if (z.attackCooldown <= 0) {
+            z.attackAction.reset().play();
+            z.attackCooldown = 1.25;
+          }
+        } else {
+          z.targetRot = Math.atan2(edge.nx - z.x, edge.nz - z.z);
+          this.setMotion(z, true, true, z.alertSpeed);
         }
       } else {
-        z.targetRot = Math.atan2(ax, az);
-        // Al perseguir, se activa la animación de correr con la velocidad de su tier
-        this.setMotion(z, true, true, z.alertSpeed);
+        const ax = z.alert.x - z.x;
+        const az = z.alert.z - z.z;
+        const distToAlert = Math.hypot(ax, az);
+
+        if (distToAlert < 1.35) {
+          // Al estar a distancia de contacto, reduce velocidad y ataca.
+          // (A pie, o carro ya destruido: sin chapa que lo proteja).
+          // El daño solo entra si la presa sigue ahí: el alert es memoria
+          // (hasta 10 s) y si el jugador ya se fue —p. ej. subió al carro y
+          // arrancó— el zarpazo va al aire y no debe herir a distancia.
+          // Esto también evita que un ataque a un jugador remoto le quite
+          // vida al conductor local en multijugador.
+          z.targetRot = Math.atan2(ax, az);
+          this.setMotion(z, true, false, z.wanderSpeed * 0.35);
+          if (z.attackCooldown <= 0) {
+            z.attackAction.reset().play();
+            z.attackCooldown = 1.25;
+            const victimStillThere = Math.hypot(z.x - px, z.z - pz) < 2.0;
+            if (victimStillThere) this.onPlayerAttacked?.(z, 10);
+          }
+        } else {
+          z.targetRot = Math.atan2(ax, az);
+          // Al perseguir, se activa la animación de correr con la velocidad de su tier
+          this.setMotion(z, true, true, z.alertSpeed);
+        }
       }
     }
 
     // Modo deambular pacífico si no está alertado
     z.timer -= dt;
     if (!z.alert && z.timer <= 0) {
-      const willMove = Math.random() < 0.70;
-      if (!willMove) {
-        this.setMotion(z, false, false, 0);
-        z.timer = 1.2 + Math.random() * 3.0;
+      const isSuperSlow = Math.random() < ZOMBIE_BEHAVIOR.wander.superSlowProb;
+      if (isSuperSlow) {
+        // 70% caminata súper lenta (caminata_lentisima mapeado a 'idle')
+        // Usamos moving=true
+        this.setMotion(z, true, false, ZOMBIE_BEHAVIOR.wander.superSlowSpeed); 
+        z.targetRot = Math.random() * Math.PI * 2;
+        z.timer = 3.0 + Math.random() * 4.0;
       } else {
-        // Decide si corre o camina al deambular según el perfil del tipo de zombi
-        const willRun = Math.random() < profile.wanderRunChance;
-        const spd = willRun ? z.wanderSpeed * 1.35 : z.wanderSpeed;
-        this.setMotion(z, true, willRun, spd);
+        // 30% caminata un poco más rápida (walk_fast mapeado a 'walk')
+        this.setMotion(z, true, false, ZOMBIE_BEHAVIOR.wander.fastSpeed);
         z.targetRot = Math.random() * Math.PI * 2;
         z.timer = 2.0 + Math.random() * 4.5;
       }
@@ -919,6 +1294,21 @@ export class ZombieManager {
       }
       z.x = fixed.x;
       z.z = fixed.z;
+    }
+
+    // Los carros (local + remotos) son sólidos: nunca caminar a través de la chapa.
+    // Se aplica siempre (incluso sin alerta) para que no los atraviesen al
+    // rodearlos, y también con carros destruidos (el amasijo sigue estorbando).
+    // Solo el conductor aplica daño a su chapa (autoridad del vehículo).
+    let pushed = false;
+    if (drv) pushed = this.pushOutOfDrivenCar(z, drv) || pushed;
+    if (remoteCars) {
+      for (const rc of remoteCars) {
+        pushed = this.pushOutOfCarRect(z, rc.x, rc.z, rc.heading, rc.halfL, rc.halfW) || pushed;
+      }
+    }
+    if (pushed) {
+      z.timer = Math.min(z.timer, 0.4); // reorienta pronto tras rozar la chapa
     }
 
     z.inst.root.position.set(z.x, 0, z.z);
@@ -942,7 +1332,7 @@ export class ZombieManager {
       z.ragdoll = null;
     }
     z.mixer.stopAllAction();
-    z.mixer.uncacheRoot(z.inst.model);
+
     disposeMikuInstance(z.inst);
   }
 
@@ -963,13 +1353,32 @@ export class ZombieManager {
   }
 
   /** Aplica un impacto recibido por la red desde otro jugador */
-  applyRemoteHit(hit: { zombieId: string; damage: number; impulseX: number; impulseY: number; impulseZ: number; isKilled: boolean; zombieX?: number; zombieZ?: number }) {
+  applyRemoteHit(hit: { zombieId: string; damage: number; impulseX: number; impulseY: number; impulseZ: number; isKilled: boolean; isCarHit?: boolean; zombieX?: number; zombieZ?: number }) {
     const z = this.findZombie(hit.zombieId, hit.zombieX, hit.zombieZ);
     if (!z || z.dead) return;
 
     z.health = Math.max(0, z.health - hit.damage);
-    z.stun = 0.3;
     const impulse = new THREE.Vector3(hit.impulseX, hit.impulseY, hit.impulseZ);
+
+    if (z.knockedDown) {
+      z.ragdoll?.applyImpulse(impulse, 2.0);
+      if (hit.isKilled || z.health <= 0) {
+        this.kill(z, impulse, 0.5);
+        this.kills++;
+      }
+      return;
+    }
+
+    // Atropello no letal del carro de otro jugador: tumbar con ragdoll igual
+    // que en local. El vector de impulso ya viene final (con los sliders del
+    // conductor), así que el vuelo coincide; el giro es aleatorio por cliente
+    // y la recuperación corre local en cada uno. Sin cambio de protocolo:
+    // isCarHit && !isKilled ya viajaba en el evento.
+    if (hit.isCarHit && !hit.isKilled && z.health > 0) {
+      this.knockDown(z, impulse, 3.0);
+      return;
+    }
+    z.stun = 0.3;
 
     if (hit.isKilled || z.health <= 0) {
       this.kill(z, impulse, 0.5);
@@ -981,7 +1390,7 @@ export class ZombieManager {
   applyRemoteAlert(zombieId: string, x: number, z: number) {
     const zb = this.findZombie(zombieId, x, z);
     if (!zb || zb.dead) return;
-    zb.alert = { x, z, timer: ZOMBIE.alertDuration };
+    zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
   }
 
   /** Sincroniza las posiciones de los zombis recibidas por la red */
@@ -994,7 +1403,7 @@ export class ZombieManager {
         this.kill(z);
         continue;
       }
-      if (z.dead) continue;
+      if (z.dead || z.knockedDown) continue; // la física local manda mientras vuela
 
       // Suavizar posición hacia la transmitida
       z.x += (s.x - z.x) * 0.35;
@@ -1011,7 +1420,7 @@ export class ZombieManager {
   getActiveZombiesSync(maxCount = 20, maxDist = 35): any[] {
     const result: any[] = [];
     for (const z of this.zombies) {
-      if (z.visible && !z.dead && z.d < maxDist) {
+      if (z.visible && !z.dead && !z.knockedDown && z.d < maxDist) {
         result.push({
           id: z.id,
           x: z.x,
@@ -1045,5 +1454,163 @@ export class ZombieManager {
     this.zombiesById.clear();
     this.queue = [];
     this.spawned.clear();
+  }
+
+  /**
+   * Onda de choque de resurrección: lanza en radial a los zombis del radio con
+   * la misma física del atropello (ragdoll + se levantan), pero SIN matarlos:
+   * no hace daño ni cuenta bajas. Los ya tumbados reciben empuje extra y los
+   * cadáveres se arrastran. Emite onZombieHit con daño 0 para replicarlo en red.
+   */
+  blastWave(cx: number, cz: number, radius: number, power: number) {
+    const tumble = 3.5;
+    for (const z of this.zombies) {
+      const dx = z.x - cx;
+      const dz = z.z - cz;
+      const d = Math.hypot(dx, dz);
+      if (d > radius) continue;
+      const fall = 1 - (d / radius) * 0.6;
+      const nx = d > 1e-4 ? dx / d : Math.random() - 0.5;
+      const nz = d > 1e-4 ? dz / d : Math.random() - 0.5;
+      const impulse = new THREE.Vector3(
+        nx * power * fall + (Math.random() - 0.5) * 1.2,
+        2.5 * fall + 1.0,
+        nz * power * fall + (Math.random() - 0.5) * 1.2,
+      );
+      if (z.dead) {
+        z.ragdoll?.applyImpulse(impulse, tumble);
+        continue;
+      }
+      if (z.knockedDown) {
+        z.ragdoll?.applyImpulse(impulse, tumble);
+        continue;
+      }
+      this.knockDown(z, impulse, tumble);
+      this.onZombieHit?.(z, 0, false, impulse, true);
+    }
+  }
+  private knockDown(z: Zombie, impulse: THREE.Vector3, tumble?: number) {
+    if (z.dead) return;
+    if (z.knockedDown) {
+      z.ragdoll?.applyImpulse(impulse, tumble);
+      return;
+    }
+    z.knockedDown = true;
+    z.recoverTimer = 0;
+    z.downTime = 0;
+    z.moving = false;
+    z.running = false;
+    z.currentSpeed = 0;
+    z.stun = 0;
+    z.mixer.stopAllAction();
+    // Ocultar la hitbox cilíndrica: quedó en el punto del atropello mientras
+    // el modelo vuela varios metros; evita disparos al aire y re-atropellos.
+    if (z.hit) z.hit.visible = false;
+
+    const rd = this.ragdolls.createRagdoll(z.inst.model, impulse, tumble);
+    if (!rd) {
+      // Sin esqueleto no hay física: aturdido breve en el suelo y a seguir.
+      z.knockedDown = false;
+      if (z.hit) z.hit.visible = true;
+      z.stun = 0.8;
+      z.idleAction.reset().play();
+      z.animState = 'idle';
+      return;
+    }
+    z.ragdoll = rd;
+  }
+
+  /**
+   * Mientras vuela/cae, la lógica sigue a las caderas físicas para que el
+   * zombi aterrice donde la física diga, no donde fue atropellado.
+   * Mueve el root a las caderas y compensa el offset del modelo para que
+   * el visual no pegue un salto (root+modelo = misma posición de mundo).
+   */
+  private updateKnockedDown(z: Zombie, dt: number) {
+    z.downTime = (z.downTime ?? 0) + dt;
+    const rd = z.ragdoll;
+    if (!rd) {
+      // Sin física (expulsado por límite o fallo): levantarse en el sitio.
+      this.finishRecovery(z);
+      return;
+    }
+    const hips = rd.getHipsPosition();
+    if (hips && Number.isFinite(hips.x) && Number.isFinite(hips.z)) {
+      const dx = hips.x - z.x;
+      const dz = hips.z - z.z;
+      const dist = Math.hypot(dx, dz);
+      // Ignorar teleports absurdos de una física explotada (>15 m en un frame).
+      if (dist > 0.005 && dist < 15) {
+        z.x = hips.x;
+        z.z = hips.z;
+        z.inst.root.position.set(z.x, 0, z.z);
+        z.inst.model.position.x -= dx;
+        z.inst.model.position.z -= dz;
+      }
+    }
+    this.checkRecovery(z, dt);
+  }
+
+  private checkRecovery(z: Zombie, dt: number) {
+    if (!z.knockedDown) return;
+    const rd = z.ragdoll;
+    if (!rd) {
+      this.finishRecovery(z);
+      return;
+    }
+    if (rd.isSettled) {
+      z.recoverTimer = (z.recoverTimer ?? 0) + dt;
+    } else {
+      z.recoverTimer = 0;
+    }
+    const restedEnough = (z.recoverTimer ?? 0) > 1.2;
+    const timedOut = (z.downTime ?? 0) > 6.0; // seguridad: nunca atascado tumbado
+    if (restedEnough || timedOut) {
+      this.finishRecovery(z);
+    }
+  }
+
+  /** Levanta al zombi donde cayó: recoloca, limpia la física y retoma la caza. */
+  private finishRecovery(z: Zombie) {
+    const rd = z.ragdoll;
+    if (rd) {
+      const hipsPos = rd.getHipsPosition();
+      if (hipsPos && Number.isFinite(hipsPos.x) && Number.isFinite(hipsPos.z)) {
+        z.x = hipsPos.x;
+        z.z = hipsPos.z;
+      }
+      this.ragdolls.removeRagdoll(rd);
+      z.ragdoll = null;
+    }
+    // Fuera de paredes/obstáculos antes de volver a caminar.
+    try {
+      const fixed = this.world.resolveCollision(z.x, z.z, ZOMBIE.radius);
+      z.x = fixed.x;
+      z.z = fixed.z;
+    } catch {
+      /* mundo aún cargando: se queda donde cayó */
+    }
+    z.inst.root.position.set(z.x, 0, z.z);
+    // Reset del offset/rotación que el ragdoll aplicó al modelo.
+    z.inst.model.position.set(0, 0, 0);
+    z.inst.model.quaternion.identity();
+
+    z.knockedDown = false;
+    z.recoverTimer = 0;
+    z.downTime = 0;
+    if (z.hit && z.hit.parent === z.inst.root) z.hit.visible = true;
+    z.animState = 'idle';
+    try {
+      z.idleAction.reset().play();
+    } catch {
+      /* mixer aún sin clips: wander lo reintentará */
+    }
+    // Pausa de "levantarse" + memoria de caza para que siga sus interacciones:
+    // si ya perseguía a alguien, conserva el objetivo y lo refresca.
+    z.stun = Math.max(z.stun, 0.6);
+    z.timer = 0;
+    if (z.alert) {
+      z.alert.timer = ZOMBIE_BEHAVIOR.detection.alertMemoryDuration;
+    }
   }
 }

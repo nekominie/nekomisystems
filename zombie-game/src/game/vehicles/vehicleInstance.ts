@@ -947,16 +947,28 @@ export class VehicleInstance {
       };
     }
 
-    // 1. Daño proporcional infligido al zombi
-    const zombieDamage = Math.round(spd * (this.config.mass / 60));
+    // 1. Daño proporcional infligido al zombi. Se mantiene bajo a propósito:
+    // un atropello a velocidad media TUMBA (ragdoll + se levanta) en vez de
+    // matar de un golpe; hacen falta varios o ir muy rápido para la baja.
+    const zombieDamage = Math.round(spd * (this.config.mass / 500));
 
-    // 2. Vector de empuje y lanzamiento alineado con la dirección del coche
-    const dir = this.velocity.clone().normalize();
-    const pushMagnitude = Math.min(18, spd * 0.85);
+    // 2. Vector de empuje y lanzamiento 100% dependiente de la velocidad y la masa.
+    // A 2 m/s apenas lo desplaza (~1 m/s); a 10 m/s lo lanza lejos (~11 m/s);
+    // un camión pesado lanza más que un compacto a igual velocidad.
+    const dir = this.velocity.lengthSq() > 0.001
+      ? this.velocity.clone().normalize()
+      : new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    const massFactor = THREE.MathUtils.clamp(this.config.mass / 1400, 0.65, 1.9);
+    const pushMagnitude = Math.min(22, spd * (0.55 + spd * 0.06) * massFactor);
+    const liftY = THREE.MathUtils.clamp((spd - 1.5) * 0.34, 0.35, 5.2) * (0.85 + massFactor * 0.15);
+    // Si el golpe da en una esquina, desvía lateralmente hacia ese lado.
+    const sidePush = THREE.MathUtils.clamp(impactLocalX, -1.5, 1.5) * spd * 0.25;
+    const perpX = Math.cos(this.heading);
+    const perpZ = -Math.sin(this.heading);
     const impulse = new THREE.Vector3(
-      dir.x * pushMagnitude,
-      Math.min(2.5, 0.4 + spd * 0.08),
-      dir.z * pushMagnitude,
+      dir.x * pushMagnitude + perpX * sidePush,
+      liftY,
+      dir.z * pushMagnitude + perpZ * sidePush,
     );
 
     // 3. Desgaste del parachoques/motor
@@ -984,13 +996,13 @@ export class VehicleInstance {
     this.updateVisualDeterioration();
 
     // 5. Desaceleración del coche por transferencia de energía
-    const massFactor = Math.max(0.92, 1 - (45 / this.config.mass));
-    this.currentSpeed *= massFactor;
+    const slowFactor = Math.max(0.92, 1 - (45 / this.config.mass));
+    this.currentSpeed *= slowFactor;
 
     return {
       zombieDamage,
       impulse,
-      carSlowdown: massFactor,
+      carSlowdown: slowFactor,
     };
   }
 
