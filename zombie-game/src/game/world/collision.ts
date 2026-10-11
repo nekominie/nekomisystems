@@ -88,8 +88,7 @@ export class CollisionGrid {
   }
 
   /** Quita los colisionadores de un chunk al descargarlo. */
-  remove(owner: string) {
-    const keys = this.owned.get(owner);
+  remove(owner: string) {    const keys = this.owned.get(owner);
     if (!keys) return;
     for (const k of keys) {
       const arr = this.cells.get(k);
@@ -104,6 +103,15 @@ export class CollisionGrid {
   clear() {
     this.cells.clear();
     this.owned.clear();
+  }
+
+  /**
+   * Sustituye la lista de colisionadores de un dueño (p. ej. al romper un prop
+   * destructible de un chunk sin reconstruir nada más).
+   */
+  replace(owner: string, list: Collider[]) {
+    this.remove(owner);
+    if (list.length) this.add(owner, list);
   }
 
   /**

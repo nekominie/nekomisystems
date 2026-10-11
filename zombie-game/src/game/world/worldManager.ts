@@ -7,6 +7,7 @@ import { CollisionGrid, type Collider } from './collision';
 import { setCrateOpened } from './cabinMesh';
 import { carId } from './carData';
 import { GroundDropManager } from '../weapons/groundDrops';
+import { WorldScatterManager, type PropLight } from './props/scatter';
 import type { WeaponId } from '../weapons/weaponTypes';
 import type { Car, GasStation } from './types';
 
@@ -36,6 +37,12 @@ export class WorldManager {
   private stationFuel = new Map<string, number>();
   /** Armas tiradas en el suelo (las de residencias nacen con su chunk; las que suelta el jugador persisten). */
   readonly drops: GroundDropManager;
+  /** Props ambientales por chunk (farolas, vallas, barriles...): sólidos y destructibles. */
+  private scatter: WorldScatterManager;
+  /** Fuentes de luz de props (farolas, fogatas de campamento) por chunk. */
+  private propLights = new Map<string, PropLight[]>();
+  /** Se llama al romper un barril rojo (WorldGameplay lo conecta a ExplosivesManager). */
+  onRedBarrelBlast: ((x: number, z: number) => void) | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -43,6 +50,7 @@ export class WorldManager {
   ) {
     this.generator = new WorldGenerator(seed);
     this.drops = new GroundDropManager(scene);
+    this.scatter = new WorldScatterManager(seed, this.generator);
   }
 
   get loadedCount() {
@@ -87,6 +95,7 @@ export class WorldManager {
     const key = `${cx},${cz}`;
     const data = this.generator.generateChunk(cx, cz);
     const obj = buildChunkObject(data, this.claimedCars);
+    this.propLights.set(key, this.scatter.attachChunk(key, cx, cz, obj, data));
     this.drops.addChunk(key, data.drops);
     for (const cabin of obj.cabins) {
       if (cabin.data.crate && this.looted.has(cabin.data.crate.id)) setCrateOpened(cabin);
@@ -103,6 +112,8 @@ export class WorldManager {
     this.scene.remove(obj.group);
     disposeChunkObject(obj.group);
     this.grid.remove(key);
+    this.scatter.detachChunk(key);
+    this.propLights.delete(key);
     this.drops.removeChunk(key);
     this.chunks.delete(key);
   }
@@ -189,7 +200,7 @@ export class WorldManager {
     return this.grid.resolve(x, z, radius);
   }
 
-  /** Las `n` fuentes de luz (lámparas de cabañas y fogatas) más cercanas al punto. */
+  /** Las `n` fuentes de luz (lámparas de cabañas, farolas, fogatas) más cercanas al punto. */
   nearestLights(px: number, pz: number, n: number, includeLamps = true, maxDist = 60): (LightSource & { d: number })[] {
     const found: (LightSource & { d: number })[] = [];
     for (const chunk of this.chunks.values()) {
@@ -206,8 +217,40 @@ export class WorldManager {
         if (d <= maxDist) found.push({ x: f.x, y: f.y, z: f.z, kind: 'fire', d });
       }
     }
+    if (includeLamps) {
+      for (const list of this.propLights.values()) {
+        for (const l of list) {
+          if (l.kind !== 'lamp') continue;
+          const d = Math.hypot(l.x - px, l.z - pz);
+          if (d <= maxDist) found.push({ x: l.x, y: l.y, z: l.z, kind: 'lamp', d });
+        }
+      }
+    }
+    for (const list of this.propLights.values()) {
+      for (const l of list) {
+        if (l.kind !== 'fire') continue;
+        const d = Math.hypot(l.x - px, l.z - pz);
+        if (d <= maxDist) found.push({ x: l.x, y: l.y, z: l.z, kind: 'fire', d });
+      }
+    }
     found.sort((a, b) => a.d - b.d);
     return found.slice(0, n);
+  }
+
+  /**
+   * Un vehículo a `speed` m/s embiste el punto: rompe vallas/barriles
+   * cercanos (a partir de su breakSpeed), retira sus colisionadores y detona
+   * los barriles rojos. Sin efecto a pie o con zombis (ellos solo rodean).
+   */
+  tryBreakProps(x: number, z: number, radius: number, speed: number) {
+    const { removals, blasts } = this.scatter.tryBreak(x, z, radius, speed);
+    for (const [key, list] of removals) {
+      const obj = this.chunks.get(key);
+      if (!obj) continue;
+      obj.colliders = obj.colliders.filter((c) => !list.includes(c));
+      this.grid.replace(key, obj.colliders);
+    }
+    for (const b of blasts) this.onRedBarrelBlast?.(b.x, b.z);
   }
 
   /** Caja sin saquear a menos de `range` metros (en cabañas o campamentos), si la hay. */
@@ -269,8 +312,10 @@ export class WorldManager {
       this.scene.remove(obj.group);
       disposeChunkObject(obj.group);
     }
+    for (const key of this.chunks.keys()) this.scatter.detachChunk(key);
     this.chunks.clear();
     this.grid.clear();
+    this.propLights.clear();
     this.drops.dispose();
     this.claimedCars.clear();
     this.stationFuel.clear();

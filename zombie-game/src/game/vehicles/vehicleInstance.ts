@@ -781,6 +781,11 @@ export class VehicleInstance {
 
     // --- 4. Colisiones contra Obstáculos Sólidos del Entorno ---
     if (world && typeof world.resolveCollision === 'function') {
+      // Vallas y barriles destructibles: a velocidad los embiste (los rompe y
+      // apenas frenan); despacio son sólidos como lo demás. A pie/zombis no rompen.
+      if (typeof world.tryBreakProps === 'function') {
+        world.tryBreakProps(this.x, this.z, this.config.dims.W / 2 + 0.4, Math.abs(this.currentSpeed));
+      }
       const radius = this.config.dims.W / 2 + 0.15;
       let totalPushX = 0;
       let totalPushZ = 0;

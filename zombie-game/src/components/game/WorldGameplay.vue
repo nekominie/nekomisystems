@@ -925,6 +925,23 @@ function startWorld(newSeedValue: number) {
   };
   refuel = new RefuelSession(scene, world);
   explosives = new ExplosivesManager(scene, world, zombies, vehicles);
+  // Barriles rojos rotos por vehículos: explosión pequeña (no sale del loot).
+  world.onRedBarrelBlast = (x, z) => {
+    explosives?.detonate(x, 0.5, z, {
+      id: 'red_barrel',
+      name: 'Barril rojo',
+      type: 'throwable',
+      triggerType: 'impact',
+      fuseTime: 0,
+      maxDamage: 70,
+      damageRadius: 3.5,
+      impulseForce: 9,
+      noiseRadius: 45,
+      attractZombiesWhileActive: false,
+      fireDuration: 0,
+      throwSpeed: 0,
+    });
+  };
   player.x = 0;
   player.z = 0;
   arsenal = makeArsenal();
