@@ -62,6 +62,47 @@ export class Arsenal {
     this.equipped = i;
   }
 
+  /**
+   * Suelta o quita el arma de una ranura específica y la devuelve (o null si estaba vacía).
+   * Si era la ranura actualmente equipada, se intenta equipar otra ranura con arma disponible.
+   */
+  dropSlot(i: number): Weapon | null {
+    if (i < 0 || i >= Arsenal.SLOTS) return null;
+    const w = this.slots[i];
+    if (!w) return null;
+    w.cancelReload();
+    this.slots[i] = null;
+    if (this.equipped === i) {
+      const nextIdx = this.slots.findIndex((s) => s !== null);
+      this.equipped = nextIdx >= 0 ? nextIdx : 0;
+    }
+    return w;
+  }
+
+  /**
+   * Reacomoda o intercambia armas entre dos ranuras del inventario.
+   * Si una de las ranuras era la actualmente equipada, el índice equipado sigue al arma activa.
+   */
+  swapSlots(from: number, to: number): boolean {
+    if (from < 0 || from >= Arsenal.SLOTS || to < 0 || to >= Arsenal.SLOTS || from === to) {
+      return false;
+    }
+    const a = this.slots[from];
+    const b = this.slots[to];
+    if (!a && !b) return false;
+
+    // Si una de las ranuras estaba equipada, el cursor de equipado acompaña al arma
+    if (this.equipped === from) {
+      this.equipped = to;
+    } else if (this.equipped === to) {
+      this.equipped = from;
+    }
+
+    this.slots[from] = b;
+    this.slots[to] = a;
+    return true;
+  }
+
   update(dt: number) {
     this.current?.update(dt);
   }

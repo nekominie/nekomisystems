@@ -19,7 +19,7 @@
           
           <div class="flex flex-col w-full gap-4">
             <button 
-              @click="isPaused = false; gameCanvas?.requestPointerLock()" 
+              @click="resumeGame" 
               class="w-full py-3 steel-btn text-lg font-bold text-stone-200 hover:text-white uppercase tracking-wider"
             >
               Reanudar
@@ -114,6 +114,7 @@
         :health="playerHealth"
         :armor="playerArmor"
         :stamina="playerStamina"
+        :lives="playerLives"
         :slots="playerHudSlots"
         :equipped-index="equippedWeaponIndex"
         :selected-explosive="selectedExplosive"
@@ -125,6 +126,10 @@
         @open-backpack="showBackpack = true"
         @send-chat="(msg) => networkManager.sendChatMessage(msg, 'room')"
         @chat-focus-change="(val) => (isChatFocused = val)"
+        @drag-slot-start="onDragSlotStart"
+        @drag-slot-move="onDragSlotMove"
+        @drag-slot-end="onDragSlotEnd"
+        @swap-slots="onSwapSlots"
       />
 
       <!-- Modal de Mochila / Todos los Objetos (Slot 7) -->
@@ -168,14 +173,14 @@
               <div class="flex flex-col gap-1 text-stone-300">
                 <div><span class="kbd">Ratón</span> apuntar</div>
                 <div><span class="kbd">Q</span> / <span class="kbd">E</span> rotar cámara</div>
-                <div><span class="kbd">Rueda</span> zoom</div>
+                <div><span class="kbd">Ctrl Izq</span> + <span class="kbd">Rueda</span> zoom</div>
                 <div><span class="kbd">Clic</span> disparar</div>
               </div>
             </div>
             <div>
               <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Armas</div>
               <div class="flex flex-col gap-1 text-stone-300">
-                <div><span class="kbd">1</span>–<span class="kbd">6</span> seleccionar arma</div>
+                <div><span class="kbd">1</span>–<span class="kbd">6</span> / <span class="kbd">Rueda</span> cambiar arma</div>
                 <div><span class="kbd">R</span> recargar</div>
                 <div><span class="kbd">L</span> armas de prueba (requiere debug ON)</div>
               </div>
@@ -349,8 +354,16 @@
         </div>
       </div>
 
-      <!-- Esquina inferior derecha: minimapa GPS + ayuda -->
+      <!-- Esquina inferior derecha: ayuda arriba, minimapa en la mera esquina -->
       <div class="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2 pointer-events-auto">
+        <button
+          type="button"
+          @click="showHelp = !showHelp"
+          class="px-3 py-1.5 bg-black/80 border border-stone-600 font-mono text-[11px] uppercase tracking-wider text-stone-400 hover:text-yellow-300 hover:border-yellow-500 transition-colors cursor-pointer"
+        >
+          [H] Ayuda
+        </button>
+
         <MinimapGPS
           :player-x="player.x"
           :player-z="player.z"
@@ -361,14 +374,6 @@
           :is-night="hud.night"
           @open-full-map="openFullMap"
         />
-
-        <button
-          type="button"
-          @click="showHelp = !showHelp"
-          class="px-3 py-1.5 bg-black/80 border border-stone-600 font-mono text-[11px] uppercase tracking-wider text-stone-400 hover:text-yellow-300 hover:border-yellow-500 transition-colors cursor-pointer"
-        >
-          [H] Ayuda
-        </button>
       </div>
 
       <!-- Sistema Multijugador y Chat Overlay -->
@@ -415,6 +420,7 @@ import { WeaponCompanion } from '../../game/weapons/weaponCompanion';
 import { ShotFx } from '../../game/weapons/shotFx';
 import { weaponAudio } from '../../game/weapons/weaponAudio';
 import { PICKUP_RANGE, type DropSpawn } from '../../game/weapons/groundDrops';
+import { DropRangeIndicator, MAX_DROP_RADIUS } from '../../game/weapons/dropRangeIndicator';
 import MultiplayerHUD from './MultiplayerHUD.vue';
 import MobileControls from './MobileControls.vue';
 import MinimapGPS from './MinimapGPS.vue';
@@ -760,6 +766,10 @@ const aim = new MouseAim();
 let companion: WeaponCompanion | null = null;
 let shotFx: ShotFx | null = null;
 let reticle: AimReticle | null = null;
+let dropIndicator: DropRangeIndicator | null = null;
+let currentDragSlot: { idx: number; slot: HudWeaponSlot } | null = null;
+const dragTargetPoint = new THREE.Vector3();
+let isDragTargetValid = false;
 let fireHeld = false;
 /** Un clic pendiente (armas semiautomáticas): se consume al disparar. */
 let semiPending = false;
@@ -1095,6 +1105,119 @@ function reloadWeapon() {
   if (vehicles?.driven) return;
   const w = arsenal.current;
   if (w && w.startReload()) weaponAudio.reload();
+}
+
+// --- Arrastre y suelta de armas desde el inventario hacia el entorno ---
+
+function updateDragGroundPosition(screenX: number, screenY: number) {
+  if (!gameCanvas.value || !camera) return;
+  const r = gameCanvas.value.getBoundingClientRect();
+  const ndcX = ((screenX - r.left) / r.width) * 2 - 1;
+  const ndcY = -(((screenY - r.top) / r.height) * 2 - 1);
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const hit = ray.ray.intersectPlane(groundPlane, dragTargetPoint);
+  if (hit) {
+    const dist = Math.hypot(dragTargetPoint.x - player.x, dragTargetPoint.z - player.z);
+    isDragTargetValid = dist <= MAX_DROP_RADIUS;
+    dropIndicator?.update(player.x, player.z, dragTargetPoint.x, dragTargetPoint.z, isDragTargetValid, performance.now() / 1000);
+  }
+}
+
+function onDragSlotStart(data: { idx: number; slot: HudWeaponSlot; x: number; y: number }) {
+  if (isPaused.value || vehicles?.driven) return;
+  currentDragSlot = { idx: data.idx, slot: data.slot };
+  dropIndicator?.show();
+  updateDragGroundPosition(data.x, data.y);
+}
+
+function onDragSlotMove(data: { idx: number; slot: HudWeaponSlot; x: number; y: number; hoverSlotIdx?: number }) {
+  if (!currentDragSlot) return;
+  if (data.hoverSlotIdx !== undefined && data.hoverSlotIdx >= 0 && data.hoverSlotIdx !== data.idx) {
+    dropIndicator?.hide();
+  } else {
+    dropIndicator?.show();
+    updateDragGroundPosition(data.x, data.y);
+  }
+}
+
+function onSwapSlots(payload: { from: number; to: number }) {
+  dropIndicator?.hide();
+  currentDragSlot = null;
+  if (vehicles?.driven) {
+    showToast('No puedes reacomodar objetos mientras conduces');
+    return;
+  }
+  if (!arsenal) return;
+  const ok = arsenal.swapSlots(payload.from, payload.to);
+  if (ok) {
+    updateWeaponHud();
+    sound.playEquipSound();
+    const itemA = arsenal.slots[payload.to];
+    const itemB = arsenal.slots[payload.from];
+    if (itemA && itemB) {
+      showToast(`Intercambiado: ${itemA.def.name} ⇄ ${itemB.def.name}`);
+    } else if (itemA) {
+      showToast(`Movido: ${itemA.def.name} a Ranura ${payload.to + 1}`);
+    } else {
+      showToast('Ranuras reorganizadas');
+    }
+  }
+}
+
+function onDragSlotEnd(data: { idx: number; slot: HudWeaponSlot; x: number; y: number }) {
+  dropIndicator?.hide();
+  if (!currentDragSlot) return;
+
+  const slotIdx = data.idx;
+  currentDragSlot = null;
+
+  if (vehicles?.driven) {
+    showToast('No puedes soltar objetos mientras conduces');
+    return;
+  }
+
+  // Recalcular posición final sobre el terreno
+  updateDragGroundPosition(data.x, data.y);
+
+  if (!isDragTargetValid) {
+    sound.playClick();
+    showToast(`Demasiado lejos para soltar el arma (máx. ${MAX_DROP_RADIUS}m)`);
+    return;
+  }
+
+  // Quitar arma de la ranura del arsenal
+  const dropped = arsenal.dropSlot(slotIdx);
+  if (!dropped) return;
+
+  const dropX = dragTargetPoint.x;
+  const dropZ = dragTargetPoint.z;
+
+  const dropId = world?.drops.dropAt(
+    {
+      weapon: dropped.def.id,
+      ammo: dropped.ammo,
+      reserve: dropped.reserve,
+    },
+    dropX,
+    dropZ
+  );
+
+  if (networkManager.isConnected && networkManager.currentRoom && dropId) {
+    networkManager.sendItemDrop({
+      id: dropId,
+      weaponId: dropped.def.id,
+      x: dropX,
+      z: dropZ,
+      ammo: dropped.ammo,
+      reserve: dropped.reserve,
+    });
+  }
+
+  sound.playPlayClick();
+  updateWeaponHud();
+  showToast(`Soltaste: ${dropped.def.name}`);
 }
 
 // --- Explosivos y arrojadizos (G lanzar/plantar, J cambiar, T detonar C4) ---
@@ -1527,12 +1650,24 @@ function debugDropWeapons() {
   showToast('Armas de prueba en el suelo a tu alrededor');
 }
 
+function resumeGame(e?: MouseEvent) {
+  isPaused.value = false;
+  showSettings.value = false;
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+  if (e && gameCanvas.value) {
+    aim.setFromEvent(e, gameCanvas.value);
+  }
+}
+
 function onMouseMove(e: MouseEvent) {
+  if (isPaused.value || showSettings.value || showFullMap.value || showBackpack.value || debugOpen.value) return;
   if (gameCanvas.value) aim.setFromEvent(e, gameCanvas.value);
 }
 
 function onMouseDown(e: MouseEvent) {
-  if (isChatFocused.value || showFullMap.value || showBackpack.value || debugOpen.value) return;
+  if (isPaused.value || showSettings.value || isChatFocused.value || showFullMap.value || showBackpack.value || debugOpen.value) return;
   if (e.button !== 0) return;
   if (gameCanvas.value) aim.setFromEvent(e, gameCanvas.value);
   fireHeld = true;
@@ -1549,6 +1684,7 @@ function handleKeyDown(e: KeyboardEvent) {
   if (isChatFocused.value) return;
   const k = e.key.toLowerCase();
   keys[k] = true;
+  if (e.code) keys[e.code.toLowerCase()] = true;
   if (k.startsWith('arrow') || e.key === ' ') e.preventDefault();
   if (e.key === 'Tab') {
     e.preventDefault();
@@ -1556,6 +1692,11 @@ function handleKeyDown(e: KeyboardEvent) {
     return;
   }
   if (e.key === 'Escape') {
+    if (currentDragSlot) {
+      dropIndicator?.hide();
+      currentDragSlot = null;
+      return;
+    }
     if (debugOpen.value) {
       debugOpen.value = false;
       return;
@@ -1574,12 +1715,20 @@ function handleKeyDown(e: KeyboardEvent) {
     }
     if (showSettings.value) {
       showSettings.value = false;
+      return;
+    }
+    if (isPaused.value) {
+      resumeGame();
     } else {
-      isPaused.value = !isPaused.value;
-      if (!isPaused.value && document.pointerLockElement !== gameCanvas.value) {
-        gameCanvas.value?.requestPointerLock();
+      isPaused.value = true;
+      for (const k in keys) keys[k] = false;
+      fireHeld = false;
+      semiPending = false;
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
       }
     }
+    return;
   }
   if (isPaused.value || debugOpen.value) return; // No procesar más teclas si está en pausa o debug
 
@@ -1644,11 +1793,68 @@ function handleKeyDown(e: KeyboardEvent) {
 
 function handleKeyUp(e: KeyboardEvent) {
   keys[e.key.toLowerCase()] = false;
+  if (e.code) keys[e.code.toLowerCase()] = false;
+}
+
+/**
+ * Navega y equipa cíclicamente entre las ranuras del inventario que contienen armas.
+ * direction: 1 para avanzar (rueda abajo), -1 para retroceder (rueda arriba).
+ */
+function cycleWeaponSlot(direction: number) {
+  if (vehicles?.driven || !arsenal) return;
+
+  const occupiedIndices: number[] = [];
+  for (let i = 0; i < Arsenal.SLOTS; i++) {
+    if (arsenal.slots[i] !== null) {
+      occupiedIndices.push(i);
+    }
+  }
+
+  if (occupiedIndices.length <= 1) return;
+
+  const curPos = occupiedIndices.indexOf(arsenal.equipped);
+  let nextPos: number;
+  if (curPos === -1) {
+    nextPos = 0;
+  } else {
+    if (direction > 0) {
+      nextPos = (curPos + 1) % occupiedIndices.length;
+    } else {
+      nextPos = (curPos - 1 + occupiedIndices.length) % occupiedIndices.length;
+    }
+  }
+
+  const targetSlot = occupiedIndices[nextPos];
+  if (targetSlot !== arsenal.equipped) {
+    arsenal.select(targetSlot);
+    updateWeaponHud();
+    sound.playEquipSound();
+  }
 }
 
 function handleWheel(e: WheelEvent) {
+  if (isPaused.value || showSettings.value || showFullMap.value || showBackpack.value || debugOpen.value || showHelp.value) {
+    return;
+  }
+
+  const target = e.target as HTMLElement | null;
+  if (target?.closest('.overflow-y-auto, .overflow-auto, textarea, input')) {
+    return;
+  }
+  if (!container.value?.contains(target)) {
+    return;
+  }
+
   e.preventDefault();
-  cam.dist = THREE.MathUtils.clamp(cam.dist + Math.sign(e.deltaY) * 3, cam.minDist, cam.maxDist);
+
+  const isCtrl = e.ctrlKey || !!keys['control'] || !!keys['controlleft'];
+  if (isCtrl) {
+    // Zoom con Ctrl Izq + Rueda del mouse
+    cam.dist = THREE.MathUtils.clamp(cam.dist + Math.sign(e.deltaY) * 3, cam.minDist, cam.maxDist);
+  } else {
+    // Navegación predeterminada de ranuras del inventario con la rueda del mouse
+    cycleWeaponSlot(e.deltaY > 0 ? 1 : -1);
+  }
 }
 
 function exit() {
@@ -1908,6 +2114,11 @@ function loop(now: number) {
   shotFx?.update(dt);
   updateShockRings(dt);
   world.drops.update(tSec);
+  if (currentDragSlot) {
+    const dist = Math.hypot(dragTargetPoint.x - player.x, dragTargetPoint.z - player.z);
+    isDragTargetValid = dist <= MAX_DROP_RADIUS;
+    dropIndicator?.update(player.x, player.z, dragTargetPoint.x, dragTargetPoint.z, isDragTargetValid, tSec);
+  }
 
   // Explosivos: física de vuelo, mechas, minas, fuego y VFX
   if (explosives) {
@@ -2115,6 +2326,7 @@ onMounted(() => {
   companion = new WeaponCompanion(scene);
   shotFx = new ShotFx(scene);
   reticle = new AimReticle(scene);
+  dropIndicator = new DropRangeIndicator(scene);
 
   playerMesh = createPlayerMesh();
   scene.add(playerMesh);
@@ -2266,8 +2478,8 @@ onMounted(() => {
   if (container.value) resizeObserver.observe(container.value);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('keyup', handleKeyUp);
-  canvas.addEventListener('wheel', handleWheel, { passive: false });
-  canvas.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('wheel', handleWheel, { passive: false });
+  window.addEventListener('mousemove', onMouseMove);
   canvas.addEventListener('mousedown', onMouseDown);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   window.addEventListener('mouseup', onMouseUp);
@@ -2281,8 +2493,8 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('keyup', handleKeyUp);
-  gameCanvas.value?.removeEventListener('wheel', handleWheel);
-  gameCanvas.value?.removeEventListener('mousemove', onMouseMove);
+  window.removeEventListener('wheel', handleWheel);
+  window.removeEventListener('mousemove', onMouseMove);
   gameCanvas.value?.removeEventListener('mousedown', onMouseDown);
   window.removeEventListener('mouseup', onMouseUp);
   if (toastTimer) clearTimeout(toastTimer);
@@ -2290,7 +2502,8 @@ onBeforeUnmount(() => {
   companion?.dispose();
   shotFx?.dispose();
   reticle?.dispose();
-  companion = shotFx = reticle = null;
+  dropIndicator?.dispose();
+  companion = shotFx = reticle = dropIndicator = null;
   refuel?.dispose();
   vehicles?.dispose();
   zombies?.dispose();
