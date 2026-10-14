@@ -23,7 +23,7 @@ export interface BucketSink {
   add(bucket: PropBucket, item: BucketItem): number;
 }
 
-export type DestructibleKind = 'fence' | 'barrel' | 'redBarrel';
+export type DestructibleKind = 'fence' | 'barrel' | 'redBarrel' | 'streetLamp';
 
 export interface PropPlacement {
   colliders: Collider[];
@@ -101,16 +101,18 @@ function put(
  * luces y, si aplica, la ficha de destructible. Nada aquí guarda estado.
  */
 export const EnvironmentPropsFactory = {
-  /** Poste alto con foco cálido (la luz real la asigna el pool de LampLights). */
-  streetLamp(sink: BucketSink, x: number, z: number, rot: number): PropPlacement {
+  /** Poste alto con foco cálido (la luz real la asigna el pool de LampLights). Destructible. */
+  streetLamp(sink: BucketSink, x: number, z: number, rot: number, breakSpeed = 3.5): PropPlacement {
     const dx = Math.cos(rot);
     const dz = -Math.sin(rot);
-    put(sink, 'cyl', x, 0, z, 0, 0.18, 5.2, 0.18, 0x2f3336);
-    put(sink, 'box', x + dx * 0.55, 5.05, z + dz * 0.55, rot, 1.2, 0.12, 0.12, 0x2f3336);
-    put(sink, 'head', x + dx * 1.05, 4.92, z + dz * 1.05, rot, 0.5, 0.14, 0.26, 0xfff2cc);
+    const parts: { bucket: PropBucket; index: number }[] = [];
+    parts.push({ bucket: 'cyl', index: put(sink, 'cyl', x, 0, z, 0, 0.18, 5.2, 0.18, 0x2f3336) });
+    parts.push({ bucket: 'box', index: put(sink, 'box', x + dx * 0.55, 5.05, z + dz * 0.55, rot, 1.2, 0.12, 0.12, 0x2f3336) });
+    parts.push({ bucket: 'head', index: put(sink, 'head', x + dx * 1.05, 4.92, z + dz * 1.05, rot, 0.5, 0.14, 0.26, 0xfff2cc) });
     return {
-      colliders: [circle(x, z, 0.18)],
+      colliders: [circle(x, z, 0.35)], // Radio aumentado de 0.18 a 0.35 para mejor detección
       lights: [{ x: x + dx * 1.05, y: 4.9, z: z + dz * 1.05, kind: 'lamp' as const }],
+      destructible: { x, z, r: 1.2, breakSpeed, kind: 'streetLamp', climbable: false, parts }, // Radio aumentado de 0.5 a 1.2
     };
   },
 
@@ -244,15 +246,25 @@ export const EnvironmentPropsFactory = {
   },
 };
 
-/** Estado roto de un destructible: tablones caídos (valla) o barril aplastado. */
+/** Estado roto de un destructible: tablones caídos (valla), barril aplastado o poste deformado. */
 export function brokenPropParts(
-  kind: 'fence' | 'barrel' | 'redBarrel', x: number, z: number, rot: number, rng: () => number = Math.random,
+  kind: 'fence' | 'barrel' | 'redBarrel' | 'streetLamp', x: number, z: number, rot: number, rng: () => number = Math.random,
 ): BucketItem[] {
   if (kind === 'fence') {
     return [
       { x: x + (rng() - 0.5), y: 0.02, z: z + (rng() - 0.5), rot: rot + 0.4, sx: 1.6, sy: 0.1, sz: 0.12, color: 0x4a3320, rx: 0, rz: 0.06 },
       { x: x + (rng() - 0.5), y: 0.02, z: z + (rng() - 0.5), rot: rot - 0.5, sx: 1.2, sy: 0.1, sz: 0.12, color: 0x5a4128, rx: 0, rz: -0.05 },
       { x, y: 0.02, z, rot: rot + 1.2, sx: 0.13, sy: 0.5, sz: 0.13, color: 0x4a3320, rx: 0, rz: 0.9 },
+    ];
+  }
+  if (kind === 'streetLamp') {
+    // Poste doblado/caído: cilindro horizontal deformado
+    const fallDir = rot + (rng() - 0.5) * 0.6;
+    const dx = Math.cos(fallDir) * 2.2;
+    const dz = -Math.sin(fallDir) * 2.2;
+    return [
+      { x: x + dx, y: 0.15, z: z + dz, rot: fallDir, sx: 0.18, sy: 3.5, sz: 0.18, color: 0x2f3336, rx: 0, rz: Math.PI / 2 },
+      { x: x + dx * 0.4, y: 0.08, z: z + dz * 0.4, rot: fallDir + 0.3, sx: 0.15, sy: 1.2, sz: 0.15, color: 0x1f2326, rx: 0, rz: Math.PI / 2.2 },
     ];
   }
   // Barril aplastado: disco bajo y oscuro (el rojo además explota al romperse).

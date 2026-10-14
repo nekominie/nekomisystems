@@ -38,12 +38,18 @@ export class CityMap {
     if (this.cities.has(key)) return this.cities.get(key)!;
 
     const R = WORLD.regionSize;
-    const { pitch, streetW, minBlocks, maxBlocks } = WORLD.city;
     const rng = mulberry32(hash2(this.seed + 101, rx, rz));
     let city: City | null = null;
 
     // La región (0,0) se deja libre para que el spawn sea campo abierto.
     if (!(rx === 0 && rz === 0) && rng() < WORLD.cityChance) {
+      // Decidir si es metrópoli (30% de probabilidad)
+      const isMetropolis = rng() < WORLD.city.metropolis.chance;
+      
+      // Seleccionar configuración según el tipo
+      const config = isMetropolis ? WORLD.city.metropolis : WORLD.city;
+      const { pitch, streetW, minBlocks, maxBlocks } = config;
+      
       const span = maxBlocks - minBlocks + 1;
       const nx = minBlocks + Math.floor(rng() * span);
       const nz = minBlocks + Math.floor(rng() * span);
@@ -66,6 +72,7 @@ export class CityMap {
         maxZ: minZ + d,
         centerX: minX + w / 2,
         centerZ: minZ + d / 2,
+        isMetropolis,
       };
     }
     this.cities.set(key, city);
@@ -189,6 +196,8 @@ export class CityMap {
     const lane = city.streetW / 4; // centro del carril de estacionamiento
     const step = 13;
     const clear = city.streetW / 2 + 3; // no estacionar dentro de las intersecciones
+    // Metrópolis tienen mayor densidad de carros
+    const carChance = city.isMetropolis ? WORLD.cars.cityChance * 1.5 : WORLD.cars.cityChance;
     /** Distancia al eje de calle perpendicular más cercano. */
     const distToCross = (v: number, origin: number, n: number) => {
       const k = Math.min(n, Math.max(0, Math.round((v - origin) / city.pitch)));
@@ -201,7 +210,7 @@ export class CityMap {
       for (let z = city.minZ + 10; z < city.maxZ - 8; z += step) {
         if (distToCross(z, city.oz, city.nz) < clear) continue;
         for (const side of [-1, 1]) {
-          if (rng() > WORLD.cars.cityChance) continue;
+          if (rng() > carChance) continue;
           const rot = (side > 0 ? 0 : Math.PI) + (rng() - 0.5) * 0.06;
           out.push(makeCar('modern', x + side * lane, z + (rng() - 0.5) * 3, rot, rng));
         }
@@ -213,7 +222,7 @@ export class CityMap {
       for (let x = city.minX + 10; x < city.maxX - 8; x += step) {
         if (distToCross(x, city.ox, city.nx) < clear) continue;
         for (const side of [-1, 1]) {
-          if (rng() > WORLD.cars.cityChance) continue;
+          if (rng() > carChance) continue;
           const rot = (side > 0 ? Math.PI / 2 : -Math.PI / 2) + (rng() - 0.5) * 0.06;
           out.push(makeCar('modern', x + (rng() - 0.5) * 3, z + side * lane, rot, rng));
         }
@@ -225,9 +234,13 @@ export class CityMap {
 
   /**
    * Edificios y casas de toda la ciudad (cacheado).
+   * CIUDAD NORMAL:
    * - Centro: manzanas con un edificio grande/alto.
    * - Periferia: 2x2 casas por manzana.
-   * - Algunas manzanas quedan vacías (solares).
+   * METRÓPOLI (zonificada):
+   * - Zona 1 - Suburbios (dn > 0.6): 3x3 casas pequeñas por manzana
+   * - Zona 2 - Comercial (0.3 < dn ≤ 0.6): Edificios medianos 15-30m
+   * - Zona 3 - Downtown (dn ≤ 0.3): Rascacielos 40-80m
    */
   getStructures(city: City): Structure[] {
     const key = `${city.minX},${city.minZ}`;
@@ -238,6 +251,7 @@ export class CityMap {
     const block = city.pitch - city.streetW;
     const halfW = (city.maxX - city.minX) / 2;
     const halfD = (city.maxZ - city.minZ) / 2;
+    const isMetropolis = city.isMetropolis;
 
     const sb = this.stationBlock(city);
     for (let i = 0; i < city.nx; i++) {
@@ -251,8 +265,83 @@ export class CityMap {
         const dn = Math.max(Math.abs(bcx - city.centerX) / halfW, Math.abs(bcz - city.centerZ) / halfD);
 
         const roll = rng();
-        if (roll < 0.1) continue; // solar vacío
+        const emptyChance = isMetropolis ? 0.05 : 0.1; // Metrópolis más densas
+        if (roll < emptyChance) continue; // solar vacío
 
+        // === LÓGICA PARA METRÓPOLIS ===
+        if (isMetropolis) {
+          // ZONA 3 - Downtown (centro, dn ≤ 0.3): Rascacielos
+          if (dn <= 0.3) {
+            const w = 18 + rng() * (block - 22);
+            const d = 18 + rng() * (block - 22);
+            const h = 40 + rng() * 40; // Rascacielos 40-80m
+            out.push({
+              kind: 'building',
+              x: bcx,
+              z: bcz,
+              w,
+              d,
+              h,
+              roofH: 0,
+              rot: 0,
+              wallColor: pick(WALL_BUILDING, rng()),
+              roofColor: 0x2a2d32,
+            });
+            continue;
+          }
+          
+          // ZONA 2 - Comercial (medio, 0.3 < dn ≤ 0.6): Edificios medianos
+          if (dn <= 0.6) {
+            const w = 14 + rng() * (block - 18);
+            const d = 14 + rng() * (block - 18);
+            const h = 15 + rng() * 15; // Edificios 15-30m
+            out.push({
+              kind: 'building',
+              x: bcx,
+              z: bcz,
+              w,
+              d,
+              h,
+              roofH: 0,
+              rot: 0,
+              wallColor: pick(WALL_BUILDING, rng()),
+              roofColor: 0x2a2d32,
+            });
+            continue;
+          }
+          
+          // ZONA 1 - Suburbios (periferia, dn > 0.6): Casas pequeñas 3x3
+          const lot = block / 3; // 3x3 en lugar de 2x2
+          for (let a = 0; a < 3; a++) {
+            for (let b = 0; b < 3; b++) {
+              const present = rng() < 0.90; // Más densidad
+              if (!present) continue;
+              const w = 5 + rng() * 3; // Casas más pequeñas
+              const d = 5 + rng() * 2.5;
+              const h = 3.0 + rng() * 1.0;
+              const roofH = 1.5 + rng() * 0.7;
+              const jx = (rng() - 0.5) * (lot - w - 0.5);
+              const jz = (rng() - 0.5) * (lot - d - 0.5);
+              const wall = pick(WALL_HOUSE, rng());
+              const roof = pick(ROOF_HOUSE, rng());
+              out.push({
+                kind: 'house',
+                x: bMinX + lot * (a + 0.5) + jx,
+                z: bMinZ + lot * (b + 0.5) + jz,
+                w,
+                d,
+                h,
+                roofH,
+                rot: 0,
+                wallColor: wall,
+                roofColor: roof,
+              });
+            }
+          }
+          continue;
+        }
+
+        // === LÓGICA PARA CIUDAD NORMAL (sin cambios) ===
         if (dn < 0.65 && roll < 0.75) {
           const w = 16 + rng() * (block - 20);
           const d = 16 + rng() * (block - 20);
@@ -276,6 +365,7 @@ export class CityMap {
         for (let a = 0; a < 2; a++) {
           for (let b = 0; b < 2; b++) {
             const present = rng() < 0.88;
+            if (!present) continue;
             const w = 7 + rng() * 3.5;
             const d = 7 + rng() * 3;
             const h = 3.2 + rng() * 1.2;
@@ -284,7 +374,6 @@ export class CityMap {
             const jz = (rng() - 0.5) * (lot - d - 1);
             const wall = pick(WALL_HOUSE, rng());
             const roof = pick(ROOF_HOUSE, rng());
-            if (!present) continue;
             out.push({
               kind: 'house',
               x: bMinX + lot * (a + 0.5) + jx,

@@ -20,6 +20,8 @@ export interface City extends Rect {
   streetW: number;
   centerX: number;
   centerZ: number;
+  /** Si es una ciudad metrópoli (grande, zonificada). */
+  isMetropolis?: boolean;
 }
 
 export type StructureKind = 'cabin' | 'house' | 'building';

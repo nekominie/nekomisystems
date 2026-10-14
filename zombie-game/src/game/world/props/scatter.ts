@@ -29,7 +29,7 @@ interface Destructible {
   z: number;
   r: number;
   breakSpeed: number;
-  kind: DestructibleKind;
+  kind: 'fence' | 'barrel' | 'redBarrel' | 'streetLamp';
   climbable: boolean;
   broken: boolean;
   parts: { bucket: PropBucket; index: number }[];
@@ -184,7 +184,7 @@ export class WorldScatterManager {
   // --- Bioma urbano ---
 
   private scatterUrban(
-    state: { lights: PropLight[]; colliders: Collider[] },
+    state: { lights: PropLight[]; colliders: Collider[]; destructibles: Destructible[] },
     sink: BucketSink, group: THREE.Group, data: ChunkData,
     rng: () => number,
     inChunk: (x: number, z: number, m?: number) => boolean,
@@ -193,53 +193,83 @@ export class WorldScatterManager {
     solids: { x: number; z: number; r: number }[],
     roads: Quad[],
   ) {
-    // Farolas a intervalos regulares a lo largo de las banquetas
+    // Farolas en las esquinas/intersecciones de las banquetas (no en medio de cuadras)
     let lampCount = 0;
-    let side = rng() < 0.5 ? 1 : -1;
     for (const q of data.roadQuads) {
-      if (lampCount >= 8) break;
+      if (lampCount >= 12) break; // Aumentado para más cobertura
       const px = [q[0], q[2], q[4], q[6]];
       const pz = [q[1], q[3], q[5], q[7]];
       const e1 = Math.hypot(px[1] - px[0], pz[1] - pz[0]);
       const e2 = Math.hypot(px[2] - px[1], pz[2] - pz[1]);
-      if (Math.max(e1, e2) < 10) continue;
+      if (Math.max(e1, e2) < 8) continue;
+      
       const longAxis = e2 >= e1;
-      const ax = longAxis ? px[1] : px[0];
-      const az = longAxis ? pz[1] : pz[0];
-      const bx = longAxis ? px[2] : px[1];
-      const bz = longAxis ? pz[2] : pz[1];
-      const len = Math.hypot(bx - ax, bz - az) || 1;
-      const halfW = (longAxis ? e1 : e2) / 2;
-      const steps = Math.max(1, Math.floor(len / 14));
-      for (let s = 0; s <= steps && lampCount < 8; s++) {
-        const t = (s + 0.5) / (steps + 1);
-        const nx = -(bz - az) / len;
-        const nz = (bx - ax) / len;
-        side = -side;
-        const lx = ax + (bx - ax) * t + nx * side * (halfW + 1.3);
-        const lz = az + (bz - az) * t + nz * side * (halfW + 1.3);
+      const shortEdge = longAxis ? e1 : e2;
+      const halfW = shortEdge / 2;
+      
+      // Colocar postes en las 4 esquinas del quad (banquetas)
+      const corners = [
+        { i: 0, side: 1 },   // Esquina 0, lado derecho
+        { i: 0, side: -1 },  // Esquina 0, lado izquierdo
+        { i: 2, side: 1 },   // Esquina 2, lado derecho
+        { i: 2, side: -1 },  // Esquina 2, lado izquierdo
+      ];
+      
+      for (const corner of corners) {
+        if (lampCount >= 12) break;
+        const idx = corner.i;
+        const cx = px[idx];
+        const cz = pz[idx];
+        
+        // Vector de la calle (dirección larga)
+        const nextIdx = (idx + 1) % 4;
+        const dx = px[nextIdx] - cx;
+        const dz = pz[nextIdx] - cz;
+        const len = Math.hypot(dx, dz) || 1;
+        
+        // Normal perpendicular (hacia banqueta)
+        const nx = -dz / len;
+        const nz = dx / len;
+        
+        // Posición en la banqueta (1.5m desde el borde de la calle)
+        const offset = 1.5;
+        const lx = cx + nx * corner.side * (halfW + offset);
+        const lz = cz + nz * corner.side * (halfW + offset);
+        
         if (!inChunk(lx, lz, 0.5)) continue;
+        
+        // Verificar colisiones
         let clash = false;
         for (const qq of roads) {
-          if (distToQuad(qq, lx, lz) <= 0.2) {
+          if (distToQuad(qq, lx, lz) <= 0.3) {
             clash = true;
             break;
           }
         }
         if (!clash) {
           for (const st of solids) {
-            if (Math.hypot(lx - st.x, lz - st.z) < 0.6 + st.r) {
+            if (Math.hypot(lx - st.x, lz - st.z) < 1.2 + st.r) {
               clash = true;
               break;
             }
           }
         }
         if (clash) continue;
-        const rot = Math.atan2(nx * side, nz * side);
+        
+        // Rotación: el poste apunta hacia el centro de la calle
+        const rot = Math.atan2(-nx * corner.side, -nz * corner.side);
         const pl = EnvironmentPropsFactory.streetLamp(sink, lx, lz, rot);
         state.colliders.push(...pl.colliders);
         state.lights.push(...pl.lights);
-        claim(lx, lz, 0.5);
+        if (pl.destructible) {
+          state.destructibles.push({
+            x: pl.destructible.x, z: pl.destructible.z, r: pl.destructible.r,
+            breakSpeed: pl.destructible.breakSpeed, kind: pl.destructible.kind,
+            climbable: pl.destructible.climbable, broken: false,
+            parts: pl.destructible.parts, colliders: [...pl.colliders], rot,
+          });
+        }
+        claim(lx, lz, 0.8);
         lampCount++;
       }
     }
@@ -580,14 +610,15 @@ export class WorldScatterManager {
 
   /**
    * Intenta romper destructibles cerca del punto con un vehículo a `speed` m/s.
-   * Devuelve colisionadores a retirar (por chunk) y barriles rojos a detonar.
+   * Devuelve colisionadores a retirar (por chunk), barriles rojos a detonar y postes de luz rotos.
    */
   tryBreak(
     x: number, z: number, r: number, speed: number,
-  ): { removals: Map<string, Collider[]>; blasts: { x: number; z: number }[] } {
+  ): { removals: Map<string, Collider[]>; blasts: { x: number; z: number }[]; streetLamps: { x: number; z: number; rot: number }[] } {
     const removals = new Map<string, Collider[]>();
     const blasts: { x: number; z: number }[] = [];
-    if (speed < 3) return { removals, blasts };
+    const streetLamps: { x: number; z: number; rot: number }[] = [];
+    if (speed < 3) return { removals, blasts, streetLamps };
     for (const [key, state] of this.states) {
       for (let i = 0; i < state.destructibles.length; i++) {
         const d = state.destructibles[i];
@@ -602,8 +633,9 @@ export class WorldScatterManager {
         set.add(i);
         if (this.broken.size > 500) this.broken.clear();
         if (d.kind === 'redBarrel') blasts.push({ x: d.x, z: d.z });
+        if (d.kind === 'streetLamp') streetLamps.push({ x: d.x, z: d.z, rot: d.rot });
       }
     }
-    return { removals, blasts };
+    return { removals, blasts, streetLamps };
   }
 }

@@ -142,3 +142,14 @@ export interface PlayerShotNetworkEvent {
   dirZ: number;
   pellets: PelletResultDto[];
 }
+
+export interface PropBreakEvent {
+  chunkKey: string;
+  destructibleIndex: number;
+  destructibleKind: 'fence' | 'barrel' | 'redBarrel' | 'streetLamp';
+  breakerConnectionId: string;
+  x: number;
+  z: number;
+  rot: number;
+  timestamp: number;
+}

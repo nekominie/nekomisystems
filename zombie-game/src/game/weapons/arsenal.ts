@@ -15,9 +15,9 @@ export type PickupResult =
   | { kind: 'swap'; weapon: Weapon; dropped: Weapon }
   | { kind: 'duplicate'; weapon: Weapon };
 
-/** Inventario de armas del jugador: 5 ranuras (teclas 1-5) y una arma equipada. */
+/** Inventario de armas del jugador: 6 ranuras (teclas 1-6) y una arma equipada. */
 export class Arsenal {
-  static readonly SLOTS = 5;
+  static readonly SLOTS = 6;
   readonly slots: (Weapon | null)[] = Array.from({ length: Arsenal.SLOTS }, () => null);
   equipped = 0;
 

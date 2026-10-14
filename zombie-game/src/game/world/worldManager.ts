@@ -8,6 +8,7 @@ import { setCrateOpened } from './cabinMesh';
 import { carId } from './carData';
 import { GroundDropManager } from '../weapons/groundDrops';
 import { WorldScatterManager, type PropLight } from './props/scatter';
+import { StreetLampPhysicsManager } from './props/streetLampPhysics';
 import type { WeaponId } from '../weapons/weaponTypes';
 import type { Car, GasStation } from './types';
 
@@ -41,6 +42,8 @@ export class WorldManager {
   private scatter: WorldScatterManager;
   /** Fuentes de luz de props (farolas, fogatas de campamento) por chunk. */
   private propLights = new Map<string, PropLight[]>();
+  /** Gestor de físicas para postes de luz voladores. */
+  private lampPhysics: StreetLampPhysicsManager;
   /** Se llama al romper un barril rojo (WorldGameplay lo conecta a ExplosivesManager). */
   onRedBarrelBlast: ((x: number, z: number) => void) | null = null;
 
@@ -51,6 +54,7 @@ export class WorldManager {
     this.generator = new WorldGenerator(seed);
     this.drops = new GroundDropManager(scene);
     this.scatter = new WorldScatterManager(seed, this.generator);
+    this.lampPhysics = new StreetLampPhysicsManager(scene);
   }
 
   get loadedCount() {
@@ -243,7 +247,7 @@ export class WorldManager {
    * los barriles rojos. Sin efecto a pie o con zombis (ellos solo rodean).
    */
   tryBreakProps(x: number, z: number, radius: number, speed: number) {
-    const { removals, blasts } = this.scatter.tryBreak(x, z, radius, speed);
+    const { removals, blasts, streetLamps } = this.scatter.tryBreak(x, z, radius, speed);
     for (const [key, list] of removals) {
       const obj = this.chunks.get(key);
       if (!obj) continue;
@@ -251,6 +255,15 @@ export class WorldManager {
       this.grid.replace(key, obj.colliders);
     }
     for (const b of blasts) this.onRedBarrelBlast?.(b.x, b.z);
+    // Activar físicas de postes de luz rotos
+    for (const lamp of streetLamps) {
+      const impulse = new THREE.Vector3(
+        Math.sin(Math.atan2(lamp.x - x, lamp.z - z)) * speed,
+        0,
+        Math.cos(Math.atan2(lamp.x - x, lamp.z - z)) * speed
+      );
+      this.lampPhysics.activateLamp(lamp.x, lamp.z, lamp.rot, impulse);
+    }
   }
 
   /** Caja sin saquear a menos de `range` metros (en cabañas o campamentos), si la hay. */
@@ -307,6 +320,13 @@ export class WorldManager {
     return 'countryside';
   }
 
+  /**
+   * Actualiza las físicas de postes de luz voladores.
+   */
+  updateLampPhysics(dt: number) {
+    this.lampPhysics.update(dt);
+  }
+
   dispose() {
     for (const obj of this.chunks.values()) {
       this.scene.remove(obj.group);
@@ -317,6 +337,7 @@ export class WorldManager {
     this.grid.clear();
     this.propLights.clear();
     this.drops.dispose();
+    this.lampPhysics.dispose();
     this.claimedCars.clear();
     this.stationFuel.clear();
   }

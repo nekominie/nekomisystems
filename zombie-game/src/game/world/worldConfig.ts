@@ -17,6 +17,14 @@ export const WORLD = {
     streetW: 8,
     minBlocks: 3,
     maxBlocks: 6,
+    /** Configuración de ciudades metrópoli (grandes, zonificadas). */
+    metropolis: {
+      chance: 0.3,        // 30% de probabilidad cuando se genera una ciudad
+      minBlocks: 11,      // ~90% más grande que maxBlocks normal (6)
+      maxBlocks: 12,
+      pitch: 40,          // Mismo pitch que ciudades normales
+      streetW: 10,        // Calles ligeramente más anchas
+    },
   },
 
   /** Pueblos: una celda de `cell` m contiene como máximo un pueblo. */

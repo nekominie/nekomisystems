@@ -1,27 +1,5 @@
 <template>
   <div class="fixed inset-0 z-40 bg-[#050608] flex flex-col">
-    <!-- Top HUD Bar -->
-    <header class="relative z-10 bg-black/80 border-b border-stone-800 px-4 py-2.5 flex items-center justify-between">
-      <div class="flex items-center gap-3 flex-wrap">
-        <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
-        <span class="font-mono text-xs uppercase font-bold text-stone-200">
-          MUNDO PROCEDURAL INFINITO // CÁMARA SUPERIOR
-        </span>
-        <span class="text-[10px] font-mono px-2 py-0.5 bg-stone-900 border border-stone-700 text-stone-400">
-          WASD: Moverse | C: Sigilo / Normal | Shift: Correr | F: Interactuar (cajas, carros, bombas) | Espacio: freno de mano | Q/E: Rotar cámara | Rueda: Zoom | Clic: Disparar | R: Recargar | 1-5: Armas | G: Lanzar/plantar | H: Explosivo | T: Detonar C4 | L: Armas de prueba | N: Saltar día/noche | K: Nuevo mundo
-        </span>
-      </div>
-
-      <button
-        type="button"
-        class="steel-btn px-4 py-1.5 text-xs font-mono font-bold uppercase text-stone-300 hover:text-white flex items-center gap-2"
-        @click="isPaused = true"
-      >
-        <i class="bi bi-pause-fill"></i>
-        <span>Pausar (ESC)</span>
-      </button>
-    </header>
-
     <!-- Canvas Container -->
     <div ref="container" class="relative flex-1 overflow-hidden">
       <canvas ref="gameCanvas" class="w-full h-full block cursor-crosshair"></canvas>
@@ -76,324 +54,158 @@
         </div>
       </div>
 
-      <!-- Menú de debug de armas y físicas (Tab). onDebugMouseDown evita que los botones roben el foco del teclado sin bloquear los sliders -->
-      <div class="absolute top-3 right-4 z-30 flex flex-col items-end gap-2" @mousedown="onDebugMouseDown">
+      <!-- Botón de acceso al menú debug (Tab) -->
+      <div class="absolute top-3 right-4 z-30 flex flex-col items-end gap-2">
         <button
           type="button"
           class="px-3 py-1 text-[11px] font-mono font-bold uppercase border bg-black/80"
-          :class="debugOpen ? 'border-yellow-500 text-yellow-300' : 'border-stone-600 text-stone-400 hover:text-white'"
-          @click="debugOpen = !debugOpen"
+          :class="debugOpen
+            ? 'border-yellow-500 text-yellow-300'
+            : debugEnabled
+              ? 'border-emerald-600/70 text-emerald-300 hover:text-emerald-200'
+              : 'border-stone-600 text-stone-400 hover:text-white'"
+          @click="toggleDebugOpen"
         >
           Debug / Físicas (Tab)
+          <span v-if="debugEnabled" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 align-middle"></span>
+          <span v-if="debugEnabled && passiveMode" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-sky-400 align-middle" title="Modo pasivo"></span>
         </button>
-
-        <div
-          v-if="debugOpen"
-          class="w-84 max-h-[82vh] overflow-y-auto bg-black/90 border border-yellow-700/60 p-3 font-mono text-[11px] text-stone-300"
-        >
-          <div class="text-xs font-bold text-yellow-300 uppercase tracking-wider mb-2">Selector de armas</div>
-
-          <div
-            v-for="d in debugWeapons"
-            :key="d.id"
-            class="border p-2 mb-1.5 cursor-pointer transition-colors"
-            :class="
-              weaponHud.equippedId === d.id
-                ? 'border-yellow-500 bg-yellow-900/30'
-                : 'border-stone-700 hover:border-stone-400'
-            "
-            @click="debugGive(d.id)"
-          >
-            <div class="flex justify-between items-baseline">
-              <span class="font-bold text-stone-100">{{ d.name }}</span>
-              <span class="text-[10px] uppercase text-stone-500">{{ d.category }}</span>
-            </div>
-            <div class="text-[10px] text-stone-400 leading-snug mt-0.5">
-              Daño {{ d.damage }}<span v-if="d.pellets > 1"> × {{ d.pellets }}</span> · {{ d.rpm }} RPM
-              <span v-if="d.mag"> · cargador {{ d.mag }} · recarga {{ d.reload }} s</span>
-              · alcance {{ d.range }} m · ruido {{ d.noise }} m · {{ d.auto ? 'automática' : 'semi' }}
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-1.5 mt-3">
-            <button type="button" class="border border-stone-600 py-1 hover:border-yellow-500 hover:text-yellow-300" @click="debugRefill">
-              Munición completa
-            </button>
-            <button type="button" class="border border-stone-600 py-1 hover:border-yellow-500 hover:text-yellow-300" @click="debugGiveAll">
-              Todas las armas
-            </button>
-            <button type="button" class="col-span-2 border border-orange-800 bg-orange-950/40 text-orange-200 py-1 hover:border-orange-400 hover:bg-orange-900/50" @click="debugRefillExplosives">
-              🧨 Reponer explosivos
-            </button>
-            <button type="button" class="border border-stone-600 py-1 hover:border-yellow-500 hover:text-yellow-300" @click="debugSpawnZombies">
-              +6 zombis (14 m)
-            </button>
-            <button type="button" class="border border-red-800 text-red-400 py-1 hover:border-red-500 hover:text-red-200" @click="debugSpawnExtreme">
-              +1 Extremo (1%)
-            </button>
-            <button type="button" class="col-span-2 border border-stone-600 py-1 hover:border-yellow-500 hover:text-yellow-300" @click="debugClearZombies">
-              Quitar zombis (60 m)
-            </button>
-            <button type="button" class="col-span-2 border border-stone-600 py-1 hover:border-red-500 hover:text-red-300" @click="debugReset">
-              Reiniciar inventario (solo bate)
-            </button>
-          </div>
-
-          <!-- Vehículos y Ajustes de Empuje Ragdoll -->
-          <div class="mt-3 pt-2.5 border-t border-yellow-700/60">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-bold text-yellow-300 uppercase tracking-wider">Vehículo & Empuje Zombi</span>
-              <button
-                type="button"
-                class="text-[10px] text-stone-400 hover:text-yellow-300 underline"
-                @click="resetPushSliders"
-              >
-                Defecto
-              </button>
-            </div>
-
-            <!-- Selector de Modelo de Vehículo -->
-            <div class="mb-2">
-              <div class="text-[10px] text-stone-400 mb-1 flex justify-between">
-                <span>Catálogo de Vehículos:</span>
-                <span class="text-yellow-400 uppercase text-[9px]">{{ selectedSpawnArchetype }}</span>
-              </div>
-              <select
-                v-model="selectedSpawnArchetype"
-                class="w-full bg-stone-900 border border-stone-700 text-stone-200 text-[11px] p-1 rounded focus:outline-none focus:border-yellow-500"
-              >
-                <option v-for="opt in archetypeOptions" :key="opt.id" :value="opt.id">
-                  {{ opt.label }} - {{ opt.name }}
-                </option>
-              </select>
-            </div>
-
-            <!-- Acciones de Carro -->
-            <div class="grid grid-cols-3 gap-1 mb-2.5">
-              <button
-                type="button"
-                class="border border-cyan-800 bg-cyan-950/40 text-cyan-200 py-1 px-1 text-center hover:border-cyan-400 hover:bg-cyan-900/50"
-                @click="debugSpawnCar"
-                title="Genera el modelo seleccionado frente a ti"
-              >
-                🚗 Spawnear
-              </button>
-              <button
-                type="button"
-                class="border border-cyan-800 bg-cyan-950/40 text-cyan-200 py-1 px-1 text-center hover:border-cyan-400 hover:bg-cyan-900/50"
-                @click="debugSpawnAndEnterCar"
-                title="Genera y sube inmediatamente al vehículo"
-              >
-                ⚡ Subir
-              </button>
-              <button
-                type="button"
-                class="border border-purple-800 bg-purple-950/40 text-purple-200 py-1 px-1 text-center hover:border-purple-400 hover:bg-purple-900/50"
-                @click="debugSpawnProcedural"
-                title="Genera con probabilidades ponderadas del bioma actual"
-              >
-                🎲 Bioma
-              </button>
-            </div>
-
-            <!-- Telemetría en vivo del vehículo conducido -->
-            <div v-if="carHud.driving" class="mb-2.5 p-1.5 bg-stone-900/80 border border-stone-800 rounded-xs text-[9px] space-y-1">
-              <div class="flex justify-between items-center text-yellow-300 font-bold">
-                <span>{{ carHud.name }}</span>
-                <span class="text-[8px] px-1 bg-stone-800 uppercase text-stone-300">{{ carHud.archetype }}</span>
-              </div>
-              <div class="grid grid-cols-2 gap-x-2 text-stone-400">
-                <div>Masa: <b class="text-stone-200">{{ carHud.mass }} kg</b></div>
-                <div>Terreno: <b class="text-stone-200 uppercase">{{ carHud.terrain }}</b></div>
-                <div>Ruido motor: <b class="text-stone-200">{{ Math.round(carHud.noiseRadius) }} m</b></div>
-                <div>Tracc. offroad: <b class="text-stone-200">{{ Math.round(carHud.offroadTraction * 100) }}%</b></div>
-              </div>
-            </div>
-
-            <!-- Sliders Parametrizables de Empuje -->
-            <div class="space-y-2 bg-stone-950/80 border border-stone-800 p-2 rounded-xs">
-              <!-- Slider Fuerza Horizontal -->
-              <div>
-                <div class="flex justify-between items-center text-stone-300 mb-0.5">
-                  <span>Fuerza empuje:</span>
-                  <span class="font-bold text-yellow-300 bg-stone-900 px-1 py-0.2 border border-stone-700">
-                    {{ carPushConfig.force.toFixed(2) }}×
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="2.0"
-                  step="0.01"
-                  v-model.number="carPushConfig.force"
-                  @change="blurInput"
-                  @pointerup="blurInput"
-                  class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
-                />
-                <div class="flex justify-between text-[9px] text-stone-500">
-                  <span>0× (sin empuje)</span>
-                  <span>1.0× (predeterminado)</span>
-                  <span>2.0× (fuerte)</span>
-                </div>
-              </div>
-
-              <!-- Slider Elevación Vertical (Lift) -->
-              <div>
-                <div class="flex justify-between items-center text-stone-300 mb-0.5">
-                  <span>Elevación vertical (Lift):</span>
-                  <span class="font-bold text-yellow-300 bg-stone-900 px-1 py-0.2 border border-stone-700">
-                    {{ carPushConfig.lift.toFixed(1) }} m/s
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="5.0"
-                  step="0.1"
-                  v-model.number="carPushConfig.lift"
-                  @change="blurInput"
-                  @pointerup="blurInput"
-                  class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
-                />
-                <div class="flex justify-between text-[9px] text-stone-500">
-                  <span>0 m/s (ras de suelo)</span>
-                  <span>3.0 m/s (vuelo)</span>
-                  <span>5.0 m/s (alto)</span>
-                </div>
-              </div>
-
-              <!-- Slider Dispersión Lateral -->
-              <div>
-                <div class="flex justify-between items-center text-stone-300 mb-0.5">
-                  <span>Dispersión lateral:</span>
-                  <span class="font-bold text-yellow-300 bg-stone-900 px-1 py-0.2 border border-stone-700">
-                    ±{{ carPushConfig.scatter.toFixed(2) }} m/s
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1.5"
-                  step="0.01"
-                  v-model.number="carPushConfig.scatter"
-                  @change="blurInput"
-                  @pointerup="blurInput"
-                  class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
-                />
-                <div class="flex justify-between text-[9px] text-stone-500">
-                  <span>0 (recto)</span>
-                  <span>±0.60 (predeterminado)</span>
-                  <span>±1.5 (abierto)</span>
-                </div>
-              </div>
-
-              <!-- Slider Giros / Torsión en el aire -->
-              <div>
-                <div class="flex justify-between items-center text-stone-300 mb-0.5">
-                  <span>Torsión / Giros (Tumble):</span>
-                  <span class="font-bold text-yellow-300 bg-stone-900 px-1 py-0.2 border border-stone-700">
-                    {{ carPushConfig.tumble.toFixed(1) }}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="6.0"
-                  step="0.1"
-                  v-model.number="carPushConfig.tumble"
-                  @change="blurInput"
-                  @pointerup="blurInput"
-                  class="w-full accent-yellow-400 cursor-pointer h-1.5 bg-stone-800 rounded"
-                />
-                <div class="flex justify-between text-[9px] text-stone-500">
-                  <span>0 (rígido)</span>
-                  <span>3.0 (vuelo)</span>
-                  <span>6.0 (trompo)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Lectura en vivo del arma equipada -->
-          <div class="mt-3 pt-2 border-t border-stone-700 text-[10px] text-stone-400 leading-relaxed">
-            <div>Equipada: <span class="text-stone-100">{{ weaponHud.name }}</span></div>
-            <div v-if="!weaponHud.melee">Dispersión actual: <span class="text-yellow-300">{{ weaponHud.spreadDeg.toFixed(2) }}°</span> (semi-ángulo)</div>
-            <div>Bajas: <span class="text-stone-100">{{ hud.kills }}</span> · Zombis cerca: <span class="text-stone-100">{{ hud.zombies }}</span></div>
-          </div>
-        </div>
       </div>
 
-      <!-- Vitals HUD -->
-      <div class="absolute bottom-4 left-4 z-10 bg-black/80 border border-stone-800 p-3 rounded-xs flex items-center gap-6 font-mono text-xs">
-        <div>
-          <div class="text-[10px] text-stone-500 uppercase mb-0.5">SALUD SUPERVIVIENTE</div>
-          <div class="w-32 h-2.5 bg-stone-900 border border-stone-700 overflow-hidden">
-            <div class="h-full bg-red-600" :style="{ width: `${playerHealth}%` }"></div>
-          </div>
-        </div>
-        <div>
-          <div class="text-[10px] text-stone-500 uppercase mb-0.5">ESTAMINA</div>
-          <div class="w-32 h-2.5 bg-stone-900 border border-stone-700 overflow-hidden">
-            <div class="h-full bg-yellow-500" :style="{ width: `${playerStamina}%` }"></div>
-          </div>
-        </div>
-        <!-- Vidas -->
-        <div>
-          <div class="text-[10px] text-stone-500 uppercase mb-0.5">VIDAS</div>
-          <div class="text-lg leading-none tracking-widest">
-            <span v-for="i in 3" :key="i" :class="i <= playerLives ? 'text-red-500' : 'text-stone-700'">❤</span>
-          </div>
-        </div>
-        <!-- Postura / Sigilo -->
-        <div>
-          <div class="text-[10px] text-stone-500 uppercase mb-0.5">POSTURA [C]</div>
-          <button
-            type="button"
-            @click="isStealth = !isStealth"
-            class="px-2.5 py-1 text-[11px] font-bold border transition-colors cursor-pointer rounded-xs flex items-center gap-1.5"
-            :class="
-              isStealth
-                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
-                : 'bg-stone-900 border-stone-700 text-stone-400 hover:text-stone-200'
-            "
-          >
-            <span>{{ isStealth ? '🤫 SIGILO' : '🚶 NORMAL' }}</span>
-          </button>
-        </div>
-      </div>
+      <DebugModal
+        v-if="debugOpen"
+        :enabled="debugEnabled"
+        :passive-mode="passiveMode"
+        :weapons="debugWeapons"
+        :equipped-id="weaponHud.equippedId"
+        :equipped-name="weaponHud.name"
+        :melee="weaponHud.melee"
+        :spread-deg="weaponHud.spreadDeg"
+        :world-info="debugWorldInfo"
+        :archetype-options="archetypeOptions"
+        :selected-archetype="selectedSpawnArchetype"
+        :car-hud="carHud"
+        :push-config="carPushConfig"
+        :explosives="debugExplosives"
+        :explosive-counts="explosiveCounts"
+        @close="debugOpen = false"
+        @update:enabled="setDebugEnabled"
+        @update:passive-mode="setPassiveMode"
+        @update:selected-archetype="(v) => (selectedSpawnArchetype = v)"
+        @update:push-config="onDebugPushConfig"
+        @give-weapon="debugGive"
+        @give-all-weapons="debugGiveAll"
+        @refill-ammo="debugRefill"
+        @drop-weapons="debugDropWeapons"
+        @reset-inventory="debugReset"
+        @spawn-car="debugSpawnCar"
+        @spawn-and-enter-car="debugSpawnAndEnterCar"
+        @spawn-procedural-car="debugSpawnProcedural"
+        @spawn-zombies="debugSpawnZombies"
+        @spawn-extreme="debugSpawnExtreme"
+        @clear-zombies="debugClearZombies"
+        @refill-explosives="debugRefillExplosives"
+        @reset-push="resetPushSliders"
+      />
 
-      <!-- Armas: ranuras 1-5, arma equipada y munición -->
-      <div class="absolute bottom-24 left-4 z-10 w-64 bg-black/80 border border-stone-800 p-2 font-mono text-xs">
-        <div class="flex gap-1 mb-2">
-          <div
-            v-for="(s, i) in weaponHud.slots"
-            :key="i"
-            class="flex-1 h-6 border text-[10px] flex items-center justify-center"
-            :class="
-              i === weaponHud.equipped
-                ? 'border-yellow-500 text-yellow-300 bg-yellow-900/30'
-                : s
-                  ? 'border-stone-600 text-stone-300'
-                  : 'border-stone-800 text-stone-700'
-            "
-          >
-            {{ i + 1 }}
+      <!-- HUD Táctico del Jugador: Chat + Inventario (7 Slots) + Granadas + Barras Neón (Vida, Armadura, Stamina) -->
+      <PlayerHUD
+        ref="playerHudRef"
+        :health="playerHealth"
+        :armor="playerArmor"
+        :stamina="playerStamina"
+        :slots="playerHudSlots"
+        :equipped-index="equippedWeaponIndex"
+        :selected-explosive="selectedExplosive"
+        :explosive-counts="explosiveCounts"
+        :is-multiplayer-active="networkManager.isConnected && !!networkManager.currentRoom"
+        :messages="networkManager.chatMessages"
+        @select-slot="selectWeaponSlot"
+        @select-explosive="(id) => { selectedExplosive = id; }"
+        @open-backpack="showBackpack = true"
+        @send-chat="(msg) => networkManager.sendChatMessage(msg, 'room')"
+        @chat-focus-change="(val) => (isChatFocused = val)"
+      />
+
+      <!-- Modal de Mochila / Todos los Objetos (Slot 7) -->
+      <BackpackModal
+        v-if="showBackpack"
+        :equipped-weapon-id="currentEquippedWeaponId"
+        :equipped-ids="equippedWeaponIds"
+        @close="showBackpack = false"
+        @equip-weapon="onEquipWeaponFromBackpack"
+        @select-explosive="(id) => { selectedExplosive = id; showBackpack = false; }"
+        @restore-armor="playerArmor = 100"
+        @restore-health="playerHealth = 100"
+      />
+
+      <!-- Modal de Ayuda: atajos y teclas ([H]) -->
+      <div v-if="showHelp" class="absolute inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
+        <div class="max-w-md w-full max-h-[85vh] overflow-y-auto bg-[#0f1115] border-2 border-stone-700 p-6 rounded shadow-2xl">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="text-xl font-mono font-bold text-white uppercase tracking-widest">Ayuda · Atajos</h3>
+            <button
+              type="button"
+              @click="showHelp = false"
+              class="px-2.5 py-1 border border-stone-600 text-stone-400 hover:text-white hover:border-stone-400 font-mono text-xs uppercase"
+            >
+              Cerrar [H]
+            </button>
           </div>
-        </div>
-        <div class="flex justify-between items-baseline">
-          <span class="font-bold text-stone-100">{{ weaponHud.name }}</span>
-          <span :class="!weaponHud.melee && weaponHud.ammo === 0 ? 'text-red-400' : 'text-yellow-300'">
-            {{ weaponHud.melee ? 'Cuerpo a cuerpo' : `${weaponHud.ammo} / ${weaponHud.reserve}` }}
-          </span>
-        </div>
-        <div class="flex justify-between items-baseline mt-1 pt-1 border-t border-stone-800">
-          <span class="font-bold text-orange-300">🧨 {{ explosiveHudName }}</span>
-          <span class="text-stone-300">×{{ explosiveCounts[selectedExplosive] ?? 0 }} <span class="text-stone-500">[G lanzar · H cambiar · T C4]</span></span>
-        </div>
-        <div v-if="weaponHud.reloading" class="mt-1">
-          <div class="text-[10px] text-stone-400 uppercase">Recargando...</div>
-          <div class="h-1.5 bg-stone-900 border border-stone-700 overflow-hidden">
-            <div class="h-full bg-yellow-400" :style="{ width: `${Math.round(weaponHud.reloadPct * 100)}%` }"></div>
+
+          <div class="flex flex-col gap-4 font-mono text-xs">
+            <div>
+              <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Moverse</div>
+              <div class="flex flex-col gap-1 text-stone-300">
+                <div><span class="kbd">W A S D</span> / <span class="kbd">←↑↓→</span> moverse</div>
+                <div><span class="kbd">Shift</span> correr</div>
+                <div><span class="kbd">C</span> sigilo / normal</div>
+                <div><span class="kbd">Espacio</span> freno de mano (en carro)</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Cámara</div>
+              <div class="flex flex-col gap-1 text-stone-300">
+                <div><span class="kbd">Ratón</span> apuntar</div>
+                <div><span class="kbd">Q</span> / <span class="kbd">E</span> rotar cámara</div>
+                <div><span class="kbd">Rueda</span> zoom</div>
+                <div><span class="kbd">Clic</span> disparar</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Armas</div>
+              <div class="flex flex-col gap-1 text-stone-300">
+                <div><span class="kbd">1</span>–<span class="kbd">6</span> seleccionar arma</div>
+                <div><span class="kbd">R</span> recargar</div>
+                <div><span class="kbd">L</span> armas de prueba (requiere debug ON)</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Explosivos</div>
+              <div class="flex flex-col gap-1 text-stone-300">
+                <div><span class="kbd">G</span> lanzar / plantar</div>
+                <div><span class="kbd">J</span> cambiar explosivo</div>
+                <div><span class="kbd">T</span> detonar C4</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Equipo</div>
+              <div class="flex flex-col gap-1 text-stone-300">
+                <div><span class="kbd">B</span> / <span class="kbd">I</span> mochila</div>
+                <div><span class="kbd">M</span> mapa GPS</div>
+                <div><span class="kbd">F</span> interactuar (cajas, carros, bombas)</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-yellow-300 font-bold uppercase tracking-wider mb-1.5">Mundo y menús</div>
+              <div class="flex flex-col gap-1 text-stone-300">
+                <div><span class="kbd">N</span> saltar día / noche</div>
+                <div><span class="kbd">K</span> nuevo mundo</div>
+                <div><span class="kbd">Tab</span> menú debug / físicas</div>
+                <div><span class="kbd">Enter</span> chat (multijugador)</div>
+                <div><span class="kbd">ESC</span> pausa</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -537,22 +349,41 @@
         </div>
       </div>
 
-      <!-- World debug HUD -->
-      <div class="absolute bottom-4 right-4 z-10 bg-black/80 border border-stone-800 p-3 rounded-xs font-mono text-[11px] text-stone-300 leading-relaxed">
-        <div>
-          <span class="text-stone-500">HORA:</span> {{ hud.clock }}
-          <span :class="hud.night ? 'text-indigo-300' : 'text-yellow-300'">{{ hud.night ? 'NOCHE' : 'DÍA' }}</span>
-        </div>
-        <div><span class="text-stone-500">SEMILLA:</span> {{ seed }}</div>
-        <div><span class="text-stone-500">POS:</span> {{ hud.x }}, {{ hud.z }}</div>
-        <div><span class="text-stone-500">CHUNK:</span> {{ hud.cx }}, {{ hud.cz }} ({{ hud.chunks }} cargados)</div>
-        <div><span class="text-stone-500">CIUDAD MÁS CERCANA:</span> {{ hud.city }}</div>
-        <div><span class="text-stone-500">ZOMBIS CERCA:</span> {{ hud.zombies }}</div>
-        <div><span class="text-stone-500">BAJAS:</span> {{ hud.kills }}</div>
+      <!-- Esquina inferior derecha: minimapa GPS + ayuda -->
+      <div class="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2 pointer-events-auto">
+        <MinimapGPS
+          :player-x="player.x"
+          :player-z="player.z"
+          :player-rot="player.rot"
+          :generator="world?.generator"
+          :map-manager="mapManager"
+          :clock="hud.clock"
+          :is-night="hud.night"
+          @open-full-map="openFullMap"
+        />
+
+        <button
+          type="button"
+          @click="showHelp = !showHelp"
+          class="px-3 py-1.5 bg-black/80 border border-stone-600 font-mono text-[11px] uppercase tracking-wider text-stone-400 hover:text-yellow-300 hover:border-yellow-500 transition-colors cursor-pointer"
+        >
+          [H] Ayuda
+        </button>
       </div>
 
       <!-- Sistema Multijugador y Chat Overlay -->
       <MultiplayerHUD @chat-focus-change="(val) => (isChatFocused = val)" />
+
+      <!-- Modal de Mapa Completo Satelital / GPS -->
+      <FullscreenMapModal
+        v-if="showFullMap"
+        :player-x="player.x"
+        :player-z="player.z"
+        :player-rot="player.rot"
+        :generator="world?.generator"
+        :map-manager="mapManager"
+        @close="closeFullMap"
+      />
     </div>
   </div>
 </template>
@@ -564,7 +395,7 @@ import { sound } from '../../audio/soundEngine';
 import { WorldManager } from '../../game/world/worldManager';
 import { ZombieManager, DEFAULT_CAR_PUSH_CONFIG, type CarPushConfig, type RemoteCarInfo } from '../../game/world/zombies';
 import { ExplosivesManager } from '../../game/explosives/explosivesManager';
-import { EXPLOSIVE_IDS, getExplosiveDef } from '../../game/explosives/explosiveDefs';
+import { EXPLOSIVE_IDS, getExplosiveDef, allExplosiveDefs } from '../../game/explosives/explosiveDefs';
 import { updateFadeTarget } from '../../game/world/fadeMaterial';
 import { DayNightCycle } from '../../game/world/dayNight';
 import { LampLights } from '../../game/world/lampLights';
@@ -586,6 +417,12 @@ import { weaponAudio } from '../../game/weapons/weaponAudio';
 import { PICKUP_RANGE, type DropSpawn } from '../../game/weapons/groundDrops';
 import MultiplayerHUD from './MultiplayerHUD.vue';
 import MobileControls from './MobileControls.vue';
+import MinimapGPS from './MinimapGPS.vue';
+import FullscreenMapModal from './FullscreenMapModal.vue';
+import PlayerHUD, { type HudWeaponSlot } from './PlayerHUD.vue';
+import BackpackModal from './BackpackModal.vue';
+import DebugModal from './DebugModal.vue';
+import { mapManager } from '../../game/map/mapManager';
 import { networkManager } from '../../game/network/networkManager';
 import { RemotePlayerManager } from '../../game/network/remotePlayerManager';
 
@@ -598,6 +435,51 @@ const gameCanvas = ref<HTMLCanvasElement | null>(null);
 const isChatFocused = ref(false);
 const isPaused = ref(false);
 const showSettings = ref(false);
+const showFullMap = ref(false);
+const showBackpack = ref(false);
+const showHelp = ref(false);
+const playerHudRef = ref<InstanceType<typeof PlayerHUD> | null>(null);
+
+const playerHudSlots = reactive<(HudWeaponSlot | null)[]>([
+  null, null, null, null, null, null,
+]);
+const equippedWeaponIndex = ref(0);
+
+const equippedWeaponIds = computed(() =>
+  playerHudSlots.filter((w): w is HudWeaponSlot => !!w).map((w) => w.id)
+);
+const currentEquippedWeaponId = computed(() =>
+  playerHudSlots[equippedWeaponIndex.value]?.id ?? ''
+);
+
+function selectWeaponSlot(idx: number) {
+  if (!arsenal || !arsenal.slots[idx]) return;
+  arsenal.select(idx);
+  updateWeaponHud();
+}
+
+function onEquipWeaponFromBackpack(id: string) {
+  if (!arsenal) return;
+  const have = arsenal.slots.findIndex((w) => w?.def.id === id);
+  if (have >= 0) {
+    arsenal.select(have);
+  } else {
+    arsenal.pickup({ weapon: id as any });
+  }
+  updateWeaponHud();
+  showBackpack.value = false;
+}
+
+function openFullMap() {
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+  showFullMap.value = true;
+}
+
+function closeFullMap() {
+  showFullMap.value = false;
+}
 
 const mobileMove = ref({ x: 0, y: 0 });
 const mobileAim = ref({ x: 0, y: 0, active: false, fire: false });
@@ -622,6 +504,7 @@ function handleMobileKeyState(key: string, pressed: boolean) {
 
 let remotePlayers: RemotePlayerManager | null = null;
 const playerHealth = ref(100);
+const playerArmor = ref(100);
 const playerStamina = ref(100);
 // Vidas y canalización de resurrección: al vaciarse la salud se pierde una vida
 // y el jugador canaliza 5 s inmóvil (invulnerable, brillando) hasta soltar la
@@ -644,14 +527,25 @@ function flashBlood(damage: number) {
 }
 
 /**
- * Daño al jugador con sistema de vidas. Devuelve 'ok' (sigue en pie),
- * 'reviving' (perdió una vida y canaliza), 'invulnerable' (ya canalizando o
- * muerto: sin efecto) o 'dead' (sin vidas: muerte definitiva).
+ * Daño al jugador con sistema de vidas y armadura. La armadura absorbe daño primero.
  */
 function hurtPlayer(damage: number): 'ok' | 'reviving' | 'invulnerable' | 'dead' {
   if (reviving.value || playerHealth.value <= 0) return reviving.value ? 'reviving' : 'dead';
-  playerHealth.value = Math.max(0, playerHealth.value - damage);
-  flashBlood(damage);
+  
+  let healthDmg = damage;
+  if (playerArmor.value > 0) {
+    const absorbed = Math.min(playerArmor.value, damage);
+    playerArmor.value -= absorbed;
+    healthDmg = damage - absorbed;
+  }
+
+  if (healthDmg > 0) {
+    playerHealth.value = Math.max(0, playerHealth.value - healthDmg);
+    flashBlood(healthDmg);
+  } else {
+    flashBlood(damage * 0.2);
+  }
+
   if (playerHealth.value > 0) return 'ok';
   if (playerLives.value > 1) {
     playerLives.value -= 1;
@@ -710,6 +604,10 @@ const weaponHud = reactive({
 
 // --- Menú de debug ---
 const debugOpen = ref(false);
+/** Master switch: sin esto, las acciones/cheats de debug no aplican y se revierten efectos. */
+const debugEnabled = ref(false);
+/** Debug: zombis no detectan, persiguen ni atacan. */
+const passiveMode = ref(false);
 const carPushConfig = reactive<CarPushConfig>({ ...DEFAULT_CAR_PUSH_CONFIG });
 const debugWeapons = allWeaponDefs().map((d) => ({
   id: d.id,
@@ -724,6 +622,8 @@ const debugWeapons = allWeaponDefs().map((d) => ({
   noise: d.noiseRadius,
   auto: d.isAutomatic,
 }));
+const debugExplosives = allExplosiveDefs().map((d) => ({ id: d.id, name: d.name }));
+
 interface HitFeedItem { id: number; text: string; tone: 'hit' | 'head' | 'kill'; dx: number; tilt: number }
 const hitFeed = ref<HitFeedItem[]>([]);
 let hitFeedId = 0;
@@ -762,6 +662,63 @@ const refuelHud = reactive({ active: false, added: 0, pct: 0, left: 0 });
 const seed = ref(networkManager.currentRoom?.seed ?? newSeed());
 const hud = reactive({ x: 0, z: 0, cx: 0, cz: 0, chunks: 0, city: '—', zombies: 0, kills: 0, clock: '06:00', night: false });
 
+const debugWorldInfo = computed(() => ({
+  clock: hud.clock,
+  night: hud.night,
+  seed: seed.value,
+  x: hud.x,
+  z: hud.z,
+  cx: hud.cx,
+  cz: hud.cz,
+  chunks: hud.chunks,
+  city: hud.city,
+  zombies: hud.zombies,
+  kills: hud.kills,
+}));
+
+function toggleDebugOpen() {
+  debugOpen.value = !debugOpen.value;
+  if (debugOpen.value && document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+}
+
+function setDebugEnabled(on: boolean) {
+  debugEnabled.value = on;
+  if (!on) {
+    Object.assign(carPushConfig, DEFAULT_CAR_PUSH_CONFIG);
+    if (zombies) zombies.carPushConfig = carPushConfig;
+    setPassiveMode(false, false);
+    showToast('Modo debug deshabilitado · efectos restablecidos');
+  } else {
+    showToast('Modo debug habilitado');
+  }
+}
+
+function setPassiveMode(on: boolean, toast = true) {
+  if (on && !debugEnabled.value) {
+    showToast('Activa el modo debug primero');
+    return;
+  }
+  passiveMode.value = on;
+  if (zombies) zombies.passiveMode = on;
+  if (toast) {
+    showToast(on ? 'Modo pasivo ON · zombis no reaccionan' : 'Modo pasivo OFF');
+  }
+}
+
+function onDebugPushConfig(key: keyof CarPushConfig, value: number) {
+  if (!debugEnabled.value) return;
+  carPushConfig[key] = value;
+  if (zombies) zombies.carPushConfig = carPushConfig;
+}
+
+function requireDebug(): boolean {
+  if (debugEnabled.value) return true;
+  showToast('Activa el modo debug en el menú (Tab)');
+  return false;
+}
+
 function newSeed() {
   return Math.floor(Math.random() * 0x7fffffff);
 }
@@ -797,6 +754,7 @@ function makeArsenal() {
   return a;
 }
 let arsenal = makeArsenal();
+updateWeaponHud();
 const recoil = new RecoilController();
 const aim = new MouseAim();
 let companion: WeaponCompanion | null = null;
@@ -876,8 +834,10 @@ function startWorld(newSeedValue: number) {
   world?.dispose();
   seed.value = newSeedValue;
   world = new WorldManager(scene, newSeedValue);
+  mapManager.init(newSeedValue, player.x, player.z, world.generator);
   zombies = new ZombieManager(scene, world);
   zombies.carPushConfig = carPushConfig;
+  zombies.passiveMode = debugEnabled.value && passiveMode.value;
   zombies.onZombieHit = (z, damage, killed, impulse, isCar) => {
     if (networkManager.isConnected && networkManager.currentRoom) {
       networkManager.sendZombieHit({
@@ -945,12 +905,14 @@ function startWorld(newSeedValue: number) {
   player.x = 0;
   player.z = 0;
   arsenal = makeArsenal();
+  updateWeaponHud();
   prompt.value = null;
   carHud.driving = false;
   refuelHud.active = false;
   bloodFlash.value = 0;
   playerLives.value = 3;
   playerHealth.value = 100;
+  playerArmor.value = 100;
   reviving.value = false;
   avatar?.resetLife();
   clearShockRings();
@@ -1112,6 +1074,7 @@ function exitCar() {
 function giveWeapon(item: WeaponItem): boolean {
   const res = arsenal.pickup(item);
   if (!res) return false;
+  updateWeaponHud();
   const name = res.weapon.def.name;
   if (res.kind === 'duplicate') {
     showToast(`Ya tienes: ${name}`);
@@ -1134,7 +1097,7 @@ function reloadWeapon() {
   if (w && w.startReload()) weaponAudio.reload();
 }
 
-// --- Explosivos y arrojadizos (G lanzar/plantar, H cambiar, T detonar C4) ---
+// --- Explosivos y arrojadizos (G lanzar/plantar, J cambiar, T detonar C4) ---
 
 /** Rota la selección al siguiente explosivo del catálogo. */
 function cycleExplosive() {
@@ -1192,6 +1155,7 @@ function detonateC4() {
 
 /** Recarga el inventario de explosivos (menú debug). */
 function debugRefillExplosives() {
+  if (!requireDebug()) return;
   Object.assign(explosiveCounts, EXPLOSIVE_INITIAL);
   showToast('Explosivos repuestos');
 }
@@ -1337,31 +1301,38 @@ function tryFire(w: Weapon, velocity: number) {
 
 /** Debug: equipa el arma (la añade si no la tienes; si el inventario está lleno reemplaza a la equipada). */
 function debugGive(id: string) {
+  if (!requireDebug()) return;
   const have = arsenal.slots.findIndex((w) => w?.def.id === id);
   if (have >= 0) {
     arsenal.select(have);
-    return;
+  } else {
+    arsenal.pickup({ weapon: id as any }); // 'new' equipa sola; 'swap' reemplaza a la equipada
   }
-  arsenal.pickup({ weapon: id }); // 'new' equipa sola; 'swap' reemplaza a la equipada
+  updateWeaponHud();
 }
 
 function debugGiveAll() {
+  if (!requireDebug()) return;
   for (const d of allWeaponDefs()) if (!arsenal.slots.some((w) => w?.def.id === d.id)) arsenal.pickup({ weapon: d.id });
+  updateWeaponHud();
   showToast('Todas las armas en el inventario');
 }
 
 /** Debug: cargador lleno y 5 cargadores de reserva en todas las armas del inventario. */
 function debugRefill() {
+  if (!requireDebug()) return;
   for (const w of arsenal.slots) {
     if (!w || w.isMelee) continue;
     w.cancelReload();
     w.ammo = w.def.magSize;
     w.reserve = w.def.magSize * 5;
   }
+  updateWeaponHud();
   showToast('Munición completa');
 }
 
 function debugSpawnZombies() {
+  if (!requireDebug()) return;
   if (!zombies) return;
   const spawned = zombies.spawnTest(player.x, player.z, 6, 14);
   if (networkManager.isConnected && networkManager.currentRoom) {
@@ -1379,6 +1350,7 @@ function debugSpawnZombies() {
 }
 
 function debugSpawnExtreme() {
+  if (!requireDebug()) return;
   if (!zombies) return;
   const req = zombies.spawnExtreme(player.x, player.z, 14);
   if (networkManager.isConnected && networkManager.currentRoom) {
@@ -1395,6 +1367,7 @@ function debugSpawnExtreme() {
 }
 
 function debugClearZombies() {
+  if (!requireDebug()) return;
   const n = zombies?.removeNear(player.x, player.z, 60) ?? 0;
   if (networkManager.isConnected && networkManager.currentRoom) {
     networkManager.sendZombieClear(player.x, player.z, 60);
@@ -1403,31 +1376,21 @@ function debugClearZombies() {
 }
 
 function debugReset() {
+  if (!requireDebug()) return;
   arsenal = makeArsenal();
+  updateWeaponHud();
   showToast('Inventario reiniciado');
 }
 
-function onDebugMouseDown(e: MouseEvent) {
-  e.stopPropagation();
-  const target = e.target as HTMLElement | null;
-  // Previene que los botones roben el foco del teclado (para mantener WASD y Espacio activos),
-  // pero permite la interacción nativa con los sliders (<input type="range">) y el scroll del panel.
-  if (target?.closest('button')) {
-    e.preventDefault();
-  }
-}
-
-function blurInput(e: Event) {
-  (e.target as HTMLElement | null)?.blur();
-}
-
 function resetPushSliders() {
+  if (!requireDebug()) return;
   Object.assign(carPushConfig, DEFAULT_CAR_PUSH_CONFIG);
   if (zombies) zombies.carPushConfig = carPushConfig;
   showToast('Valores de empuje restablecidos por defecto');
 }
 
 function debugSpawnCar() {
+  if (!requireDebug()) return;
   if (!vehicles) return;
   const fx = Math.sin(player.rot);
   const fz = Math.cos(player.rot);
@@ -1450,6 +1413,7 @@ function debugSpawnCar() {
 }
 
 function debugSpawnAndEnterCar() {
+  if (!requireDebug()) return;
   if (!vehicles) return;
   if (vehicles.driven) exitCar();
   const fx = Math.sin(player.rot);
@@ -1476,6 +1440,7 @@ function debugSpawnAndEnterCar() {
 }
 
 function debugSpawnProcedural() {
+  if (!requireDebug()) return;
   if (!vehicles || !world) return;
   const biome = world.getBiomeAt(player.x, player.z);
   const fx = Math.sin(player.rot);
@@ -1499,6 +1464,35 @@ function debugSpawnProcedural() {
 }
 
 function updateWeaponHud() {
+  if (arsenal) {
+    for (let i = 0; i < 6; i++) {
+      const w = arsenal.slots[i];
+      if (!w) {
+        if (playerHudSlots[i] !== null) playerHudSlots[i] = null;
+      } else {
+        const s = playerHudSlots[i];
+        if (
+          !s ||
+          s.id !== w.def.id ||
+          s.name !== w.def.name ||
+          s.ammo !== w.ammo ||
+          s.reserve !== w.reserve ||
+          s.isMelee !== w.isMelee
+        ) {
+          playerHudSlots[i] = {
+            id: w.def.id,
+            name: w.def.name,
+            ammo: w.ammo,
+            reserve: w.reserve,
+            isMelee: w.isMelee,
+          };
+        }
+      }
+    }
+    if (equippedWeaponIndex.value !== arsenal.equipped) {
+      equippedWeaponIndex.value = arsenal.equipped;
+    }
+  }
   weaponHud.slots = arsenal.slots.map((w) => (w ? { name: w.def.name } : null));
   weaponHud.equipped = arsenal.equipped;
   const w = arsenal.current;
@@ -1513,6 +1507,7 @@ function updateWeaponHud() {
 
 /** Depuración (tecla L): deja las armas de prueba en el suelo alrededor del jugador. */
 function debugDropWeapons() {
+  if (!requireDebug()) return;
   if (!world) return;
   const defs = allWeaponDefs();
   defs.forEach((d, i) => {
@@ -1537,7 +1532,7 @@ function onMouseMove(e: MouseEvent) {
 }
 
 function onMouseDown(e: MouseEvent) {
-  if (isChatFocused.value) return;
+  if (isChatFocused.value || showFullMap.value || showBackpack.value || debugOpen.value) return;
   if (e.button !== 0) return;
   if (gameCanvas.value) aim.setFromEvent(e, gameCanvas.value);
   fireHeld = true;
@@ -1555,7 +1550,28 @@ function handleKeyDown(e: KeyboardEvent) {
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (k.startsWith('arrow') || e.key === ' ') e.preventDefault();
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (!e.repeat) toggleDebugOpen();
+    return;
+  }
   if (e.key === 'Escape') {
+    if (debugOpen.value) {
+      debugOpen.value = false;
+      return;
+    }
+    if (showHelp.value) {
+      showHelp.value = false;
+      return;
+    }
+    if (showBackpack.value) {
+      showBackpack.value = false;
+      return;
+    }
+    if (showFullMap.value) {
+      closeFullMap();
+      return;
+    }
     if (showSettings.value) {
       showSettings.value = false;
     } else {
@@ -1565,15 +1581,45 @@ function handleKeyDown(e: KeyboardEvent) {
       }
     }
   }
-  if (isPaused.value) return; // No procesar más teclas si está en pausa
-  
+  if (isPaused.value || debugOpen.value) return; // No procesar más teclas si está en pausa o debug
+
+  if (e.key === 'Enter') {
+    if (networkManager.isConnected && networkManager.currentRoom) {
+      e.preventDefault();
+      playerHudRef.value?.openChat();
+      return;
+    }
+  }
+
+  if ((k === 'b' || k === 'i') && !e.repeat) {
+    showBackpack.value = !showBackpack.value;
+    if (showBackpack.value && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+    return;
+  }
+
+  if (k === 'm' && !e.repeat) {
+    if (showFullMap.value) {
+      closeFullMap();
+    } else {
+      openFullMap();
+    }
+    return;
+  }
+
+  if (k === 'h' && !e.repeat) {
+    showHelp.value = !showHelp.value;
+    return;
+  }
+
   if (k === 'c' && !e.repeat) {
     isStealth.value = !isStealth.value;
     showToast(isStealth.value ? 'Modo sigilo activado' : 'Modo caminata normal');
   }
   if (k === 'r' && !e.repeat) reloadWeapon();
   if (k === 'g' && !e.repeat) useSelectedExplosive();
-  if (k === 'h' && !e.repeat) cycleExplosive();
+  if (k === 'j' && !e.repeat) cycleExplosive();
   if (k === 't' && !e.repeat) detonateC4();
   if (k === 'k' && !e.repeat) {
     if (networkManager.isConnected && networkManager.currentRoom) {
@@ -1583,10 +1629,6 @@ function handleKeyDown(e: KeyboardEvent) {
     }
   }
   if (k === 'l' && !e.repeat) debugDropWeapons();
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    if (!e.repeat) debugOpen.value = !debugOpen.value;
-  }
   if (k === 'f' && !e.repeat) interact();
   if (k === 'n' && !e.repeat) {
     cycle?.skipPhase();
@@ -1594,7 +1636,10 @@ function handleKeyDown(e: KeyboardEvent) {
       networkManager.sendDayNightSync(cycle.time);
     }
   }
-  if (/^[1-5]$/.test(e.key) && !vehicles?.driven) arsenal.select(Number(e.key) - 1);
+  if (/^[1-6]$/.test(e.key) && !vehicles?.driven) {
+    arsenal.select(Number(e.key) - 1);
+    updateWeaponHud();
+  }
 }
 
 function handleKeyUp(e: KeyboardEvent) {
@@ -1852,7 +1897,7 @@ function loop(now: number) {
     if (mobileAim.value.fire && !lastMobileFire) semiPending = true;
     lastMobileFire = mobileAim.value.fire;
     
-    const isFiring = (fireHeld || mobileAim.value.fire) && !reviving.value;
+    const isFiring = (fireHeld || mobileAim.value.fire) && !reviving.value && !showFullMap.value && !showBackpack.value;
     if (w && isFiring && (w.def.isAutomatic || semiPending)) {
       tryFire(w, vel);
     }
@@ -1892,6 +1937,7 @@ function loop(now: number) {
       zombies?.blastWave(player.x, player.z, REVIVE_BLAST_RADIUS, REVIVE_BLAST_POWER);
       spawnShockRing(player.x, player.z, REVIVE_BLAST_RADIUS);
       playerHealth.value = 100;
+      playerArmor.value = 100;
       showToast(`¡Resucitado! Te quedan ${playerLives.value} ${playerLives.value === 1 ? 'vida' : 'vidas'}`);
     }
   }
@@ -1904,6 +1950,7 @@ function loop(now: number) {
   }
 
   world.update(player.x, player.z);
+  world.updateLampPhysics(dt);
   const otherPositions = remotePlayers?.getOtherPlayerPositions() ?? [];
   // Carros con conductor remoto (fantasmas sincronizados): sólidos para los
   // zombis locales y atacables con animación. El daño real a su chapa lo
@@ -2005,6 +2052,9 @@ function loop(now: number) {
   }
 
   if (++frame % 8 === 0) {
+    if (world?.generator) {
+      mapManager.updateDiscovery(player.x, player.z, world.generator, 1);
+    }
     const cs = WORLD.chunkSize;
     hud.x = Math.round(player.x);
     hud.z = Math.round(player.z);
@@ -2326,5 +2376,19 @@ onBeforeUnmount(() => {
     transform: translateY(-58px) rotate(var(--tilt, 0deg)) scale(1);
     opacity: 0;
   }
+}
+
+/* Teclas del modal de ayuda */
+.kbd {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid #57534e;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: #1c1917;
+  color: #fde68a;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 </style>

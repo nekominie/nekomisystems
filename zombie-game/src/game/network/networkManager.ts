@@ -43,6 +43,7 @@ export class NetworkManager {
   public onDayNightSyncEvent?: (time: number) => void;
   public onVehicleSpawnEvent?: (spawn: VehicleSpawnDto) => void;
   public onZombieClearEvent?: (x: number, z: number, radius: number) => void;
+  public chatMessages: ChatMessageDto[] = [];
   public onItemDropEvent?: (drop: ItemDropDto) => void;
   public onItemPickupEvent?: (dropId: string) => void;
   public onPlayerShotEvent?: (shot: PlayerShotNetworkEvent) => void;
@@ -193,6 +194,8 @@ export class NetworkManager {
     });
 
     this.hub.on('OnReceiveChatMessage', (msg: ChatMessageDto) => {
+      this.chatMessages.push(msg);
+      if (this.chatMessages.length > 50) this.chatMessages.shift();
       this.onReceiveChatMessage?.(msg);
     });
 

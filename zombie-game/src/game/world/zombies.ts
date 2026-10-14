@@ -338,8 +338,26 @@ export class ZombieManager {
   private lastCarX = 0;
   private lastCarZ = 0;
   carPushConfig: CarPushConfig = { ...DEFAULT_CAR_PUSH_CONFIG };
+  /** Debug: zombis deambulan pero no detectan, persiguen ni atacan. */
+  private _passiveMode = false;
+  get passiveMode() {
+    return this._passiveMode;
+  }
+  set passiveMode(on: boolean) {
+    this._passiveMode = on;
+    if (on) this.clearAllAlerts();
+  }
   public onZombieHit?: (z: Zombie, damage: number, killed: boolean, impulse: THREE.Vector3, isCar: boolean) => void;
   public onPlayerAttacked?: (z: Zombie, damage: number) => void;
+
+  /** Quita alertas/persecuciones activas (p. ej. al activar modo pasivo). */
+  clearAllAlerts() {
+    for (const z of this.zombies) {
+      if (z.dead) continue;
+      z.alert = null;
+      z.attackCooldown = 0;
+    }
+  }
 
   constructor(
     private scene: THREE.Scene,
@@ -842,6 +860,7 @@ export class ZombieManager {
 
   /** El ruido atrae a los zombis dentro del radio hacia el punto del disparo. */
   alertNoise(x: number, z: number, radius: number) {
+    if (this._passiveMode) return;
     for (const zb of this.zombies) {
       if (zb.dead) continue;
       if (Math.hypot(zb.x - x, zb.z - z) <= radius) zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
@@ -1135,6 +1154,14 @@ export class ZombieManager {
       return;
     }
 
+    // Modo pasivo (debug): sin detección, persecución ni ataques; solo deambular.
+    if (this._passiveMode) {
+      z.alert = null;
+      z.attackCooldown = 0;
+      this.wanderPeaceful(z, dt, drv, remoteCars);
+      return;
+    }
+
     const profile = ZOMBIE_TIERS[z.tier];
 
     // Detección: 1. Jugador local con sigilo/visión
@@ -1262,25 +1289,41 @@ export class ZombieManager {
     }
 
     // Modo deambular pacífico si no está alertado
+    this.finishWanderMotion(z, dt, !!z.alert, drv, remoteCars);
+  }
+
+  /** Solo deambular (sin alerta): usado en modo pasivo y al acabar la memoria de alerta. */
+  private wanderPeaceful(
+    z: Zombie,
+    dt: number,
+    drv?: DrivableCar | null,
+    remoteCars?: RemoteCarInfo[],
+  ) {
+    this.finishWanderMotion(z, dt, false, drv, remoteCars);
+  }
+
+  private finishWanderMotion(
+    z: Zombie,
+    dt: number,
+    alerted: boolean,
+    drv?: DrivableCar | null,
+    remoteCars?: RemoteCarInfo[],
+  ) {
     z.timer -= dt;
     if (!z.alert && z.timer <= 0) {
       const isSuperSlow = Math.random() < ZOMBIE_BEHAVIOR.wander.superSlowProb;
       if (isSuperSlow) {
-        // 70% caminata súper lenta (caminata_lentisima mapeado a 'idle')
-        // Usamos moving=true
-        this.setMotion(z, true, false, ZOMBIE_BEHAVIOR.wander.superSlowSpeed); 
+        this.setMotion(z, true, false, ZOMBIE_BEHAVIOR.wander.superSlowSpeed);
         z.targetRot = Math.random() * Math.PI * 2;
         z.timer = 3.0 + Math.random() * 4.0;
       } else {
-        // 30% caminata un poco más rápida (walk_fast mapeado a 'walk')
         this.setMotion(z, true, false, ZOMBIE_BEHAVIOR.wander.fastSpeed);
         z.targetRot = Math.random() * Math.PI * 2;
         z.timer = 2.0 + Math.random() * 4.5;
       }
     }
 
-    // Girar suavemente hacia el rumbo objetivo (más rápido si corre tras una presa o es súper rápido)
-    const turnRate = z.alert ? (z.tier === 'super_fast' ? 7.5 : 5.5) : 2.5;
+    const turnRate = alerted ? (z.tier === 'super_fast' ? 7.5 : 5.5) : 2.5;
     const diff = Math.atan2(Math.sin(z.targetRot - z.rot), Math.cos(z.targetRot - z.rot));
     z.rot += diff * Math.min(1, dt * turnRate);
 
@@ -1288,7 +1331,6 @@ export class ZombieManager {
       const nx = z.x + Math.sin(z.rot) * z.currentSpeed * dt;
       const nz = z.z + Math.cos(z.rot) * z.currentSpeed * dt;
       const fixed = this.world.resolveCollision(nx, nz, ZOMBIE.radius);
-      // Si una pared lo frenó, elegir otro rumbo enseguida
       if (Math.hypot(fixed.x - nx, fixed.z - nz) > 0.005) {
         z.timer = 0;
       }
@@ -1296,10 +1338,6 @@ export class ZombieManager {
       z.z = fixed.z;
     }
 
-    // Los carros (local + remotos) son sólidos: nunca caminar a través de la chapa.
-    // Se aplica siempre (incluso sin alerta) para que no los atraviesen al
-    // rodearlos, y también con carros destruidos (el amasijo sigue estorbando).
-    // Solo el conductor aplica daño a su chapa (autoridad del vehículo).
     let pushed = false;
     if (drv) pushed = this.pushOutOfDrivenCar(z, drv) || pushed;
     if (remoteCars) {
@@ -1308,7 +1346,7 @@ export class ZombieManager {
       }
     }
     if (pushed) {
-      z.timer = Math.min(z.timer, 0.4); // reorienta pronto tras rozar la chapa
+      z.timer = Math.min(z.timer, 0.4);
     }
 
     z.inst.root.position.set(z.x, 0, z.z);
@@ -1388,6 +1426,7 @@ export class ZombieManager {
 
   /** Alerta un zombi a una posición dada recibida por la red */
   applyRemoteAlert(zombieId: string, x: number, z: number) {
+    if (this._passiveMode) return;
     const zb = this.findZombie(zombieId, x, z);
     if (!zb || zb.dead) return;
     zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
