@@ -388,15 +388,7 @@ export class ExplosivesManager {
         def.impulseForce * 0.35 * mult + 1.2,
         nz * def.impulseForce * (0.4 + 0.6 * mult) + (Math.random() - 0.5) * 2,
       );
-      if (zb.dead) {
-        zb.ragdoll?.applyImpulse(_v1, 3.0);
-        continue;
-      }
-      if (zb.knockedDown) {
-        zb.ragdoll?.applyImpulse(_v1, 3.0);
-        continue;
-      }
-      this.zombies.applyBlastHit(zb, def.maxDamage * mult, _v1.clone());
+      this.zombies.applyBlastHit(zb, zb.dead || zb.knockedDown ? 0 : def.maxDamage * mult, _v1.clone());
     }
 
     // Vehículos: daño al chasis + leve empujón radial

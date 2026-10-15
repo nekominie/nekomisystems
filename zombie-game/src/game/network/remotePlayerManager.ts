@@ -281,11 +281,11 @@ export class RemotePlayerManager {
    * IDs de vehículos con conductor remoto a bordo (para tratarlos como
    * sólidos/atacables por los zombis locales en multijugador).
    */
-  getInVehicleRiders(): { vehicleId: string }[] {
-    const list: { vehicleId: string }[] = [];
+  getInVehicleRiders(): { vehicleId: string; connectionId: string; isPassive: boolean }[] {
+    const list: { vehicleId: string; connectionId: string; isPassive: boolean }[] = [];
     for (const p of this.players.values()) {
       if (p.state.isInVehicle && p.state.vehicleId) {
-        list.push({ vehicleId: p.state.vehicleId });
+        list.push({ vehicleId: p.state.vehicleId, connectionId: p.state.connectionId, isPassive: !!p.state.isPassive });
       }
     }
     return list;
@@ -294,14 +294,20 @@ export class RemotePlayerManager {
   /**
    * Obtiene las coordenadas actuales de todos los jugadores remotos con su estado de sigilo/carrera.
    */
-  getOtherPlayerPositions(): { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[] {
-    const list: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[] = [];
+  isPlayerPassive(connectionId: string): boolean {
+    return !!this.players.get(connectionId)?.state.isPassive;
+  }
+
+  getOtherPlayerPositions(): { x: number; z: number; connectionId: string; isPassive: boolean; isStealth?: boolean; isRunning?: boolean }[] {
+    const list: { x: number; z: number; connectionId: string; isPassive: boolean; isStealth?: boolean; isRunning?: boolean }[] = [];
     for (const p of this.players.values()) {
       list.push({
         x: p.currentX,
         z: p.currentZ,
         isStealth: p.state.isStealth || p.state.currentAnim === 'sneak',
         isRunning: p.state.isRunning,
+        connectionId: p.state.connectionId,
+        isPassive: !!p.state.isPassive,
       });
     }
     return list;

@@ -18,7 +18,7 @@
               Consola de Debug // Físicas
             </h2>
             <p class="text-[10px] text-stone-500">
-              Tab para abrir/cerrar · ESC para salir · acciones activas solo con modo debug ON
+              {{ multiplayer ? 'Tab / ESC · modos personales y spawns compartidos con la sala' : 'Tab / ESC · acciones activas con modo debug ON' }}
             </p>
           </div>
         </div>
@@ -26,6 +26,7 @@
         <div class="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap justify-end">
           <!-- Interruptor grande siempre visible -->
           <button
+            v-if="!multiplayer"
             type="button"
             class="group flex items-center gap-3 px-3 py-2 rounded-xs border transition-all"
             :class="enabled
@@ -57,30 +58,33 @@
           <button
             type="button"
             class="group flex items-center gap-3 px-3 py-2 rounded-xs border transition-all"
-            :class="!enabled
+            :class="!controlsEnabled
               ? 'border-stone-800 bg-stone-950/50 opacity-50 cursor-not-allowed'
               : passiveMode
                 ? 'border-sky-500/70 bg-sky-950/50 shadow-[0_0_18px_rgba(14,165,233,0.25)]'
                 : 'border-stone-700 bg-stone-950/80 hover:border-stone-500'"
-            :disabled="!enabled"
+            :disabled="!controlsEnabled"
+            role="switch"
+            :aria-checked="passiveMode"
             @click="togglePassive"
-            title="Los zombis deambulan pero nunca detectan, persiguen ni atacan"
+            :title="multiplayer ? 'Solo tú dejas de ser objetivo; tus compañeros juegan normalmente' : 'Los zombis deambulan pero nunca detectan, persiguen ni atacan'"
           >
             <div class="text-left leading-tight">
-              <div class="text-[9px] uppercase tracking-widest font-bold" :class="enabled && passiveMode ? 'text-sky-400' : 'text-stone-500'">
+              <div class="text-[9px] uppercase tracking-widest font-bold" :class="controlsEnabled && passiveMode ? 'text-sky-400' : 'text-stone-500'">
                 Modo pasivo
               </div>
-              <div class="text-xs font-black uppercase tracking-wide" :class="enabled && passiveMode ? 'text-sky-200' : 'text-stone-400'">
-                {{ !enabled ? 'Requiere debug' : passiveMode ? 'Activo' : 'Inactivo' }}
+              <div class="text-xs font-black uppercase tracking-wide" :class="controlsEnabled && passiveMode ? 'text-sky-200' : 'text-stone-400'">
+                {{ !controlsEnabled ? 'Requiere debug' : passiveMode ? 'Activo' : 'Inactivo' }}
+                <span v-if="multiplayer" class="block text-[9px] text-stone-400 mt-1">Solo tú</span>
               </div>
             </div>
             <div
               class="relative w-14 h-7 rounded-full border transition-colors"
-              :class="enabled && passiveMode ? 'bg-sky-500/30 border-sky-400' : 'bg-stone-800 border-stone-600'"
+              :class="controlsEnabled && passiveMode ? 'bg-sky-500/30 border-sky-400' : 'bg-stone-800 border-stone-600'"
             >
               <span
                 class="absolute top-0.5 w-5 h-5 rounded-full transition-all duration-200 shadow"
-                :class="enabled && passiveMode ? 'left-8 bg-sky-400 shadow-[0_0_10px_#38bdf8]' : 'left-0.5 bg-stone-400'"
+                :class="controlsEnabled && passiveMode ? 'left-8 bg-sky-400 shadow-[0_0_10px_#38bdf8]' : 'left-0.5 bg-stone-400'"
               ></span>
             </div>
           </button>
@@ -114,13 +118,18 @@
       <!-- Contenido -->
       <div class="flex-1 overflow-y-auto p-4 sm:p-5 relative">
         <div
-          v-if="!enabled && activeTab !== 'general'"
+          v-if="!controlsEnabled && activeTab !== 'general'"
           class="mb-3 px-3 py-2 border border-amber-700/50 bg-amber-950/30 text-amber-200 text-[11px] flex items-center gap-2"
         >
           <span class="text-base">⚠</span>
           <span>El modo debug está <b>deshabilitado</b>. Actívalo con el interruptor superior para usar estas acciones.</span>
         </div>
 
+        <div v-if="multiplayer" class="mb-4 border border-sky-800/60 bg-sky-950/25 p-3 text-[11px] text-sky-200 leading-relaxed">
+          <b>Controles personales:</b> tus modos, inventario y ajustes de empuje no cambian los de otros jugadores.
+          <b>Acciones compartidas:</b> los zombis, vehículos y objetos que generes en el mundo se reflejan en la sala.
+          Los impactos usan tus ajustes y su resultado se sincroniza; eliminar zombis también afecta a todos.
+        </div>
         <!-- GENERAL -->
         <section v-if="activeTab === 'general'" class="space-y-4">
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -183,7 +192,7 @@
                 <div>Bajas totales: <span class="text-stone-100 font-bold">{{ worldInfo.kills }}</span></div>
                 <div>Zombis en radio: <span class="text-stone-100 font-bold">{{ worldInfo.zombies }}</span></div>
               </div>
-              <p class="mt-4 text-[10px] text-stone-500 leading-relaxed border-t border-stone-800 pt-3">
+              <p v-if="!multiplayer" class="mt-4 text-[10px] text-stone-500 leading-relaxed border-t border-stone-800 pt-3">
                 Con el interruptor <b class="text-yellow-300">Habilitar modo debug</b> activo puedes spawnear armas,
                 vehículos, zombis y ajustar físicas desde las demás pestañas. Al desactivarlo se revierten los
                 parámetros de empuje a sus valores por defecto y se bloquean las acciones de cheat.
@@ -193,7 +202,7 @@
         </section>
 
         <!-- ARMAS -->
-        <section v-else-if="activeTab === 'weapons'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !enabled }">
+        <section v-else-if="activeTab === 'weapons'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !controlsEnabled }">
           <div class="flex flex-wrap items-center gap-2">
             <button
               v-for="cat in weaponCategories"
@@ -250,7 +259,7 @@
         </section>
 
         <!-- VEHÍCULOS -->
-        <section v-else-if="activeTab === 'vehicles'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !enabled }">
+        <section v-else-if="activeTab === 'vehicles'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !controlsEnabled }">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <button
               v-for="opt in archetypeOptions"
@@ -302,7 +311,7 @@
         </section>
 
         <!-- ZOMBIES -->
-        <section v-else-if="activeTab === 'zombies'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !enabled }">
+        <section v-else-if="activeTab === 'zombies'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !controlsEnabled }">
           <div
             class="border p-3 rounded-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
             :class="passiveMode ? 'border-sky-600/60 bg-sky-950/25' : 'border-stone-800 bg-black/40'"
@@ -312,9 +321,14 @@
                 Modo pasivo
               </div>
               <p class="text-[10px] text-stone-500 mt-1 leading-relaxed">
+                <template v-if="multiplayer">
+                  Solo tú dejas de ser objetivo. Tus compañeros siguen atrayendo zombis y recibiendo ataques.
+                </template>
+                <template v-else>
                 Los zombis siguen deambulando, pero <b class="text-stone-300">no detectan</b>,
                 <b class="text-stone-300">no persiguen</b> y <b class="text-stone-300">no atacan</b>
                 (ni al jugador, ni a carros, ni por ruido de disparos).
+                </template>
               </p>
             </div>
             <button
@@ -373,7 +387,7 @@
         </section>
 
         <!-- EXPLOSIVOS -->
-        <section v-else-if="activeTab === 'explosives'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !enabled }">
+        <section v-else-if="activeTab === 'explosives'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !controlsEnabled }">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div
               v-for="ex in explosives"
@@ -396,7 +410,7 @@
         </section>
 
         <!-- FÍSICAS -->
-        <section v-else-if="activeTab === 'physics'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !enabled }">
+        <section v-else-if="activeTab === 'physics'" class="space-y-4" :class="{ 'opacity-55 pointer-events-none': !controlsEnabled }">
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-bold text-yellow-300 uppercase tracking-wider">Empuje ragdoll (vehículo → zombi)</h3>
             <button type="button" class="text-[10px] text-stone-400 hover:text-yellow-300 underline" @click="$emit('resetPush')">
@@ -482,6 +496,7 @@ export interface DebugCarHud {
 
 const props = defineProps<{
   enabled: boolean;
+  multiplayer?: boolean;
   passiveMode: boolean;
   weapons: DebugWeaponRow[];
   equippedId: string;
@@ -519,6 +534,7 @@ const emit = defineEmits<{
 }>();
 
 const activeTab = ref<'general' | 'weapons' | 'vehicles' | 'zombies' | 'explosives' | 'physics'>('general');
+const controlsEnabled = computed(() => props.multiplayer || props.enabled);
 const weaponFilter = ref('all');
 
 const tabs = [
@@ -587,6 +603,7 @@ function formatPush(slider: (typeof pushSliders)[number]) {
 }
 
 function onPushInput(key: keyof CarPushConfig, e: Event) {
+  if (!controlsEnabled.value) return;
   const v = Number((e.target as HTMLInputElement).value);
   emit('update:pushConfig', key, v);
 }
@@ -596,11 +613,12 @@ function blurInput(e: Event) {
 }
 
 function toggleEnabled() {
+  if (props.multiplayer) return;
   emit('update:enabled', !props.enabled);
 }
 
 function togglePassive() {
-  if (!props.enabled) return;
+  if (!controlsEnabled.value) return;
   emit('update:passiveMode', !props.passiveMode);
 }
 

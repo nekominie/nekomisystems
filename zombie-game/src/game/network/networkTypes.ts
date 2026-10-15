@@ -12,6 +12,7 @@ export interface PlayerNetworkState {
   isMoving: boolean;
   isRunning: boolean;
   isStealth?: boolean;
+  isPassive?: boolean;
   currentAnim: string;
   health: number;
   maxHealth: number;
@@ -41,6 +42,13 @@ export interface VehicleNetworkState {
 }
 
 export interface ZombieHitNetworkEvent {
+  eventId?: string;
+  combatVersion?: number;
+  health?: number;
+  zombieRot?: number;
+  tumble?: number;
+  physicsSeed?: number;
+  knockedDown?: boolean;
   zombieId: string;
   attackerConnectionId: string;
   attackerNickname: string;
@@ -80,6 +88,15 @@ export interface RoomSummaryDto {
 }
 
 export interface ZombieSyncDto {
+  tier?: string;
+  heightVar?: number;
+  ownerConnectionId?: string;
+  version?: number;
+  combatVersion?: number;
+  knockedDown?: boolean;
+  removed?: boolean;
+  deadAt?: number;
+  lastImpact?: ZombieHitNetworkEvent | null;
   id: string;
   x: number;
   z: number;
@@ -90,6 +107,7 @@ export interface ZombieSyncDto {
   dead: boolean;
   targetX?: number | null;
   targetZ?: number | null;
+  targetPlayerId?: string | null;
 }
 
 export interface ZombieSpawnDto {

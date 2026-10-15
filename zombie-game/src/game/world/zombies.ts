@@ -7,6 +7,8 @@ import type { ShotResult } from '../weapons/weapon';
 import { RagdollManager, type ZombieRagdoll } from './zombieRagdoll';
 import type { DrivableCar } from './vehicles';
 import { loadAnimation } from './animationAssets';
+import type { ZombieHitNetworkEvent, ZombieSyncDto } from '../network/networkTypes';
+import { ZombieReplicaBook } from '../network/zombieReplication';
 
 /** Hitbox invisible (cilindro) contra el que se lanzan los rayos de las armas. */
 const HIT_GEO = new THREE.CylinderGeometry(0.4, 0.4, 1.9, 8).translate(0, 0.95, 0);
@@ -134,6 +136,7 @@ export const ZOMBIE_BEHAVIOR = {
  *  durabilidad lo aplica solo el conductor (autoridad); aquí solo animación.
  *  halfL/halfW = mitades de la carrocería (sin expandir). */
 export interface RemoteCarInfo {
+  isPassive?: boolean;
   x: number;
   z: number;
   heading: number;
@@ -335,7 +338,7 @@ export interface Zombie {
   /** Tiempo total desde que cayó (seguridad: fuerza la recuperación aunque la física no repose). */
   downTime?: number;
   /** Punto de ruido / jugador hacia el que va; null = deambula normal. */
-  alert: { x: number; z: number; timer: number } | null;
+  alert: { x: number; z: number; timer: number; playerId?: string | null } | null;
   /** Aturdimiento tras un impacto (s). */
   stun: number;
   hit: THREE.Mesh;
@@ -343,6 +346,9 @@ export interface Zombie {
   ragdoll?: ZombieRagdoll | null;
   carAttackTimer?: number;
   carHitCooldown?: number;
+  lastPhysics?: { x: number; z: number; rot: number; tumble: number; seed: number; impulse: THREE.Vector3 };
+  networkCombatVersion?: number;
+  pendingBurnDamage?: number;
 }
 
 export class ZombieManager {
@@ -353,6 +359,37 @@ export class ZombieManager {
   private assets: Assets | null = null;
   private ragdolls = new RagdollManager();
   private disposed = false;
+  private networkRoom: string | null = null;
+  private connectionId: string | null = null;
+  private readonly replicas = new ZombieReplicaBook();
+  private readonly candidates = new Map<string, SpawnRequest>();
+  private syncCursor = 0;
+  private candidateCursor = 0;
+  private localX = 0;
+  private localZ = 0;
+
+  setNetworkSession(room: string | null, connectionId: string | null) {
+    if (room !== this.networkRoom) {
+      this.clearAllZombies();
+      this.replicas.clear();
+      this.candidates.clear();
+    }
+    this.networkRoom = room;
+    this.connectionId = connectionId;
+  }
+
+  private isAuthority(z: Zombie): boolean {
+    return !this.networkRoom ||
+      this.replicas.states.get(z.id)?.ownerConnectionId === this.connectionId;
+  }
+
+  private enqueue(req: SpawnRequest) {
+    if (this.zombiesById.has(req.id) || this.queue.some((r) => r.id === req.id)) return;
+    if (this.networkRoom) {
+      if (!this.replicas.states.has(req.id) && this.candidates.size < 4096)
+        this.candidates.set(req.id, req);
+    } else this.queue.push(req);
+  }
   /** Última posición del carro conducido: para el test barrido que evita
    *  túneles sin disparar el golpe metros antes del contacto visual. */
   private lastCarId: string | null = null;
@@ -368,13 +405,14 @@ export class ZombieManager {
     this._passiveMode = on;
     if (on) this.clearAllAlerts();
   }
-  public onZombieHit?: (z: Zombie, damage: number, killed: boolean, impulse: THREE.Vector3, isCar: boolean) => void;
+  public onZombieHit?: (hit: Omit<ZombieHitNetworkEvent, 'attackerConnectionId' | 'attackerNickname'>) => void;
   public onPlayerAttacked?: (z: Zombie, damage: number) => void;
 
   /** Quita alertas/persecuciones activas (p. ej. al activar modo pasivo). */
   clearAllAlerts() {
     for (const z of this.zombies) {
       if (z.dead) continue;
+      if (this.networkRoom && z.alert?.playerId !== this.connectionId) continue;
       z.alert = null;
       z.attackCooldown = 0;
     }
@@ -410,10 +448,12 @@ export class ZombieManager {
     px: number,
     pz: number,
     drv?: DrivableCar | null,
-    otherPlayers?: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[],
+    otherPlayers?: { x: number; z: number; connectionId?: string; isPassive?: boolean; isStealth?: boolean; isRunning?: boolean }[],
     localPlayerStatus?: { isStealth: boolean; isRunning: boolean },
     remoteCars?: RemoteCarInfo[],
   ) {
+    this.localX = px;
+    this.localZ = pz;
     if (drv) this.checkCarCollisions(drv, dt);
     this.ragdolls.update(dt);
     if (!this.assets) return; // los zombis aparecen cuando el modelo ya está cargado
@@ -442,6 +482,19 @@ export class ZombieManager {
     }
 
     // Instanciar unos pocos por frame
+    if (this.networkRoom) {
+      // Entidades ausentes se materializan por ID desde el registro, incluso cadáveres.
+      const nearby = [...this.replicas.states.values()]
+        .filter((s) => !s.removed && !this.zombiesById.has(s.id) &&
+          Math.hypot(s.x - px, s.z - pz) < 160)
+        .sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
+      for (const s of nearby.slice(0, ZOMBIE.spawnsPerFrame)) {
+        if (this.zombies.length >= 640) break;
+        this.spawn(this.requestFromState(s));
+        const z = this.zombiesById.get(s.id);
+        if (z) this.applyNetworkState(z, s, true);
+      }
+    }
     for (let n = 0; n < ZOMBIE.spawnsPerFrame && this.queue.length && this.zombies.length < ZOMBIE.maxZombies; n++) {
       const req = this.queue.pop()!;
       if (Math.hypot(req.x - px, req.z - pz) > maxDist) continue; // el jugador ya se alejó
@@ -465,7 +518,9 @@ export class ZombieManager {
       }
       if (!vis) continue; // fuera de la vista: congelado
       if (z.dead) {
-        if (this.updateCorpse(z, dt)) {
+        if (this.networkRoom && !this.isAuthority(z)) this.updateReplica(z, dt, px, pz, drv);
+        else this.followHips(z);
+        if (this.updateCorpse(z, dt) && !this.networkRoom) {
           this.removeZombie(z);
           this.zombies.splice(i, 1);
         }
@@ -474,11 +529,13 @@ export class ZombieManager {
       // Tumbado por un carro: la física ragdoll manda. No deambula ni anima;
       // sigue a las caderas físicas y espera a reponerse donde caiga.
       if (z.knockedDown) {
-        this.updateKnockedDown(z, dt);
+        if (this.isAuthority(z)) this.updateKnockedDown(z, dt);
+        else this.updateReplica(z, dt, px, pz, drv);
         this.applyShadows(z);
         continue;
       }
-      this.wander(z, dt, px, pz, otherPlayers, localPlayerStatus, drv, remoteCars);
+      if (this.isAuthority(z)) this.wander(z, dt, px, pz, otherPlayers, localPlayerStatus, drv, remoteCars);
+      else this.updateReplica(z, dt, px, pz, drv);
       this.applyShadows(z);
       if (z.d <= ZOMBIE.animDist) animatable.push(z);
     }
@@ -518,15 +575,16 @@ export class ZombieManager {
       // Ligera variación de altura según la complexión
       const heightVar = tier === 'extreme' ? 0.95 + rng() * 0.07 : tier === 'slow' ? 1.02 + rng() * 0.10 : 0.96 + rng() * 0.09;
       const phase = rng();
-      if (Math.hypot(x - px, z - pz) < ZOMBIE.safeSpawnDist) continue;
+      if (!this.networkRoom && Math.hypot(x - px, z - pz) < ZOMBIE.safeSpawnDist) continue;
       const id = `z_${cx}_${cz}_${i}`;
-      this.queue.push({ id, x, z, rot, tier, wanderSpeed, alertSpeed, heightVar, phase });
+      this.enqueue({ id, x, z, rot, tier, wanderSpeed, alertSpeed, heightVar, phase });
     }
   }
 
   private spawn(req: SpawnRequest) {
-    if (!this.assets) return;
-    const pos = this.world.resolveCollision(req.x, req.z, ZOMBIE.radius + 0.1);
+    if (!this.assets || this.zombiesById.has(req.id)) return;
+    const pos = this.networkRoom ? { x: req.x, z: req.z } :
+      this.world.resolveCollision(req.x, req.z, ZOMBIE.radius + 0.1);
     const inst = instantiateMiku(this.assets.base, true, true); // tono verde, versión ligera
     inst.root.scale.setScalar(req.heightVar);
     inst.root.position.set(pos.x, 0, pos.z);
@@ -621,7 +679,7 @@ export class ZombieManager {
         heightVar: tier === 'extreme' ? 0.95 : tier === 'slow' ? 1.05 : tier === 'super_fast' ? 0.97 : 1.0,
         phase: Math.random(),
       };
-      this.queue.push(req);
+      this.enqueue(req);
       list.push(req);
     }
     return list;
@@ -642,7 +700,7 @@ export class ZombieManager {
       heightVar: 0.95,
       phase: Math.random(),
     };
-    this.queue.push(req);
+    this.enqueue(req);
     return req;
   }
 
@@ -719,27 +777,29 @@ export class ZombieManager {
 
       // Si estaba tumbado por un carro, el disparo empuja el ragdoll en vuelo/suelo.
       if (z.knockedDown) {
-        z.ragdoll?.applyImpulse(bulletImpulse, 2.0);
+        this.pushRagdoll(z, bulletImpulse, 2.0);
         if (z.health <= 0) {
           this.kill(z, bulletImpulse);
           kills++;
-          this.onZombieHit?.(z, od.damage, true, bulletImpulse, false);
+          this.emitHit(z, od.damage, true, bulletImpulse, false);
         } else {
-          this.onZombieHit?.(z, od.damage, false, bulletImpulse, false);
+          this.emitHit(z, od.damage, false, bulletImpulse, false);
         }
         continue;
       }
 
       z.stun = res.melee ? 0.5 : 0.25;
-      z.alert = { x: res.muzzle.x, z: res.muzzle.z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
+      if (!this._passiveMode)
+        z.alert = { x: res.muzzle.x, z: res.muzzle.z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration,
+          playerId: this.connectionId };
 
       if (z.health <= 0) {
         this.kill(z, bulletImpulse);
         kills++;
-        this.onZombieHit?.(z, od.damage, true, bulletImpulse, false);
+        this.emitHit(z, od.damage, true, bulletImpulse, false);
       } else {
         z.hitAction.reset().play();
-        this.onZombieHit?.(z, od.damage, false, bulletImpulse, false);
+        this.emitHit(z, od.damage, false, bulletImpulse, false);
       }
     }
     this.kills += kills;
@@ -834,7 +894,8 @@ export class ZombieManager {
           corpseLift,
           fz * spd * 0.85 * cfg.force + (Math.random() - 0.5) * cfg.scatter * 2,
         );
-        z.ragdoll.applyImpulse(corpseImpulse, cfg.tumble);
+        this.pushRagdoll(z, corpseImpulse, cfg.tumble);
+        this.emitHit(z, 0, true, corpseImpulse, true);
         continue;
       }
 
@@ -849,7 +910,8 @@ export class ZombieManager {
           dragLift,
           fz * spd * 0.7 * cfg.force + (Math.random() - 0.5) * cfg.scatter,
         );
-        z.ragdoll.applyImpulse(dragImpulse, cfg.tumble);
+        this.pushRagdoll(z, dragImpulse, cfg.tumble);
+        this.emitHit(z, 0, false, dragImpulse, true);
         continue;
       }
 
@@ -875,25 +937,49 @@ export class ZombieManager {
       if (z.health <= 0) {
         this.kill(z, impulse, cfg.tumble);
         this.kills++;
-        this.onZombieHit?.(z, hitResult.zombieDamage, true, impulse, true);
+        this.emitHit(z, hitResult.zombieDamage, true, impulse, true);
       } else {
         this.knockDown(z, impulse, cfg.tumble);
-        this.onZombieHit?.(z, hitResult.zombieDamage, false, impulse, true);
+        this.emitHit(z, hitResult.zombieDamage, false, impulse, true);
       }
     }
   }
 
   /** El ruido atrae a los zombis dentro del radio hacia el punto del disparo. */
-  alertNoise(x: number, z: number, radius: number) {
-    if (this._passiveMode) return;
+  alertNoise(x: number, z: number, radius: number, sourcePassive = this._passiveMode,
+    sourcePlayerId: string | null = this.connectionId) {
+    if (sourcePassive || (!this.networkRoom && this._passiveMode)) return;
     for (const zb of this.zombies) {
       if (zb.dead) continue;
-      if (Math.hypot(zb.x - x, zb.z - z) <= radius) zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
+      if (Math.hypot(zb.x - x, zb.z - z) <= radius)
+        zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration, playerId: sourcePlayerId };
     }
   }
 
-  private kill(z: Zombie, impulse?: THREE.Vector3, tumble?: number) {
+  private recordPhysics(z: Zombie, impulse: THREE.Vector3, tumble = 3, seed?: number) {
+    z.lastPhysics = { x: z.x, z: z.z, rot: z.rot, tumble,
+      seed: seed ?? ((Math.random() * 0x7fffffff) | 0), impulse };
+    return z.lastPhysics;
+  }
+
+  private pushRagdoll(z: Zombie, impulse: THREE.Vector3, tumble = 3) {
+    const p = this.recordPhysics(z, impulse, tumble);
+    z.ragdoll?.applyImpulse(impulse, tumble, p.seed);
+  }
+
+  private emitHit(z: Zombie, damage: number, killed: boolean, impulse: THREE.Vector3, isCar: boolean) {
+    if (!this.networkRoom || !this.onZombieHit) return;
+    const p = z.lastPhysics?.impulse === impulse ? z.lastPhysics : this.recordPhysics(z, impulse);
+    const eventId = crypto.randomUUID();
+    this.replicas.predict(eventId, z.id);
+    this.onZombieHit?.({ eventId, zombieId: z.id, damage, isKilled: killed, isCarHit: isCar,
+      zombieX: p.x, zombieZ: p.z, zombieRot: p.rot, tumble: p.tumble, physicsSeed: p.seed,
+      impulseX: impulse.x, impulseY: impulse.y, impulseZ: impulse.z });
+  }
+
+  private kill(z: Zombie, impulse?: THREE.Vector3, tumble = 3, physicsSeed?: number) {
     if (z.dead) return;
+    const p = this.recordPhysics(z, impulse ?? new THREE.Vector3(), tumble, physicsSeed);
     z.dead = true;
     z.deadTime = 0;
     z.moving = false;
@@ -924,7 +1010,7 @@ export class ZombieManager {
       this.ragdolls.removeRagdoll(z.ragdoll);
       z.ragdoll = null;
     }
-    z.ragdoll = this.ragdolls.createRagdoll(z.inst.model, impulse, tumble);
+    z.ragdoll = this.ragdolls.createRagdoll(z.inst.model, impulse, tumble, p.seed);
   }
 
   /** Zombis (vivos por defecto) dentro de un radio. Lo usa el sistema de explosivos. */
@@ -943,16 +1029,21 @@ export class ZombieManager {
    * replicar el vuelo en red por la vía existente de golpes con derribo.
    */
   applyBlastHit(z: Zombie, damage: number, impulse: THREE.Vector3) {
-    if (!z || z.dead) return;
+    if (!z) return;
+    if (z.dead || z.knockedDown) {
+      this.pushRagdoll(z, impulse, 3);
+      this.emitHit(z, 0, z.dead, impulse, true);
+      return;
+    }
     z.health -= damage;
     z.stun = 0;
     if (z.health <= 0) {
       this.kill(z, impulse, 3.0);
       this.kills++;
-      this.onZombieHit?.(z, damage, true, impulse, true);
+      this.emitHit(z, damage, true, impulse, true);
     } else {
       this.knockDown(z, impulse, 3.0);
-      this.onZombieHit?.(z, damage, false, impulse, true);
+      this.emitHit(z, damage, false, impulse, true);
     }
   }
 
@@ -962,12 +1053,21 @@ export class ZombieManager {
    */
   applyBurnTick(z: Zombie, damage: number) {
     if (!z || z.dead || z.knockedDown) return;
+    if (this.networkRoom) {
+      z.pendingBurnDamage = (z.pendingBurnDamage ?? 0) + damage;
+      if (z.pendingBurnDamage < Math.min(10, z.health)) return;
+      damage = z.pendingBurnDamage;
+      z.pendingBurnDamage = 0;
+    }
     z.health -= damage;
     if (z.health <= 0) {
       const up = new THREE.Vector3((Math.random() - 0.5) * 2, 2.5, (Math.random() - 0.5) * 2);
       this.kill(z, up, 2.0);
       this.kills++;
-      this.onZombieHit?.(z, damage, true, up, false);
+      this.emitHit(z, damage, true, up, false);
+    } else {
+      // Sin los ticks no letales el servidor nunca acumularía el daño del fuego.
+      this.emitHit(z, damage, false, new THREE.Vector3(), false);
     }
   }
 
@@ -1167,7 +1267,7 @@ export class ZombieManager {
     dt: number,
     px: number,
     pz: number,
-    otherPlayers?: { x: number; z: number; isStealth?: boolean; isRunning?: boolean }[],
+    otherPlayers?: { x: number; z: number; connectionId?: string; isPassive?: boolean; isStealth?: boolean; isRunning?: boolean }[],
     localPlayerStatus?: { isStealth: boolean; isRunning: boolean },
     drv?: DrivableCar | null,
     remoteCars?: RemoteCarInfo[],
@@ -1180,7 +1280,7 @@ export class ZombieManager {
     }
 
     // Modo pasivo (debug): sin detección, persecución ni ataques; solo deambular.
-    if (this._passiveMode) {
+    if (this._passiveMode && !this.networkRoom) {
       z.alert = null;
       z.attackCooldown = 0;
       this.wanderPeaceful(z, dt, drv, remoteCars);
@@ -1190,7 +1290,7 @@ export class ZombieManager {
     const profile = ZOMBIE_TIERS[z.tier];
 
     // Detección: 1. Jugador local con sigilo/visión
-    const localDetected = this.checkPlayerDetection(
+    const localDetected = !this._passiveMode && this.checkPlayerDetection(
       z,
       px,
       pz,
@@ -1199,12 +1299,13 @@ export class ZombieManager {
       localPlayerStatus?.isRunning ?? false
     );
 
-    let alertTarget: { x: number; z: number } | null = null;
+    let alertTarget: { x: number; z: number; playerId?: string | null } | null = null;
     if (localDetected) {
-      alertTarget = { x: px, z: pz };
+      alertTarget = { x: px, z: pz, playerId: this.connectionId };
     } else if (otherPlayers && otherPlayers.length > 0) {
       // 2. Supervivientes remotos en multijugador
       for (const op of otherPlayers) {
+        if (op.isPassive) continue;
         const detected = this.checkPlayerDetection(
           z,
           op.x,
@@ -1214,14 +1315,19 @@ export class ZombieManager {
           op.isRunning ?? false
         );
         if (detected) {
-          alertTarget = { x: op.x, z: op.z };
+          alertTarget = { x: op.x, z: op.z, playerId: op.connectionId };
           break;
         }
       }
     }
 
+    if (z.alert && ((this._passiveMode && z.alert.playerId === this.connectionId) ||
+        otherPlayers?.some((op) => op.isPassive && op.connectionId === z.alert?.playerId))) {
+      z.alert = null;
+      z.timer = 0;
+    }
     if (alertTarget) {
-      z.alert = { x: alertTarget.x, z: alertTarget.z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
+      z.alert = { ...alertTarget, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
     }
 
     // Alertado por un ruido o jugador: va hacia allí a su velocidad de carrera/alerta
@@ -1235,10 +1341,11 @@ export class ZombieManager {
       // centro del coche: hay que pelear contra la chapa, no contra el centro.
       let chaseLocalCar = false;
       let chaseRemote: RemoteCarInfo | null = null;
-      if (drv && Math.hypot(z.alert.x - drv.x, z.alert.z - drv.z) < Math.hypot(drv.dims.L, drv.dims.W) * 0.5 + 1.0) {
+      if (drv && !this._passiveMode && Math.hypot(z.alert.x - drv.x, z.alert.z - drv.z) < Math.hypot(drv.dims.L, drv.dims.W) * 0.5 + 1.0) {
         chaseLocalCar = true;
       } else if (remoteCars) {
         for (const rc of remoteCars) {
+          if (rc.isPassive) continue;
           if (Math.hypot(z.alert.x - rc.x, z.alert.z - rc.z) < Math.hypot(rc.halfL * 2, rc.halfW * 2) * 0.5 + 1.0) {
             chaseRemote = rc;
             break;
@@ -1303,7 +1410,8 @@ export class ZombieManager {
             z.attackAction.reset().play();
             z.attackCooldown = 1.25;
             const victimStillThere = Math.hypot(z.x - px, z.z - pz) < 2.0;
-            if (victimStillThere) this.onPlayerAttacked?.(z, 10);
+            if (victimStillThere && !this._passiveMode &&
+                (!z.alert.playerId || z.alert.playerId === this.connectionId)) this.onPlayerAttacked?.(z, 10);
           }
         } else {
           z.targetRot = Math.atan2(ax, az);
@@ -1399,105 +1507,171 @@ export class ZombieManager {
     disposeMikuInstance(z.inst);
   }
 
-  /** Encuentra un zombi por ID o el más cercano a las coordenadas */
-  findZombie(id: string, x?: number, z?: number): Zombie | undefined {
-    let zb = this.zombiesById.get(id);
-    if (!zb && x !== undefined && z !== undefined) {
-      let bestDist = 3.5;
-      for (const candidate of this.zombies) {
-        const d = Math.hypot(candidate.x - x, candidate.z - z);
-        if (d < bestDist) {
-          bestDist = d;
-          zb = candidate;
-        }
-      }
-    }
-    return zb;
-  }
-
-  /** Aplica un impacto recibido por la red desde otro jugador */
-  applyRemoteHit(hit: { zombieId: string; damage: number; impulseX: number; impulseY: number; impulseZ: number; isKilled: boolean; isCarHit?: boolean; zombieX?: number; zombieZ?: number }) {
-    const z = this.findZombie(hit.zombieId, hit.zombieX, hit.zombieZ);
-    if (!z || z.dead) return;
-
-    z.health = Math.max(0, z.health - hit.damage);
-    const impulse = new THREE.Vector3(hit.impulseX, hit.impulseY, hit.impulseZ);
-
-    if (z.knockedDown) {
-      z.ragdoll?.applyImpulse(impulse, 2.0);
-      if (hit.isKilled || z.health <= 0) {
-        this.kill(z, impulse, 0.5);
-        this.kills++;
-      }
-      return;
-    }
-
-    // Atropello no letal del carro de otro jugador: tumbar con ragdoll igual
-    // que en local. El vector de impulso ya viene final (con los sliders del
-    // conductor), así que el vuelo coincide; el giro es aleatorio por cliente
-    // y la recuperación corre local en cada uno. Sin cambio de protocolo:
-    // isCarHit && !isKilled ya viajaba en el evento.
-    if (hit.isCarHit && !hit.isKilled && z.health > 0) {
-      this.knockDown(z, impulse, 3.0);
-      return;
-    }
-    z.stun = 0.3;
-
-    if (hit.isKilled || z.health <= 0) {
-      this.kill(z, impulse, 0.5);
-      this.kills++;
-    }
+  /** No sustituir nunca un ID ausente por el zombi vecino. */
+  findZombie(id: string, _x?: number, _z?: number): Zombie | undefined {
+    return this.zombiesById.get(id);
   }
 
   /** Alerta un zombi a una posición dada recibida por la red */
   applyRemoteAlert(zombieId: string, x: number, z: number) {
-    if (this._passiveMode) return;
+    if (this._passiveMode && !this.networkRoom) return;
     const zb = this.findZombie(zombieId, x, z);
     if (!zb || zb.dead) return;
     zb.alert = { x, z, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration };
   }
 
-  /** Sincroniza las posiciones de los zombis recibidas por la red */
-  applyRemoteSync(states: { id: string; x: number; z: number; rot: number; speed: number; animState: string; health: number; dead: boolean }[]) {
+  private requestFromState(s: ZombieSyncDto): SpawnRequest {
+    const tier = (s.tier && s.tier in ZOMBIE_TIERS ? s.tier : 'fast') as ZombieTier;
+    const profile = ZOMBIE_TIERS[tier];
+    return { id: s.id, x: s.x, z: s.z, rot: s.rot, tier,
+      wanderSpeed: (profile.minWanderSpeed + profile.maxWanderSpeed) / 2,
+      alertSpeed: profile.alertSpeed, heightVar: s.heightVar ?? 1, phase: 0 };
+  }
+
+  /** Guardar también entidades cuyo modelo todavía no existe. */
+  applyRemoteSync(states: ZombieSyncDto[]) {
     for (const s of states) {
-      const z = this.findZombie(s.id, s.x, s.z);
-      if (!z) continue;
-
-      if (s.dead && !z.dead) {
-        this.kill(z);
-        continue;
+      this.candidates.delete(s.id);
+      if (!this.replicas.states.has(s.id) && Math.hypot(s.x - this.localX, s.z - this.localZ) > 500) continue;
+      const previousOwner = this.replicas.states.get(s.id)?.ownerConnectionId;
+      if (!this.replicas.accept(s)) continue;
+      const z = this.zombiesById.get(s.id);
+      if (s.removed) {
+        if (z) {
+          this.removeZombie(z);
+          this.zombies.splice(this.zombies.indexOf(z), 1);
+        }
+      } else if (z) {
+        this.applyNetworkState(z, s, previousOwner !== s.ownerConnectionId && s.ownerConnectionId === this.connectionId);
+        if (previousOwner !== s.ownerConnectionId && s.ownerConnectionId === this.connectionId)
+          this.moveReplica(z, s.x, s.z);
       }
-      if (z.dead || z.knockedDown) continue; // la física local manda mientras vuela
-
-      // Suavizar posición hacia la transmitida
-      z.x += (s.x - z.x) * 0.35;
-      z.z += (s.z - z.z) * 0.35;
-      z.rot = s.rot;
-      z.health = s.health;
-      z.inst.root.position.set(z.x, 0, z.z);
-      z.inst.root.rotation.y = z.rot;
-      this.setMotion(z, s.speed > 0.1, s.animState === 'run', s.speed);
     }
   }
 
-  /** Devuelve los zombis activos cercanos para enviar paquete de sincronización */
-  getActiveZombiesSync(maxCount = 20, maxDist = 35): any[] {
-    const result: any[] = [];
-    for (const z of this.zombies) {
-      if (z.visible && !z.dead && !z.knockedDown && z.d < maxDist) {
-        result.push({
-          id: z.id,
-          x: z.x,
-          z: z.z,
-          rot: z.rot,
-          speed: z.currentSpeed,
-          animState: z.animState,
-          health: z.health,
-          dead: z.dead,
-        });
-        if (result.length >= maxCount) break;
+  private moveReplica(z: Zombie, x: number, targetZ: number) {
+    if (z.ragdoll && !z.ragdoll.disposed) {
+      const hips = z.ragdoll.getHipsPosition();
+      if (hips) z.ragdoll.translate(x - hips.x, targetZ - hips.z);
+      this.setPhysicalRoot(z, x, targetZ);
+      return;
+    }
+    z.x = x;
+    z.z = targetZ;
+    z.inst.root.position.set(x, 0, targetZ);
+  }
+
+  private setPhysicalRoot(z: Zombie, x: number, targetZ: number) {
+    // Mantener el modelo en mundo al mover el root, también con heading distinto de cero.
+    const modelWorld = z.inst.model.getWorldPosition(new THREE.Vector3());
+    z.x = x;
+    z.z = targetZ;
+    z.inst.root.position.set(x, 0, targetZ);
+    z.inst.root.updateMatrixWorld(true);
+    z.inst.model.position.copy(z.inst.root.worldToLocal(modelWorld));
+    z.inst.model.updateMatrixWorld(true);
+  }
+
+  private applyNetworkState(z: Zombie, s: ZombieSyncDto, initial: boolean) {
+    const hit = s.lastImpact;
+    const freshHit = !!hit && (s.combatVersion ?? 0) > (z.networkCombatVersion ?? 0);
+    const predicted = freshHit && this.replicas.wasPredicted(hit?.eventId);
+    const pending = this.replicas.hasPendingFor(z.id);
+    z.health = pending ? Math.min(z.health, s.health) : s.health;
+    if (freshHit && !predicted && hit) {
+      this.moveReplica(z, initial ? s.x : hit.zombieX ?? s.x, initial ? s.z : hit.zombieZ ?? s.z);
+      z.rot = hit.zombieRot ?? s.rot;
+      z.inst.root.rotation.y = z.rot;
+      const settledCorpse = initial && s.dead && !!s.deadAt && Date.now() - s.deadAt > 2000;
+      const impulse = settledCorpse ? new THREE.Vector3() :
+        new THREE.Vector3(hit.impulseX, hit.impulseY, hit.impulseZ);
+      const tumble = hit.tumble ?? 3;
+      if (s.dead && !z.dead) {
+        this.kill(z, impulse, tumble, hit.physicsSeed);
+        this.kills++;
+      } else if (z.dead || z.knockedDown) {
+        z.ragdoll?.applyImpulse(impulse, tumble, hit.physicsSeed);
+      } else if (s.knockedDown) {
+        this.knockDown(z, impulse, tumble, hit.physicsSeed);
+      } else {
+        z.stun = 0.3;
+        z.hitAction.reset().play();
       }
     }
+    if (s.dead && !z.dead) this.kill(z);
+    if (!s.dead && s.knockedDown && !z.knockedDown && (initial || !this.isAuthority(z)))
+      this.knockDown(z, new THREE.Vector3(), 0, hit?.physicsSeed);
+    if (!s.dead && !s.knockedDown && z.knockedDown && !predicted && !pending && (initial || !this.isAuthority(z))) {
+      this.finishRecovery(z);
+      this.moveReplica(z, s.x, s.z);
+    }
+    if (initial) this.moveReplica(z, s.x, s.z);
+    if (s.deadAt) z.deadTime = Math.max(0, (Date.now() - s.deadAt) / 1000);
+    z.networkCombatVersion = s.combatVersion ?? 0;
+    // No sobrescribir decisiones de IA del autor con su eco atrasado.
+    if (!this.isAuthority(z) || initial)
+      z.alert = s.targetX != null && s.targetZ != null
+        ? { x: s.targetX, z: s.targetZ, timer: ZOMBIE_BEHAVIOR.detection.alertMemoryDuration,
+          playerId: s.targetPlayerId } : null;
+  }
+
+  private updateReplica(z: Zombie, dt: number, px: number, pz: number, drv?: DrivableCar | null) {
+    const s = this.replicas.states.get(z.id);
+    if (!s) return;
+    const alpha = 1 - Math.exp(-18 * dt);
+    this.moveReplica(z, z.x + (s.x - z.x) * alpha, z.z + (s.z - z.z) * alpha);
+    const angle = s.rot - z.rot;
+    z.rot += Math.atan2(Math.sin(angle), Math.cos(angle)) * alpha;
+    z.inst.root.rotation.y = z.rot;
+    if (z.dead || z.knockedDown) return;
+    this.setMotion(z, s.speed > 0.01, s.animState === 'run', s.speed);
+    z.attackCooldown = Math.max(0, z.attackCooldown - dt);
+    if (this._passiveMode || s.targetX == null || s.targetZ == null || z.attackCooldown > 0) return;
+    if (s.targetPlayerId && s.targetPlayerId !== this.connectionId) return;
+    if (drv && Math.hypot(s.targetX - drv.x, s.targetZ - drv.z) < 4 &&
+        this.carEdgeInfo(z, drv).surfaceDist < 1.55) {
+      z.attackAction.reset().play();
+      z.attackCooldown = 1.25;
+      drv.onAttackedByZombie(drv.config.maxDurability * 0.001);
+    } else if (!drv && Math.hypot(z.x - px, z.z - pz) < 2 &&
+        Math.hypot(s.targetX - px, s.targetZ - pz) < 2) {
+      z.attackAction.reset().play();
+      z.attackCooldown = 1.25;
+      this.onPlayerAttacked?.(z, 10);
+    }
+  }
+
+  /** Lotes rotativos: incluir caídos y cadáveres, no siempre los primeros vivos. */
+  getActiveZombiesSync(maxCount = 64, maxDist = 95): ZombieSyncDto[] {
+    for (const [id, state] of this.replicas.states) {
+      if (!this.zombiesById.has(id) && Math.hypot(state.x - this.localX, state.z - this.localZ) > 512)
+        this.replicas.states.delete(id);
+    }
+    for (const [id, req] of this.candidates) {
+      if (Math.hypot(req.x - this.localX, req.z - this.localZ) > 384) this.candidates.delete(id);
+    }
+    const result: ZombieSyncDto[] = [];
+    const active = this.zombies.filter((z) => z.d <= maxDist);
+    const budget = this.candidates.size ? Math.min(active.length, maxCount - 16) : maxCount;
+    for (let i = 0; i < Math.min(budget, active.length); i++) {
+      const z = active[(this.syncCursor + i) % active.length];
+      const canonical = this.replicas.states.get(z.id);
+      if (!canonical) continue;
+      // Réplicas proponen su copia canónica solo para reclamar una concesión expirada.
+      result.push(this.isAuthority(z) ? { ...canonical, x: z.x, z: z.z, rot: z.rot,
+        speed: z.currentSpeed, animState: z.animState, knockedDown: !!z.knockedDown,
+        targetX: z.alert?.x, targetZ: z.alert?.z, targetPlayerId: z.alert?.playerId,
+        lastImpact: null } : { ...canonical, lastImpact: null });
+    }
+    this.syncCursor += Math.min(budget, active.length);
+    const pending = [...this.candidates.values()];
+    const remaining = Math.min(maxCount - result.length, pending.length);
+    for (let i = 0; i < remaining; i++) {
+      const req = pending[(this.candidateCursor + i) % pending.length];
+      result.push({ id: req.id, x: req.x, z: req.z, rot: req.rot, speed: 0,
+        animState: 'idle', health: 100, dead: false, tier: req.tier, heightVar: req.heightVar });
+    }
+    this.candidateCursor += remaining;
     return result;
   }
 
@@ -1508,6 +1682,8 @@ export class ZombieManager {
     this.zombiesById.clear();
     this.queue = [];
     this.spawned.clear();
+    this.candidates.clear();
+    this.replicas.clear();
   }
 
   dispose() {
@@ -1542,21 +1718,24 @@ export class ZombieManager {
         nz * power * fall + (Math.random() - 0.5) * 1.2,
       );
       if (z.dead) {
-        z.ragdoll?.applyImpulse(impulse, tumble);
+        this.pushRagdoll(z, impulse, tumble);
+        this.emitHit(z, 0, true, impulse, true);
         continue;
       }
       if (z.knockedDown) {
-        z.ragdoll?.applyImpulse(impulse, tumble);
+        this.pushRagdoll(z, impulse, tumble);
+        this.emitHit(z, 0, false, impulse, true);
         continue;
       }
       this.knockDown(z, impulse, tumble);
-      this.onZombieHit?.(z, 0, false, impulse, true);
+      this.emitHit(z, 0, false, impulse, true);
     }
   }
-  private knockDown(z: Zombie, impulse: THREE.Vector3, tumble?: number) {
+  private knockDown(z: Zombie, impulse: THREE.Vector3, tumble = 3, physicsSeed?: number) {
     if (z.dead) return;
+    const p = this.recordPhysics(z, impulse, tumble, physicsSeed);
     if (z.knockedDown) {
-      z.ragdoll?.applyImpulse(impulse, tumble);
+      z.ragdoll?.applyImpulse(impulse, tumble, p.seed);
       return;
     }
     z.knockedDown = true;
@@ -1571,7 +1750,7 @@ export class ZombieManager {
     // el modelo vuela varios metros; evita disparos al aire y re-atropellos.
     if (z.hit) z.hit.visible = false;
 
-    const rd = this.ragdolls.createRagdoll(z.inst.model, impulse, tumble);
+    const rd = this.ragdolls.createRagdoll(z.inst.model, impulse, tumble, p.seed);
     if (!rd) {
       // Sin esqueleto no hay física: aturdido breve en el suelo y a seguir.
       z.knockedDown = false;
@@ -1593,26 +1772,26 @@ export class ZombieManager {
   private updateKnockedDown(z: Zombie, dt: number) {
     z.downTime = (z.downTime ?? 0) + dt;
     const rd = z.ragdoll;
-    if (!rd) {
+    if (!rd || rd.disposed) {
       // Sin física (expulsado por límite o fallo): levantarse en el sitio.
       this.finishRecovery(z);
       return;
     }
-    const hips = rd.getHipsPosition();
+    this.followHips(z);
+    this.checkRecovery(z, dt);
+  }
+
+  private followHips(z: Zombie) {
+    const hips = z.ragdoll?.getHipsPosition();
     if (hips && Number.isFinite(hips.x) && Number.isFinite(hips.z)) {
       const dx = hips.x - z.x;
       const dz = hips.z - z.z;
       const dist = Math.hypot(dx, dz);
       // Ignorar teleports absurdos de una física explotada (>15 m en un frame).
       if (dist > 0.005 && dist < 15) {
-        z.x = hips.x;
-        z.z = hips.z;
-        z.inst.root.position.set(z.x, 0, z.z);
-        z.inst.model.position.x -= dx;
-        z.inst.model.position.z -= dz;
+        this.setPhysicalRoot(z, hips.x, hips.z);
       }
     }
-    this.checkRecovery(z, dt);
   }
 
   private checkRecovery(z: Zombie, dt: number) {

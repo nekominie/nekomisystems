@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { impactRandom } from './impactRandom';
 
 interface BoneConfig {
   key: string;
@@ -82,14 +83,15 @@ function applyCarImpulseToBody(
   impulse: THREE.Vector3,
   tumble: number | undefined,
   mode: 'set' | 'add',
+  random: () => number = Math.random,
 ) {
   const p = IMPACT_PROFILE[key] ?? { fwd: 1.0, up: 1.0, rand: 0.4, spin: 1.2 };
   const impLen = Math.hypot(impulse.x, impulse.y, impulse.z);
   // Jitter lateral propio por hueso: a más velocidad, más caos entre miembros.
   const jitterScale = 2 + impLen * 0.28;
-  const jx = (Math.random() - 0.5) * 2 * p.rand * jitterScale * 0.45;
-  const jz = (Math.random() - 0.5) * 2 * p.rand * jitterScale * 0.45;
-  const jy = (Math.random() - 0.5) * p.rand * (1 + impLen * 0.12);
+  const jx = (random() - 0.5) * 2 * p.rand * jitterScale * 0.45;
+  const jz = (random() - 0.5) * 2 * p.rand * jitterScale * 0.45;
+  const jy = (random() - 0.5) * p.rand * (1 + impLen * 0.12);
 
   let vx = impulse.x * p.fwd + jx;
   let vy = impulse.y * p.up + jy;
@@ -119,10 +121,10 @@ function applyCarImpulseToBody(
   // Eje lateral (derecha del coche) = perpendicular a la marcha.
   const rightX = dirZ;
   const rightZ = -dirX;
-  const flipMag = Math.min(9, impLen * 0.5) * (0.6 + Math.random() * 0.8) * (Math.random() < 0.75 ? 1 : -1);
-  const rx = (Math.random() - 0.5) * t * 2 * p.spin + rightX * flipMag;
-  const ry = (Math.random() - 0.5) * t * 2 * p.spin;
-  const rz = (Math.random() - 0.5) * t * 2 * p.spin + rightZ * flipMag;
+  const flipMag = Math.min(9, impLen * 0.5) * (0.6 + random() * 0.8) * (random() < 0.75 ? 1 : -1);
+  const rx = (random() - 0.5) * t * 2 * p.spin + rightX * flipMag;
+  const ry = (random() - 0.5) * t * 2 * p.spin;
+  const rz = (random() - 0.5) * t * 2 * p.spin + rightZ * flipMag;
 
   if (mode === 'set') {
     body.angularVelocity.set(rx, ry, rz);
@@ -157,8 +159,9 @@ export class ZombieRagdoll {
     private skeleton: THREE.Skeleton,
     impulse?: THREE.Vector3,
     tumble?: number,
+    physicsSeed?: number,
   ) {
-    this.build(impulse, tumble);
+    this.build(impulse, tumble, physicsSeed);
   }
 
   public get isSettled(): boolean {
@@ -194,7 +197,8 @@ export class ZombieRagdoll {
     return undefined;
   }
 
-  private build(impulse?: THREE.Vector3, tumble?: number) {
+  private build(impulse?: THREE.Vector3, tumble?: number, physicsSeed?: number) {
+    const random = physicsSeed === undefined ? Math.random : impactRandom(physicsSeed);
     this.model.updateMatrixWorld(true);
 
     const hipsBone = this.findBone(['mixamorigHips', 'Hips_05', 'Hips']);
@@ -241,7 +245,7 @@ export class ZombieRagdoll {
       // velocidad distinta según la altura del paragolpes + jitter propio,
       // así el cuerpo se desarma en el aire en vez de viajar congelado.
       if (impulse) {
-        applyCarImpulseToBody(body, cfg.key, impulse, tumble);
+        applyCarImpulseToBody(body, cfg.key, impulse, tumble, 'set', random);
       }
 
       this.world.addBody(body);
@@ -274,12 +278,36 @@ export class ZombieRagdoll {
     }
   }
 
+  /** Traslada el conjunto, no los huesos por red: conserva la pose física local. */
+  translate(dx: number, dz: number) {
+    for (const { body } of this.boneBodies.values()) {
+      body.position.x += dx;
+      body.position.z += dz;
+      body.previousPosition.x += dx;
+      body.previousPosition.z += dz;
+      body.interpolatedPosition.x += dx;
+      body.interpolatedPosition.z += dz;
+      body.aabbNeedsUpdate = true;
+    }
+    if (this.model.parent) {
+      const origin = this.model.parent.getWorldPosition(new THREE.Vector3());
+      const target = origin.clone().add(new THREE.Vector3(dx, 0, dz));
+      this.model.position.add(this.model.parent.worldToLocal(target).sub(this.model.parent.worldToLocal(origin)));
+    } else {
+      this.model.position.x += dx;
+      this.model.position.z += dz;
+    }
+    this.model.updateMatrixWorld(true);
+  }
+
   /** Aplica un impulso cinético (p. ej. si un carro atropella un cadáver en el suelo) */
-  applyImpulse(impulse: THREE.Vector3, tumble?: number) {
+  applyImpulse(impulse: THREE.Vector3, tumble?: number, physicsSeed?: number) {
     this.settled = false;
+    this.lifeTime = 0;
+    const random = physicsSeed === undefined ? Math.random : impactRandom(physicsSeed);
     for (const entry of this.boneBodies.values()) {
       entry.body.wakeUp();
-      applyCarImpulseToBody(entry.body, entry.key, impulse, tumble, 'add');
+      applyCarImpulseToBody(entry.body, entry.key, impulse, tumble, 'add', random);
     }
   }
 
@@ -430,7 +458,7 @@ export class RagdollManager {
     this.world.addBody(groundBody);
   }
 
-  createRagdoll(model: THREE.Object3D, impulse?: THREE.Vector3, tumble?: number): ZombieRagdoll | null {
+  createRagdoll(model: THREE.Object3D, impulse?: THREE.Vector3, tumble?: number, physicsSeed?: number): ZombieRagdoll | null {
     let skeleton: THREE.Skeleton | null = null;
     model.traverse((o: any) => {
       if (!skeleton && o.isSkinnedMesh && o.skeleton) {
@@ -449,7 +477,7 @@ export class RagdollManager {
       oldest?.dispose();
     }
 
-    const rd = new ZombieRagdoll(this.world, model, skeleton, impulse, tumble);
+    const rd = new ZombieRagdoll(this.world, model, skeleton, impulse, tumble, physicsSeed);
     this.ragdolls.push(rd);
     return rd;
   }

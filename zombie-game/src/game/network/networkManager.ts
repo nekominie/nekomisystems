@@ -9,6 +9,7 @@ import type {
   VehicleSpawnDto,
   ItemDropDto,
   PlayerShotNetworkEvent,
+  ZombieSyncDto,
 } from './networkTypes';
 
 export type NetworkEventHandler<T> = (data: T) => void;
@@ -52,6 +53,8 @@ export class NetworkManager {
   // Tasa de transmisión (15-20 Hz -> ~50-66ms)
   private lastStateSentTime = 0;
   private readonly SEND_INTERVAL_MS = 55;
+  private readonly pendingZombieHits = new Map<string, ZombieHitNetworkEvent>();
+  private readonly zombieHitInFlight = new Set<string>();
 
   // Event callbacks
   public onStatusChange?: (status: ConnectionStatus, message?: string) => void;
@@ -186,6 +189,7 @@ export class NetworkManager {
    * Desconecta limpiamente del servidor.
    */
   async disconnect(): Promise<void> {
+    this.pendingZombieHits.clear();
     if (!this.hub) return;
     try {
       await this.hub.stop();
@@ -213,13 +217,16 @@ export class NetworkManager {
       this.setStatus('reconnecting', err?.message);
     });
 
-    this.hub.onreconnected((newConnectionId) => {
+    this.hub.onreconnected(async (newConnectionId) => {
+      const room = this._currentRoom;
       this._connectionId = newConnectionId ?? null;
       this.setStatus('connected');
       // Re-establecer nickname
       if (this._currentNickname) {
-        this.setNickname(this._currentNickname);
+        await this.setNickname(this._currentNickname);
       }
+      if (room) await this.joinRoom(room.roomId).catch((err) =>
+        console.warn('[NetworkManager] No se pudo recuperar la sala:', err));
     });
 
     this.hub.on('OnNicknameConfirmed', (nick: string) => {
@@ -349,6 +356,7 @@ export class NetworkManager {
   }
 
   async leaveRoom(): Promise<void> {
+    this.pendingZombieHits.clear();
     if (!this.isConnected || !this.hub) return;
     await this.hub.invoke('LeaveCurrentRoom');
     this._currentRoom = null;
@@ -399,7 +407,7 @@ export class NetworkManager {
   }
 
   sendZombieHit(hit: Omit<ZombieHitNetworkEvent, 'attackerConnectionId' | 'attackerNickname'>): void {
-    if (!this.isConnected || !this.hub || !this._currentRoom) return;
+    if (!this._currentRoom || !hit.eventId) return;
 
     const fullHit: ZombieHitNetworkEvent = {
       ...hit,
@@ -407,7 +415,27 @@ export class NetworkManager {
       attackerNickname: this.currentNickname,
     };
 
-    this.hub.invoke('SendZombieHit', fullHit).catch(() => {});
+    if (this.pendingZombieHits.size >= 512) {
+      this.onError?.('Demasiados impactos pendientes; comprueba la conexión.');
+      return;
+    }
+    this.pendingZombieHits.set(hit.eventId, fullHit);
+    this.flushZombieHits();
+  }
+
+  private flushZombieHits() {
+    if (!this.isConnected || !this.hub || !this._currentRoom) return;
+    const hub = this.hub;
+    for (const [id, hit] of this.pendingZombieHits) {
+      if (this.zombieHitInFlight.has(id)) continue;
+      if (this.zombieHitInFlight.size >= 64) break;
+      this.zombieHitInFlight.add(id);
+      hub.invoke('SendZombieHit', hit).then(() => {
+        this.pendingZombieHits.delete(id);
+      }).catch((err) => {
+        console.warn('[NetworkManager] Impacto pendiente de reintento:', err);
+      }).finally(() => this.zombieHitInFlight.delete(id));
+    }
   }
 
   sendZombieAlert(zombieId: string, x: number, z: number): void {
@@ -420,9 +448,17 @@ export class NetworkManager {
     this.hub.invoke('SendZombieSpawn', spawn).catch(() => {});
   }
 
-  sendZombieSync(zombies: any[]): void {
-    if (!this.isConnected || !this.hub || !this._currentRoom) return;
-    this.hub.invoke('SendZombieSync', zombies).catch(() => {});
+  async syncZombies(zombies: ZombieSyncDto[]): Promise<ZombieSyncDto[]> {
+    if (!this.isConnected || !this.hub || !this._currentRoom) return [];
+    this.flushZombieHits();
+    return this.hub.invoke<ZombieSyncDto[]>('SendZombieSync', zombies);
+  }
+
+  async getZombieRegion(x: number, z: number, cursor = 0): Promise<{
+    states: ZombieSyncDto[]; nextCursor: number;
+  }> {
+    if (!this.isConnected || !this.hub || !this._currentRoom) return { states: [], nextCursor: 0 };
+    return this.hub.invoke('GetZombieRegion', x, z, cursor);
   }
 
   sendDayNightSync(time: number): void {

@@ -61,20 +61,21 @@
           class="px-3 py-1 text-[11px] font-mono font-bold uppercase border bg-black/80"
           :class="debugOpen
             ? 'border-yellow-500 text-yellow-300'
-            : debugEnabled
+            : debugActionsAvailable
               ? 'border-emerald-600/70 text-emerald-300 hover:text-emerald-200'
               : 'border-stone-600 text-stone-400 hover:text-white'"
           @click="toggleDebugOpen"
         >
           Debug / Físicas (Tab)
-          <span v-if="debugEnabled" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 align-middle"></span>
-          <span v-if="debugEnabled && passiveMode" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-sky-400 align-middle" title="Modo pasivo"></span>
+          <span v-if="!isMultiplayerSession && debugEnabled" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 align-middle"></span>
+          <span v-if="debugActionsAvailable && passiveMode" class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-sky-400 align-middle" title="Modo pasivo personal"></span>
         </button>
       </div>
 
       <DebugModal
         v-if="debugOpen"
         :enabled="debugEnabled"
+        :multiplayer="isMultiplayerSession"
         :passive-mode="passiveMode"
         :weapons="debugWeapons"
         :equipped-id="weaponHud.equippedId"
@@ -182,7 +183,7 @@
               <div class="flex flex-col gap-1 text-stone-300">
                 <div><span class="kbd">1</span>–<span class="kbd">6</span> / <span class="kbd">Rueda</span> cambiar arma</div>
                 <div><span class="kbd">R</span> recargar</div>
-                <div><span class="kbd">L</span> armas de prueba (requiere debug ON)</div>
+                <div><span class="kbd">L</span> armas de prueba {{ isMultiplayerSession ? '(compartidas)' : '(requiere debug ON)' }}</div>
               </div>
             </div>
             <div>
@@ -444,6 +445,7 @@ const container = ref<HTMLDivElement | null>(null);
 const gameCanvas = ref<HTMLCanvasElement | null>(null);
 const isChatFocused = ref(false);
 const isMultiplayerActive = ref(networkManager.isConnected);
+const isMultiplayerSession = ref(!!networkManager.currentRoom);
 const chatMessages = ref<ChatMessageDto[]>([...networkManager.chatMessages]);
 
 function onSendChatMessage(msg: string) {
@@ -625,6 +627,7 @@ const weaponHud = reactive({
 const debugOpen = ref(false);
 /** Master switch: sin esto, las acciones/cheats de debug no aplican y se revierten efectos. */
 const debugEnabled = ref(false);
+const debugActionsAvailable = computed(() => isMultiplayerSession.value || debugEnabled.value);
 /** Debug: zombis no detectan, persiguen ni atacan. */
 const passiveMode = ref(false);
 const carPushConfig = reactive<CarPushConfig>({ ...DEFAULT_CAR_PUSH_CONFIG });
@@ -703,6 +706,7 @@ function toggleDebugOpen() {
 }
 
 function setDebugEnabled(on: boolean) {
+  if (isMultiplayerSession.value) return;
   debugEnabled.value = on;
   if (!on) {
     Object.assign(carPushConfig, DEFAULT_CAR_PUSH_CONFIG);
@@ -715,25 +719,27 @@ function setDebugEnabled(on: boolean) {
 }
 
 function setPassiveMode(on: boolean, toast = true) {
-  if (on && !debugEnabled.value) {
+  if (on && !debugActionsAvailable.value) {
     showToast('Activa el modo debug primero');
     return;
   }
   passiveMode.value = on;
   if (zombies) zombies.passiveMode = on;
   if (toast) {
-    showToast(on ? 'Modo pasivo ON · zombis no reaccionan' : 'Modo pasivo OFF');
+    showToast(on
+      ? isMultiplayerSession.value ? 'Modo pasivo personal · los zombis te ignoran a ti' : 'Modo pasivo ON'
+      : 'Modo pasivo OFF');
   }
 }
 
 function onDebugPushConfig(key: keyof CarPushConfig, value: number) {
-  if (!debugEnabled.value) return;
+  if (!debugActionsAvailable.value) return;
   carPushConfig[key] = value;
   if (zombies) zombies.carPushConfig = carPushConfig;
 }
 
 function requireDebug(): boolean {
-  if (debugEnabled.value) return true;
+  if (debugActionsAvailable.value) return true;
   showToast('Activa el modo debug en el menú (Tab)');
   return false;
 }
@@ -868,21 +874,12 @@ function startWorld(newSeedValue: number) {
   world = new WorldManager(scene, newSeedValue);
   mapManager.init(newSeedValue, player.x, player.z, world.generator);
   zombies = new ZombieManager(scene, world);
+  zombies.setNetworkSession(networkManager.currentRoom?.roomId ?? null, networkManager.connectionId);
   zombies.carPushConfig = carPushConfig;
-  zombies.passiveMode = debugEnabled.value && passiveMode.value;
-  zombies.onZombieHit = (z, damage, killed, impulse, isCar) => {
-    if (networkManager.isConnected && networkManager.currentRoom) {
-      networkManager.sendZombieHit({
-        zombieId: z.id,
-        zombieX: z.x,
-        zombieZ: z.z,
-        damage,
-        impulseX: impulse.x,
-        impulseY: impulse.y,
-        impulseZ: impulse.z,
-        isKilled: killed,
-        isCarHit: isCar,
-      });
+  zombies.passiveMode = debugActionsAvailable.value && passiveMode.value;
+  zombies.onZombieHit = (hit) => {
+    if (networkManager.currentRoom) {
+      networkManager.sendZombieHit(hit);
     }
   };
   zombies.onPlayerAttacked = (z, damage) => {
@@ -1497,45 +1494,25 @@ function debugRefill() {
 function debugSpawnZombies() {
   if (!requireDebug()) return;
   if (!zombies) return;
-  const spawned = zombies.spawnTest(player.x, player.z, 6, 14);
-  if (networkManager.isConnected && networkManager.currentRoom) {
-    for (const s of spawned) {
-      networkManager.sendZombieSpawn({
-        id: s.id,
-        x: s.x,
-        z: s.z,
-        rot: s.rot,
-        tier: s.tier,
-        heightVar: s.heightVar,
-      });
-    }
-  }
+  zombies.spawnTest(player.x, player.z, 6, 14);
 }
 
 function debugSpawnExtreme() {
   if (!requireDebug()) return;
   if (!zombies) return;
-  const req = zombies.spawnExtreme(player.x, player.z, 14);
-  if (networkManager.isConnected && networkManager.currentRoom) {
-    networkManager.sendZombieSpawn({
-      id: req.id,
-      x: req.x,
-      z: req.z,
-      rot: req.rot,
-      tier: 'extreme',
-      heightVar: req.heightVar,
-    });
-  }
+  zombies.spawnExtreme(player.x, player.z, 14);
   showToast('Zombi extremo (1%) generado');
 }
 
 function debugClearZombies() {
   if (!requireDebug()) return;
-  const n = zombies?.removeNear(player.x, player.z, 60) ?? 0;
   if (networkManager.isConnected && networkManager.currentRoom) {
     networkManager.sendZombieClear(player.x, player.z, 60);
+    showToast('Limpieza de zombis solicitada a la sala');
+  } else {
+    const n = zombies?.removeNear(player.x, player.z, 60) ?? 0;
+    showToast(`${n} zombis eliminados`);
   }
-  showToast(`${n} zombis eliminados`);
 }
 
 function debugReset() {
@@ -1934,6 +1911,53 @@ function resize() {
 
 let frame = 0;
 let lastTime = 0;
+let zombieSyncAt = 0;
+let zombieRegionAt = 0;
+let zombieRegionCursor = 0;
+let zombieRegionX = 0;
+let zombieRegionZ = 0;
+let zombieSyncBusy = false;
+let zombieRegionBusy = false;
+let zombieNetworkWarningAt = -Infinity;
+
+function zombieNetworkError(err: unknown) {
+  if (performance.now() - zombieNetworkWarningAt > 10000) {
+    zombieNetworkWarningAt = performance.now();
+    console.warn('[Zombis] Sincronización no disponible (requiere backend actualizado):', err);
+  }
+}
+
+function updateZombieNetwork(now: number) {
+  const manager = zombies;
+  const room = networkManager.currentRoom;
+  if (!manager || !room || !networkManager.isConnected) return;
+  if (!zombieSyncBusy && now >= zombieSyncAt) {
+    zombieSyncAt = now + 150;
+    const batch = manager.getActiveZombiesSync();
+    if (batch.length) {
+      zombieSyncBusy = true;
+      networkManager.syncZombies(batch).then((states) => {
+        if (zombies === manager && networkManager.currentRoom === room) manager.applyRemoteSync(states);
+      }).catch(zombieNetworkError).finally(() => { zombieSyncBusy = false; });
+    }
+  }
+  if (!zombieRegionBusy && now >= zombieRegionAt) {
+    // Mantener el centro durante la paginación; reiniciar al desplazarse de zona.
+    if (!zombieRegionCursor || Math.hypot(player.x - zombieRegionX, player.z - zombieRegionZ) > 64) {
+      zombieRegionCursor = 0;
+      zombieRegionX = player.x;
+      zombieRegionZ = player.z;
+    }
+    zombieRegionAt = now + 300;
+    zombieRegionBusy = true;
+    networkManager.getZombieRegion(zombieRegionX, zombieRegionZ, zombieRegionCursor).then((page) => {
+      if (zombies !== manager || networkManager.currentRoom !== room) return;
+      manager.applyRemoteSync(page.states);
+      zombieRegionCursor = page.nextCursor;
+      if (!page.nextCursor) zombieRegionAt = performance.now() + 1000;
+    }).catch(zombieNetworkError).finally(() => { zombieRegionBusy = false; });
+  }
+}
 
 function loop(now: number) {
   animId = requestAnimationFrame(loop);
@@ -2246,6 +2270,7 @@ function loop(now: number) {
       const car = vehicles.getCar(rider.vehicleId);
       if (!car || car === vehicles.driven) continue;
       remoteCars.push({
+        isPassive: rider.isPassive,
         x: car.x,
         z: car.z,
         heading: car.heading,
@@ -2254,7 +2279,8 @@ function loop(now: number) {
       });
       // Sus motores también atraen a la horda (como el local de arriba).
       if (car.isEngineRunning && frame % 12 === 0) {
-        zombies?.alertNoise(car.x, car.z, 8 + Math.min(25, Math.abs(car.speed) * 1.1));
+        zombies?.alertNoise(car.x, car.z, 8 + Math.min(25, Math.abs(car.speed) * 1.1),
+          rider.isPassive, rider.connectionId);
       }
     }
   }
@@ -2272,6 +2298,7 @@ function loop(now: number) {
       isMoving: moving,
       isRunning: running,
       isStealth: stealthing,
+      isPassive: passiveMode.value,
       currentAnim: moving ? (running ? 'run' : stealthing ? 'sneak' : 'walk') : 'idle',
       equippedWeapon: arsenal.current?.def.id ?? null,
       health: playerHealth.value,
@@ -2297,13 +2324,7 @@ function loop(now: number) {
       });
     }
 
-    // Sincronización periódica de zombis activos (cada 10 frames)
-    if (frame % 10 === 0 && zombies) {
-      const activeZombies = zombies.getActiveZombiesSync(18, 30);
-      if (activeZombies.length > 0) {
-        networkManager.sendZombieSync(activeZombies);
-      }
-    }
+    updateZombieNetwork(now);
 
     // Sincronización periódica de ciclo día/noche (cada 240 frames, ~4s)
     if (frame % 240 === 0 && cycle) {
@@ -2437,10 +2458,17 @@ onMounted(() => {
     }),
     networkManager.on('joinedRoom', () => {
       isMultiplayerActive.value = networkManager.isConnected;
+      isMultiplayerSession.value = true;
       chatMessages.value = [...networkManager.chatMessages];
     }),
     networkManager.on('leftRoom', () => {
       isMultiplayerActive.value = false;
+      isMultiplayerSession.value = false;
+      zombies?.setNetworkSession(null, networkManager.connectionId);
+      if (!debugEnabled.value) {
+        setPassiveMode(false, false);
+        Object.assign(carPushConfig, DEFAULT_CAR_PUSH_CONFIG);
+      }
     }),
     networkManager.on('receiveChatMessage', () => {
       chatMessages.value = [...networkManager.chatMessages];
@@ -2458,6 +2486,11 @@ onMounted(() => {
     showToast(`${nick} salió de la partida`);
   };
   networkManager.onJoinedRoom = (room, initialPlayers) => {
+    // El backend pudo reiniciarse durante la caída: descartar versiones de la sesión anterior.
+    zombies?.clearAllZombies();
+    zombies?.setNetworkSession(room.roomId, networkManager.connectionId);
+    zombieRegionCursor = 0;
+    zombieRegionAt = 0;
     remotePlayers?.clear();
     for (const p of initialPlayers) {
       if (p.connectionId !== networkManager.connectionId) {
@@ -2503,12 +2536,8 @@ onMounted(() => {
     }
   };
   networkManager.onZombieHitEvent = (hit) => {
-    if (hit.attackerConnectionId === networkManager.connectionId) return;
-    weaponAudio.hit(false);
-    if (hit.isKilled) {
-      sound.playEnemyDeath();
-    }
-    zombies?.applyRemoteHit(hit);
+    // Backend actualizado envía impactos dentro de snapshots versionados.
+    // No aplicar daño aditivo de servidores antiguos a una entidad potencialmente distinta.
   };
   networkManager.onZombieAlertEvent = (zombieId, x, z) => {
     zombies?.applyRemoteAlert(zombieId, x, z);
@@ -2543,6 +2572,9 @@ onMounted(() => {
   };
   networkManager.onPlayerShotEvent = (shot) => {
     if (shot.shooterConnectionId === networkManager.connectionId) return;
+    zombies?.alertNoise(shot.muzzleX, shot.muzzleZ, getWeaponDef(shot.weaponId)?.noiseRadius ?? 40,
+      remotePlayers?.isPlayerPassive(shot.shooterConnectionId ?? '') ?? false,
+      shot.shooterConnectionId ?? null);
 
     // Reproducir fogonazo, trazadoras y partículas de impacto
     shotFx?.playRemote({
