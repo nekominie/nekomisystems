@@ -11,7 +11,6 @@
       v-if="!showTeaser"
       @open-play="activeModal = 'play'"
       @open-settings="activeModal = 'settings'"
-      @open-locker="activeModal = 'locker'"
       @open-credits="activeModal = 'credits'"
     />
 

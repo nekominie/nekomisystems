@@ -2,7 +2,7 @@
   <div class="fixed bottom-4 left-4 z-20 flex flex-col items-start gap-3 pointer-events-none select-none font-mono">
     <!-- 1. CHAT DE LA SALA (ARRIBA, SOLO MULTIJUGADOR, FONDO TRANSPARENTE) -->
     <div
-      v-if="isMultiplayerActive"
+      v-if="isMultiplayerActive || chatOpen"
       class="w-80 sm:w-96 flex flex-col gap-1 pointer-events-auto bg-transparent"
     >
       <!-- Historial de Mensajes Flotante con Fondo Transparente -->
@@ -26,7 +26,7 @@
                 : 'border-cyan-600 bg-cyan-950/60 text-cyan-300'
             "
           >
-            {{ msg.senderName }}
+            {{ getSenderDisplayName(msg) }}
           </span>
           <span class="text-stone-100 font-medium text-shadow ml-1">{{ msg.message }}</span>
         </div>
@@ -316,10 +316,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { HUD_ICONS, WEAPON_SHORT_NAMES } from './hudIcons';
 import type { ChatMessageDto } from '../../game/network/networkTypes';
 import { sound } from '../../audio/soundEngine';
+import { networkManager } from '../../game/network/networkManager';
 
 export interface HudWeaponSlot {
   id: string;
@@ -505,17 +506,43 @@ function getShortName(id?: string): string {
   return WEAPON_SHORT_NAMES[id] || id.slice(0, 7).toUpperCase();
 }
 
+function getSenderDisplayName(msg: ChatMessageDto): string {
+  if (msg.senderName && msg.senderName !== 'Superviviente') {
+    return msg.senderName;
+  }
+  const myNick = localStorage.getItem('zombie_game_nick')?.trim() || networkManager.currentNickname;
+  if (msg.senderConnectionId && msg.senderConnectionId === networkManager.connectionId && myNick) {
+    return myNick;
+  }
+  return msg.senderName || 'Superviviente';
+}
+
 function onSelectSlot(idx: number) {
   sound.playClick();
   emit('selectSlot', idx);
 }
 
+function scrollChatBottom() {
+  nextTick(() => {
+    if (chatHistoryEl.value) {
+      chatHistoryEl.value.scrollTop = chatHistoryEl.value.scrollHeight;
+    }
+  });
+}
+
+watch(
+  () => props.messages?.length,
+  () => {
+    scrollChatBottom();
+  }
+);
+
 function openChat() {
-  if (!props.isMultiplayerActive) return;
   chatOpen.value = true;
   emit('chatFocusChange', true);
   nextTick(() => {
     chatInputEl.value?.focus();
+    scrollChatBottom();
   });
 }
 

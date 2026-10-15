@@ -54,7 +54,7 @@
           <!-- 1. JUGAR (DESTACA / PROMINENT) -->
           <IndustrialButton
             label="JUGAR"
-            subtext="UN JUGADOR Y MULTIJUGADOR ONLINE"
+            subtext="DESPLIEGUE // EN LÍNEA"
             icon-class="bi bi-crosshair text-2xl text-red-400"
             :is-prominent="true"
             badge="PRIORITARIO"
@@ -69,16 +69,7 @@
             @click="$emit('open-settings')"
           />
 
-          <!-- 3. CASILLERO -->
-          <IndustrialButton
-            label="CASILLERO"
-            subtext="ARMERÍA, BLINDAJE Y SUMINISTROS"
-            icon-class="bi bi-shield-shaded"
-            badge="5 OBJETOS"
-            @click="$emit('open-locker')"
-          />
-
-          <!-- 4. CRÉDITOS -->
+          <!-- 3. CRÉDITOS -->
           <IndustrialButton
             label="CRÉDITOS"
             subtext="NEKOMISYSTEMS & MANIFIESTO SURVIVAL"
@@ -90,14 +81,9 @@
     </div>
 
     <!-- Bottom Footer Status Strip -->
-    <footer class="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between px-3 py-2 text-[11px] font-mono text-stone-500 border-t border-stone-800/80 bg-black/40 backdrop-blur-sm">
-      <div class="flex items-center gap-2">
-        <span class="text-red-500 font-bold">ZOMBIE GAME</span>
-        <span>•</span>
-        <span>PROTOTIPO ISOMÉTRICO ESTILO ZOMBOID</span>
-      </div>
-      <div class="mt-1 sm:mt-0 text-stone-400">
-        DISEÑO INDUSTRIAL &copy; {{ new Date().getFullYear() }} NEKOMISYSTEMS
+    <footer class="w-full max-w-4xl flex items-center justify-center px-3 py-2 text-[11px] font-mono text-stone-500 border-t border-stone-800/80 bg-black/40 backdrop-blur-sm">
+      <div class="text-stone-400">
+        &copy; {{ new Date().getFullYear() }} NEKOMISYSTEMS
       </div>
     </footer>
   </div>
@@ -112,7 +98,6 @@ import { sound } from '../../audio/soundEngine';
 defineEmits<{
   (e: 'open-play'): void;
   (e: 'open-settings'): void;
-  (e: 'open-locker'): void;
   (e: 'open-credits'): void;
 }>();
 

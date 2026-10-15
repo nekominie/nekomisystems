@@ -119,13 +119,13 @@
         :equipped-index="equippedWeaponIndex"
         :selected-explosive="selectedExplosive"
         :explosive-counts="explosiveCounts"
-        :is-multiplayer-active="networkManager.isConnected && !!networkManager.currentRoom"
-        :messages="networkManager.chatMessages"
+        :is-multiplayer-active="isMultiplayerActive"
+        :messages="chatMessages"
         @select-slot="selectWeaponSlot"
         @select-explosive="(id) => { selectedExplosive = id; }"
         @open-backpack="showBackpack = true"
-        @send-chat="(msg) => networkManager.sendChatMessage(msg, 'room')"
-        @chat-focus-change="(val) => (isChatFocused = val)"
+        @send-chat="onSendChatMessage"
+        @chat-focus-change="onChatFocusChange"
         @drag-slot-start="onDragSlotStart"
         @drag-slot-move="onDragSlotMove"
         @drag-slot-end="onDragSlotEnd"
@@ -377,7 +377,7 @@
       </div>
 
       <!-- Sistema Multijugador y Chat Overlay -->
-      <MultiplayerHUD @chat-focus-change="(val) => (isChatFocused = val)" />
+      <MultiplayerHUD />
 
       <!-- Modal de Mapa Completo Satelital / GPS -->
       <FullscreenMapModal
@@ -431,6 +431,7 @@ import DebugModal from './DebugModal.vue';
 import { mapManager } from '../../game/map/mapManager';
 import { networkManager } from '../../game/network/networkManager';
 import { RemotePlayerManager } from '../../game/network/remotePlayerManager';
+import type { ChatMessageDto } from '../../game/network/networkTypes';
 
 const emit = defineEmits<{
   (e: 'exit'): void;
@@ -439,6 +440,15 @@ const emit = defineEmits<{
 const container = ref<HTMLDivElement | null>(null);
 const gameCanvas = ref<HTMLCanvasElement | null>(null);
 const isChatFocused = ref(false);
+const isMultiplayerActive = ref(networkManager.isConnected);
+const chatMessages = ref<ChatMessageDto[]>([...networkManager.chatMessages]);
+
+function onSendChatMessage(msg: string) {
+  networkManager.sendChatMessage(msg, 'room');
+}
+
+let networkUnsubs: (() => void)[] = [];
+
 const isPaused = ref(false);
 const showSettings = ref(false);
 const showFullMap = ref(false);
@@ -1662,7 +1672,7 @@ function resumeGame(e?: MouseEvent) {
 }
 
 function onMouseMove(e: MouseEvent) {
-  if (isPaused.value || showSettings.value || showFullMap.value || showBackpack.value || debugOpen.value) return;
+  if (isPaused.value || showSettings.value || isChatFocused.value || showFullMap.value || showBackpack.value || debugOpen.value) return;
   if (gameCanvas.value) aim.setFromEvent(e, gameCanvas.value);
 }
 
@@ -1680,8 +1690,37 @@ function onMouseUp(e: MouseEvent) {
   semiPending = false;
 }
 
+function onChatFocusChange(val: boolean) {
+  isChatFocused.value = val;
+  if (val) {
+    for (const k in keys) keys[k] = false;
+    fireHeld = false;
+    semiPending = false;
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+}
+
 function handleKeyDown(e: KeyboardEvent) {
   if (isChatFocused.value) return;
+
+  // Abrir chat con Enter cuando no hay menús abiertos
+  if (e.key === 'Enter') {
+    if (isPaused.value || debugOpen.value || showHelp.value || showBackpack.value || showFullMap.value || showSettings.value) {
+      return;
+    }
+    e.preventDefault();
+    for (const k in keys) keys[k] = false;
+    fireHeld = false;
+    semiPending = false;
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+    playerHudRef.value?.openChat();
+    return;
+  }
+
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (e.code) keys[e.code.toLowerCase()] = true;
@@ -1731,14 +1770,6 @@ function handleKeyDown(e: KeyboardEvent) {
     return;
   }
   if (isPaused.value || debugOpen.value) return; // No procesar más teclas si está en pausa o debug
-
-  if (e.key === 'Enter') {
-    if (networkManager.isConnected && networkManager.currentRoom) {
-      e.preventDefault();
-      playerHudRef.value?.openChat();
-      return;
-    }
-  }
 
   if ((k === 'b' || k === 'i') && !e.repeat) {
     showBackpack.value = !showBackpack.value;
@@ -2344,6 +2375,26 @@ onMounted(() => {
     }
   }
 
+  // Sincronización reactiva de estado multijugador y chat
+  isMultiplayerActive.value = networkManager.isConnected;
+  chatMessages.value = [...networkManager.chatMessages];
+
+  networkUnsubs = [
+    networkManager.on('statusChange', () => {
+      isMultiplayerActive.value = networkManager.isConnected;
+    }),
+    networkManager.on('joinedRoom', () => {
+      isMultiplayerActive.value = networkManager.isConnected;
+      chatMessages.value = [...networkManager.chatMessages];
+    }),
+    networkManager.on('leftRoom', () => {
+      isMultiplayerActive.value = false;
+    }),
+    networkManager.on('receiveChatMessage', () => {
+      chatMessages.value = [...networkManager.chatMessages];
+    }),
+  ];
+
   networkManager.onRemotePlayerUpdate = (state) => {
     remotePlayers?.updatePlayer(state);
   };
@@ -2514,6 +2565,7 @@ onBeforeUnmount(() => {
   avatar = null;
   remotePlayers?.clear();
   remotePlayers = null;
+  networkUnsubs.forEach((u) => u());
   networkManager.onRemotePlayerUpdate = undefined;
   networkManager.onPlayerJoined = undefined;
   networkManager.onPlayerLeft = undefined;

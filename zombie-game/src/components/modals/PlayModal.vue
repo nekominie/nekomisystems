@@ -2,7 +2,7 @@
   <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md">
     <!-- Steel Bunker Container -->
     <div
-      class="relative w-full max-w-3xl steel-panel rounded-sm overflow-hidden p-5 sm:p-7 max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+      class="relative w-full max-w-2xl steel-panel rounded-sm overflow-hidden p-5 sm:p-7 max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
     >
       <!-- Rivets -->
       <span class="rivet absolute top-3 left-3"></span>
@@ -21,10 +21,10 @@
           </div>
           <div>
             <h2 class="text-xl sm:text-2xl font-extrabold uppercase tracking-wider text-white font-['Black_Ops_One']">
-              DESPLIEGUE // MODO DE JUEGO
+              DESPLIEGUE // ENTRAR AL MUNDO
             </h2>
-            <p class="text-[11px] font-mono text-red-400/90 tracking-wide uppercase">
-              SELECCIONA TIPO DE EXPEDICIÓN: UN JUGADOR O MULTIJUGADOR
+            <p class="text-[11px] font-mono text-emerald-400/90 tracking-wide uppercase">
+              SECTOR REFUGIO // ZONA DE SUPERVIVENCIA
             </p>
           </div>
         </div>
@@ -38,420 +38,191 @@
         </button>
       </div>
 
-      <!-- Tabs / Selector Principal de Modo (Un Jugador vs Multijugador) -->
-      <div class="grid grid-cols-2 gap-3 mb-5 shrink-0">
-        <!-- 1. MODO UN JUGADOR -->
-        <button
-          type="button"
-          :class="[
-            'p-3.5 rounded-xs border text-left relative overflow-hidden transition-all flex flex-col justify-between cursor-pointer',
-            selectedMode === 'singleplayer'
-              ? 'bg-red-950/60 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.35)]'
-              : 'bg-[#12151c] border-stone-700/80 hover:border-stone-500 hover:bg-[#151922]'
-          ]"
-          @click="selectMode('singleplayer')"
-        >
-          <div v-if="selectedMode === 'singleplayer'" class="absolute top-0 right-0 w-7 h-7 bg-red-600 text-white flex items-center justify-center text-xs">
-            <i class="bi bi-check-lg"></i>
-          </div>
-
-          <div class="flex items-center gap-3 mb-1.5">
-            <div class="text-2xl" :class="selectedMode === 'singleplayer' ? 'text-red-400' : 'text-stone-400'">
-              <i class="bi bi-person-fill"></i>
-            </div>
-            <div>
-              <h3 class="font-bold text-sm sm:text-base uppercase tracking-wider text-white">
-                UN JUGADOR
-              </h3>
-              <span class="text-[10px] font-mono uppercase text-stone-400">
-                OFFLINE // SOLITARIO
-              </span>
-            </div>
-          </div>
-          <p class="text-[11px] font-mono text-stone-400 leading-snug mt-1">
-            Mundo procedural infinito, vehículos y combate sin conexión a internet.
-          </p>
-        </button>
-
-        <!-- 2. MODO MULTIJUGADOR -->
-        <button
-          type="button"
-          :class="[
-            'p-3.5 rounded-xs border text-left relative overflow-hidden transition-all flex flex-col justify-between cursor-pointer',
-            selectedMode === 'multiplayer'
-              ? 'bg-emerald-950/60 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
-              : 'bg-[#12151c] border-stone-700/80 hover:border-stone-500 hover:bg-[#151922]'
-          ]"
-          @click="selectMode('multiplayer')"
-        >
-          <div v-if="selectedMode === 'multiplayer'" class="absolute top-0 right-0 w-7 h-7 bg-emerald-600 text-white flex items-center justify-center text-xs">
-            <i class="bi bi-check-lg"></i>
-          </div>
-
-          <div class="flex items-center gap-3 mb-1.5">
-            <div class="text-2xl" :class="selectedMode === 'multiplayer' ? 'text-emerald-400' : 'text-stone-400'">
-              <i class="bi bi-globe2"></i>
-            </div>
-            <div>
-              <h3 class="font-bold text-sm sm:text-base uppercase tracking-wider text-white">
-                MULTIJUGADOR
-              </h3>
-              <span class="text-[10px] font-mono uppercase text-emerald-400">
-                EN LÍNEA // .NET SIGNALR
-              </span>
-            </div>
-          </div>
-          <p class="text-[11px] font-mono text-stone-400 leading-snug mt-1">
-            Partida compartida, salas comunitarias, sincronización de zombis y chat en vivo.
-          </p>
-        </button>
-      </div>
-
-      <!-- Contenedor con Scroll para el contenido específico del modo -->
+      <!-- Contenedor con Scroll para el contenido -->
       <div class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 font-mono">
-        <!-- ========================================== -->
-        <!-- VISTA DE MODO: UN JUGADOR                  -->
-        <!-- ========================================== -->
-        <template v-if="selectedMode === 'singleplayer'">
-          <!-- Resumen del Superviviente -->
-          <div class="bg-black/60 border border-stone-800 p-4 rounded-xs">
-            <div class="flex items-center justify-between text-xs text-stone-400 mb-2.5">
-              <span class="uppercase tracking-widest text-stone-300 font-bold flex items-center gap-2">
-                <i class="bi bi-person-badge text-red-500"></i> PERFIL SUPERVIVIENTE ACTIVO:
-              </span>
-              <span class="text-emerald-400 font-bold">ESTADO: INMUNE</span>
-            </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div class="bg-[#151922] p-2.5 border border-stone-800">
-                <span class="text-stone-500 block text-[10px]">ROL</span>
-                <span class="text-stone-200 font-bold">MECÁNICO // CHUCK</span>
-              </div>
-              <div class="bg-[#151922] p-2.5 border border-stone-800">
-                <span class="text-stone-500 block text-[10px]">ARMA INICIAL</span>
-                <span class="text-stone-200 font-bold">PALANCA DE HIERRO</span>
-              </div>
-              <div class="bg-[#151922] p-2.5 border border-stone-800">
-                <span class="text-stone-500 block text-[10px]">MUNDO</span>
-                <span class="text-stone-200 font-bold">PROCEDURAL LIBRE</span>
-              </div>
-              <div class="bg-[#151922] p-2.5 border border-stone-800">
-                <span class="text-stone-500 block text-[10px]">CONEXIÓN</span>
-                <span class="text-amber-400 font-bold">OFFLINE / LOCAL</span>
-              </div>
-            </div>
+        <!-- 1. CAMPO DESTACADO DE SELECCIÓN DE USUARIO -->
+        <div class="relative p-4 sm:p-5 bg-gradient-to-b from-[#141d24]/90 via-[#0e141a]/95 to-[#090d12]/95 border-2 border-emerald-500/70 rounded-xs shadow-[0_0_25px_rgba(16,185,129,0.2)] flex flex-col gap-2.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 absolute top-2 left-2"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 absolute top-2 right-2"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 absolute bottom-2 left-2"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 absolute bottom-2 right-2"></span>
+
+          <div class="flex items-center justify-between">
+            <label for="player-nickname" class="text-xs sm:text-sm font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+              <i class="bi bi-person-badge-fill text-emerald-400 text-base"></i>
+              NOMBRE DE SUPERVIVIENTE // USUARIO
+            </label>
+            <span class="text-[10px] font-mono uppercase px-2 py-0.5 bg-emerald-950/80 border border-emerald-500/70 text-emerald-300 font-bold rounded-xs">
+              IDENTIFICACIÓN
+            </span>
           </div>
 
-          <!-- Información del modo Offline -->
-          <div class="bg-stone-900/40 border border-stone-800/80 p-3.5 text-xs text-stone-300 flex flex-col gap-2">
-            <div class="flex items-center gap-2 text-stone-200 font-bold uppercase text-[11px]">
-              <i class="bi bi-info-circle-fill text-red-500"></i> Características del juego en solitario:
+          <div class="relative flex items-center">
+            <div class="absolute left-3.5 text-emerald-500 pointer-events-none flex items-center">
+              <i class="bi bi-person-fill text-lg"></i>
             </div>
-            <ul class="list-disc list-inside text-stone-400 text-[11px] space-y-1">
-              <li>Generación infinita de ciudades, gasolineras, granjas y campamentos.</li>
-              <li>Vehículos manejables con física de colisiones, gasolina y reparaciones.</li>
-              <li>Ciclo día/noche dinámico con farolas e iluminación ambiental.</li>
-              <li>Hordas zombis locales sin consumo de red ni latencia.</li>
-            </ul>
-          </div>
-        </template>
-
-        <!-- ========================================== -->
-        <!-- VISTA DE MODO: MULTIJUGADOR (SEAMLESS)     -->
-        <!-- ========================================== -->
-        <template v-else>
-          <!-- Solo se pide el nombre de superviviente; la conexión es automática -->
-          <div class="bg-black/70 border border-stone-800 p-3 rounded-xs">
-            <label class="block text-[10px] uppercase text-stone-400 mb-1">Tu Nombre de Superviviente:</label>
             <input
+              id="player-nickname"
               v-model="nicknameInput"
               type="text"
               maxlength="20"
-              class="w-full bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500"
-              placeholder="Ej: Survivor_01"
+              class="w-full bg-[#0a0d13] border-2 border-emerald-500/80 focus:border-emerald-400 focus:shadow-[0_0_20px_rgba(16,185,129,0.35)] pl-10 pr-10 py-3 text-sm sm:text-base font-bold font-mono text-emerald-300 placeholder-stone-600 rounded-xs outline-none transition-all"
+              placeholder="Ingresa tu nombre..."
+              @change="saveNickname"
+              @keyup.enter="joinGlobalAndPlay"
             />
+            <button
+              type="button"
+              class="absolute right-2 px-2 py-1 text-stone-400 hover:text-emerald-300 bg-stone-900/80 hover:bg-stone-800 border border-stone-700 rounded-xs text-xs font-mono transition-colors cursor-pointer"
+              title="Generar nombre aleatorio"
+              @click="randomizeNickname"
+            >
+              <i class="bi bi-dice-5"></i>
+            </button>
           </div>
 
-          <!-- Estado de conexión (la conexión se inicia sola al elegir multijugador) -->
-          <div
-            class="border p-2.5 text-xs flex items-center gap-2"
-            :class="
-              status === 'connected'
-                ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-300'
-                : status === 'connecting'
-                  ? 'bg-yellow-950/50 border-yellow-700/60 text-yellow-300'
-                  : 'bg-stone-900/50 border-stone-800 text-stone-400'
-            "
-          >
-            <i
-              class="bi"
+          <p class="text-[11px] font-mono text-stone-400 flex items-center gap-1.5">
+            <i class="bi bi-info-circle text-stone-500"></i>
+            Este nombre identificará a tu personaje ante otros supervivientes en el mundo.
+          </p>
+        </div>
+
+        <!-- 2. ESTADO DEL SERVIDOR / CONEXIÓN -->
+        <div
+          class="border p-3 text-xs flex items-center justify-between gap-2 rounded-xs"
+          :class="
+            status === 'connected'
+              ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300'
+              : status === 'connecting'
+                ? 'bg-yellow-950/40 border-yellow-700/60 text-yellow-300'
+                : 'bg-stone-900/60 border-stone-800 text-stone-400'
+          "
+        >
+          <div class="flex items-center gap-2.5">
+            <span
+              class="w-2.5 h-2.5 rounded-full"
               :class="
                 status === 'connected'
-                  ? 'bi-check-circle-fill'
+                  ? 'bg-emerald-400 animate-pulse'
                   : status === 'connecting'
-                    ? 'bi-arrow-repeat animate-spin'
-                    : 'bi-hdd-network'
+                    ? 'bg-yellow-400 animate-spin'
+                    : 'bg-stone-500'
               "
-            ></i>
-            <span v-if="status === 'connected'">Conectado al servidor · {{ globalPlayerCount }} supervivientes en línea</span>
-            <span v-else-if="status === 'connecting'">Conectando al servidor...</span>
-            <span v-else>Servidor no disponible. Reintentando en segundo plano…</span>
-            <button
-              v-if="status !== 'connected' && status !== 'connecting'"
-              type="button"
-              class="ml-auto text-emerald-400 hover:text-emerald-300 text-[10px] uppercase underline"
-              @click="connectToServer"
-            >
-              Reintentar
-            </button>
+            ></span>
+            <span v-if="status === 'connected'" class="font-bold">
+              Servidor en línea · {{ globalPlayerCount }} superviviente(s) en la zona
+            </span>
+            <span v-else-if="status === 'connecting'">
+              Conectando al servidor del juego...
+            </span>
+            <span v-else>
+              Servidor desconectado · Reintentando en segundo plano…
+            </span>
           </div>
 
-          <!-- Mensaje de Error si la conexión falla -->
-          <div
-            v-if="errorMessage"
-            class="bg-red-950/80 border border-red-600 p-2.5 text-xs text-red-200 flex items-center justify-between"
+          <button
+            v-if="status !== 'connected' && status !== 'connecting'"
+            type="button"
+            class="text-emerald-400 hover:text-emerald-300 text-[10px] uppercase font-bold underline cursor-pointer"
+            @click="connectToServer"
           >
-            <div class="flex items-center gap-2">
-              <i class="bi bi-exclamation-triangle-fill text-red-400 text-sm"></i>
-              <span>{{ errorMessage }}</span>
-            </div>
-            <button
-              type="button"
-              class="text-red-400 hover:text-white text-xs underline"
-              @click="errorMessage = ''"
-            >
-              Cerrar
-            </button>
-          </div>
+            Reintentar conexión
+          </button>
+        </div>
 
-          <!-- Acción principal: Sala Global -->
-          <div class="bg-gradient-to-r from-emerald-950/40 via-stone-900/60 to-black border border-emerald-600/60 p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span class="font-bold text-sm text-emerald-300 uppercase tracking-wide">SALA GLOBAL OFICIAL</span>
-                <span class="text-[9px] px-1.5 py-0.5 bg-emerald-900/80 border border-emerald-600 text-emerald-200 uppercase font-bold">
-                  Pública / Abierta
-                </span>
-              </div>
-              <p class="text-[11px] text-stone-400 mt-0.5">
-                El mundo compartido principal. Entra y juega con quien esté en línea.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              class="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 transition-colors shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
-              :disabled="isJoining"
-              @click="joinGlobalAndPlay"
-            >
-              <i v-if="isJoining" class="bi bi-arrow-repeat animate-spin"></i>
-              <i v-else class="bi bi-box-arrow-in-right"></i>
-              <span>{{ status === 'connected' ? 'UNIRSE Y JUGAR' : 'CONECTAR Y JUGAR' }}</span>
-            </button>
-          </div>
-
-          <!-- Configuración avanzada (servidor) — oculta por defecto para no abrumar al jugador -->
-          <details class="group">
-            <summary class="text-[10px] text-stone-600 hover:text-stone-400 cursor-pointer uppercase tracking-wider select-none">
-              ⚙ Avanzado: servidor personalizado
-            </summary>
-            <div class="mt-2 bg-black/70 border border-stone-800 p-3 flex gap-1.5">
-              <input
-                v-model="serverUrlInput"
-                type="text"
-                class="flex-1 bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-stone-300 focus:outline-none focus:border-emerald-500"
-                placeholder="https://zombie-api.nekomisystems.com"
-                :disabled="isConnecting"
-              />
-              <button
-                type="button"
-                class="px-3 py-1.5 text-xs font-bold uppercase bg-stone-800 border border-stone-600 text-stone-200 hover:bg-stone-700 transition-colors shrink-0"
-                :disabled="isConnecting"
-                @click="connectToServer"
-              >
-                Conectar
-              </button>
-            </div>
-          </details>
-
-          <!-- Panel de Selección de Salas cuando está CONECTADO -->
-          <template v-if="false && status === 'connected'">
-            <div class="flex items-center justify-between pt-1">
-              <button
-                type="button"
-                class="px-3 py-1.5 bg-stone-900 border border-stone-700 text-stone-300 hover:text-white hover:border-emerald-500 text-xs uppercase flex items-center gap-1.5 transition-colors"
-                @click="showCreateRoom = !showCreateRoom"
-              >
-                <i :class="showCreateRoom ? 'bi bi-x-lg' : 'bi bi-plus-lg'"></i>
-                <span>{{ showCreateRoom ? 'Cancelar Creación' : '+ Crear Nueva Sala' }}</span>
-              </button>
-
-              <button
-                type="button"
-                class="px-2.5 py-1.5 text-stone-400 hover:text-emerald-400 text-xs flex items-center gap-1 transition-colors"
-                :disabled="isLoadingRooms"
-                @click="refreshRooms"
-              >
-                <i class="bi bi-arrow-clockwise" :class="{ 'animate-spin': isLoadingRooms }"></i>
-                <span>Actualizar Lista</span>
-              </button>
-            </div>
-
-            <div
-              v-if="showCreateRoom"
-              class="bg-black/90 border border-emerald-700/60 p-3.5 flex flex-col gap-3 animate-in fade-in duration-150"
-            >
-              <div class="text-xs font-bold text-emerald-400 uppercase flex items-center gap-2">
-                <i class="bi bi-plus-circle"></i> Configuración de la Nueva Sala
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-[10px] uppercase text-stone-400 mb-1">Nombre de la Sala:</label>
-                  <input
-                    v-model="newRoomName"
-                    type="text"
-                    maxlength="30"
-                    placeholder="Ej: Refugio Alfa"
-                    class="w-full bg-stone-900 border border-stone-700 px-2.5 py-1 text-xs text-stone-200 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label class="block text-[10px] uppercase text-stone-400 mb-1">Máx Jugadores (2-64):</label>
-                  <input
-                    v-model.number="newRoomMaxPlayers"
-                    type="number"
-                    min="2"
-                    max="64"
-                    class="w-full bg-stone-900 border border-stone-700 px-2.5 py-1 text-xs text-stone-200 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-[10px] uppercase text-stone-400 mb-1">Contraseña (Opcional para sala privada):</label>
-                <div class="flex gap-2">
-                  <input
-                    v-model="newRoomPassword"
-                    type="password"
-                    placeholder="Dejar vacío para sala pública..."
-                    class="flex-1 bg-stone-900 border border-stone-700 px-2.5 py-1 text-xs text-stone-200 focus:outline-none focus:border-emerald-500"
-                  />
-                  <button
-                    type="button"
-                    class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase flex items-center gap-1.5 transition-colors"
-                    :disabled="isCreatingRoom"
-                    @click="createRoomAndPlay"
-                  >
-                    <i v-if="isCreatingRoom" class="bi bi-arrow-repeat animate-spin"></i>
-                    <span>Crear y Entrar</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="flex flex-col gap-2">
-              <div class="text-[11px] uppercase tracking-wider text-stone-400 font-bold flex items-center justify-between">
-                <span>Salas Activas de la Comunidad ({{ otherRooms.length }})</span>
-              </div>
-
-              <div class="bg-black/50 border border-stone-800 max-h-48 overflow-y-auto flex flex-col divide-y divide-stone-800/60">
-                <div
-                  v-if="otherRooms.length === 0"
-                  class="py-6 text-center text-xs text-stone-500 italic"
-                >
-                  No hay salas personalizadas activas en este momento. ¡Únete a la Sala Global o crea una nueva!
-                </div>
-
-                <div
-                  v-for="r in otherRooms"
-                  :key="r.roomId"
-                  class="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-stone-900/60 transition-colors"
-                >
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <span class="font-bold text-xs text-stone-200">{{ r.name }}</span>
-                      <span
-                        v-if="r.isPrivate"
-                        class="text-[9px] px-1 py-0.2 bg-yellow-950 border border-yellow-700 text-yellow-400 uppercase"
-                      >
-                        🔒 Con Clave
-                      </span>
-                    </div>
-                    <div class="text-[10px] text-stone-500 mt-0.5">
-                      Host: <span class="text-stone-400">{{ r.hostNickname }}</span> · ID: <span class="text-stone-500">{{ r.roomId }}</span>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center gap-2 shrink-0">
-                    <span class="text-xs text-stone-400 font-mono">
-                      {{ r.currentPlayers }}/{{ r.maxPlayers }}
-                    </span>
-
-                    <!-- Entrada de clave si la sala es privada -->
-                    <input
-                      v-if="r.isPrivate"
-                      v-model="passwordInputs[r.roomId]"
-                      type="password"
-                      placeholder="Clave..."
-                      class="w-20 bg-stone-900 border border-stone-700 px-1.5 py-1 text-[11px] text-stone-200 focus:outline-none focus:border-yellow-500"
-                    />
-
-                    <button
-                      type="button"
-                      class="px-3 py-1 bg-stone-800 hover:bg-emerald-600 hover:text-white text-stone-300 text-xs uppercase transition-colors flex items-center gap-1"
-                      :disabled="isJoining && joiningRoomId === r.roomId"
-                      @click="joinRoomAndPlay(r.roomId, r.isPrivate)"
-                    >
-                      <i v-if="isJoining && joiningRoomId === r.roomId" class="bi bi-arrow-repeat animate-spin"></i>
-                      <span>Unirse</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </template>
-        </template>
-      </div>
-
-      <!-- Action Footer -->
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-stone-800 mt-4 shrink-0">
-        <button
-          type="button"
-          class="steel-btn w-full sm:w-auto px-6 py-2.5 text-xs uppercase font-mono tracking-wider font-bold text-stone-300 hover:text-white"
-          @click="close"
+        <!-- Mensaje de Error si la conexión falla -->
+        <div
+          v-if="errorMessage"
+          class="bg-red-950/80 border border-red-600 p-2.5 text-xs text-red-200 flex items-center justify-between rounded-xs"
         >
-          Cancelar
-        </button>
-
-        <!-- Botón principal según el modo seleccionado -->
-        <template v-if="selectedMode === 'singleplayer'">
+          <div class="flex items-center gap-2">
+            <i class="bi bi-exclamation-triangle-fill text-red-400 text-sm"></i>
+            <span>{{ errorMessage }}</span>
+          </div>
           <button
             type="button"
-            class="play-btn-prominent w-full sm:w-auto px-8 py-3 text-sm uppercase font-extrabold tracking-widest text-white flex items-center justify-center gap-2 font-['Black_Ops_One'] cursor-pointer"
-            @click="startSingleplayer"
+            class="text-red-400 hover:text-white text-xs underline cursor-pointer"
+            @click="errorMessage = ''"
           >
-            <i class="bi bi-crosshair2 text-lg text-red-300"></i>
-            <span>INICIAR PARTIDA EN SOLITARIO</span>
+            Cerrar
           </button>
-        </template>
+        </div>
 
-        <template v-else>
-          <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <span v-if="status === 'connected'" class="text-[11px] font-mono text-emerald-400 hidden sm:inline">
-              ● Listo para desplegar
+        <!-- 3. ZONA PRINCIPAL DEL MUNDO -->
+        <div class="bg-gradient-to-r from-emerald-950/30 via-[#10151d] to-[#0c0f14] border border-stone-700/70 p-4 rounded-xs flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="bi bi-globe-americas text-emerald-400"></i>
+              <span class="font-bold text-xs sm:text-sm text-stone-200 uppercase tracking-wider">MUNDO COMPARTIDO // SERVIDOR CENTRAL</span>
+            </div>
+            <span class="text-[9px] px-1.5 py-0.5 bg-emerald-900/80 border border-emerald-600 text-emerald-200 uppercase font-bold rounded-xs">
+              SALA OFICIAL
             </span>
+          </div>
+          <p class="text-[11px] font-mono text-stone-400 leading-relaxed">
+            Mundo persistente abierto con generación procedural infinita, vehículos conducibles, armas y supervivencia con otros jugadores en tiempo real.
+          </p>
+        </div>
+
+        <!-- 4. CONFIGURACIÓN AVANZADA (SERVIDOR) -->
+        <details class="group">
+          <summary class="text-[10px] text-stone-600 hover:text-stone-400 cursor-pointer uppercase tracking-wider select-none">
+            ⚙ Avanzado: servidor personalizado
+          </summary>
+          <div class="mt-2 bg-black/70 border border-stone-800 p-3 flex gap-1.5 rounded-xs">
+            <input
+              v-model="serverUrlInput"
+              type="text"
+              class="flex-1 bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-stone-300 focus:outline-none focus:border-emerald-500 rounded-xs"
+              placeholder="https://zombie-api.nekomisystems.com"
+              :disabled="isConnecting"
+            />
             <button
-              v-if="status !== 'connected'"
               type="button"
-              class="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs uppercase font-mono transition-colors"
+              class="px-3 py-1.5 text-xs font-bold uppercase bg-stone-800 border border-stone-600 text-stone-200 hover:bg-stone-700 transition-colors shrink-0 rounded-xs cursor-pointer"
               :disabled="isConnecting"
               @click="connectToServer"
             >
-              {{ isConnecting ? 'Conectando...' : 'Conectar al Servidor' }}
+              Conectar
             </button>
           </div>
-        </template>
+        </details>
+      </div>
+
+      <!-- Action Footer -->
+      <div class="flex flex-col gap-3 pt-4 border-t border-stone-800 mt-4 shrink-0">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <button
+            type="button"
+            class="steel-btn w-full sm:w-auto px-6 py-2.5 text-xs uppercase font-mono tracking-wider font-bold text-stone-400 hover:text-white cursor-pointer"
+            @click="close"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            class="play-btn-prominent w-full sm:w-auto px-8 py-3 text-sm uppercase font-extrabold tracking-widest text-white flex items-center justify-center gap-2 font-['Black_Ops_One'] cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="isJoining"
+            @click="joinGlobalAndPlay"
+          >
+            <i v-if="isJoining" class="bi bi-arrow-repeat animate-spin text-lg"></i>
+            <i v-else class="bi bi-crosshair2 text-lg text-emerald-300"></i>
+            <span>{{ status === 'connected' ? 'ENTRAR AL JUEGO' : 'CONECTAR Y ENTRAR' }}</span>
+          </button>
+        </div>
+
+        <!-- Botón sutil para jugar en solitario / offline hasta abajo -->
+        <div class="flex items-center justify-center pt-1 border-t border-stone-900">
+          <button
+            type="button"
+            class="text-[11px] font-mono text-stone-500 hover:text-stone-300 tracking-wider uppercase transition-colors flex items-center gap-1.5 cursor-pointer py-1 px-3 rounded-xs hover:bg-stone-900/60"
+            @click="startSingleplayer"
+          >
+            <i class="bi bi-hdd-network text-stone-600 text-xs"></i>
+            <span>Jugar en solitario (Offline)</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -460,7 +231,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { sound } from '../../audio/soundEngine';
-import { networkManager, DEFAULT_SERVER_URL } from '../../game/network/networkManager';
+import { networkManager, getSavedServerUrl } from '../../game/network/networkManager';
 import type { RoomSummaryDto, ConnectionStatus } from '../../game/network/networkTypes';
 
 const emit = defineEmits<{
@@ -468,17 +239,11 @@ const emit = defineEmits<{
   (e: 'launch-demo'): void;
 }>();
 
-type GameMode = 'singleplayer' | 'multiplayer';
-
-const selectedMode = ref<GameMode>('singleplayer');
-
 // Form credentials
 const nicknameInput = ref(
   localStorage.getItem('zombie_game_nick') || `Survivor_${Math.floor(Math.random() * 900 + 100)}`
 );
-const serverUrlInput = ref(
-  localStorage.getItem('zombie_game_server') || DEFAULT_SERVER_URL
-);
+const serverUrlInput = ref(getSavedServerUrl());
 
 // Connection & status
 const status = ref<ConnectionStatus>(networkManager.status);
@@ -490,19 +255,6 @@ const joiningRoomId = ref<string | null>(null);
 // Rooms
 const roomList = ref<RoomSummaryDto[]>([]);
 const isLoadingRooms = ref(false);
-const showCreateRoom = ref(false);
-const isCreatingRoom = ref(false);
-
-const newRoomName = ref('Refugio de Supervivientes');
-const newRoomMaxPlayers = ref(16);
-const newRoomPassword = ref('');
-
-const passwordInputs = ref<Record<string, string>>({});
-
-// Filtro de salas excluyendo GLOBAL para la lista de abajo
-const otherRooms = computed(() => {
-  return roomList.value.filter((r) => r.roomId !== 'GLOBAL');
-});
 
 // Jugadores en la sala global (para el mensaje de estado de conexión)
 const globalPlayerCount = computed(() => {
@@ -510,12 +262,19 @@ const globalPlayerCount = computed(() => {
   return g?.currentPlayers ?? 0;
 });
 
-function selectMode(mode: GameMode) {
-  selectedMode.value = mode;
+function randomizeNickname() {
+  nicknameInput.value = `Survivor_${Math.floor(Math.random() * 900 + 100)}`;
+  saveNickname();
   sound.playClick();
-  if (mode === 'multiplayer' && status.value !== 'connected' && !isConnecting.value) {
-    connectToServer();
+}
+
+async function saveNickname(): Promise<string> {
+  const nick = nicknameInput.value.trim() || 'Survivor';
+  localStorage.setItem('zombie_game_nick', nick);
+  if (networkManager.isConnected) {
+    await networkManager.setNickname(nick);
   }
+  return nick;
 }
 
 async function connectToServer() {
@@ -523,16 +282,17 @@ async function connectToServer() {
   errorMessage.value = '';
   isConnecting.value = true;
 
-  localStorage.setItem('zombie_game_nick', nicknameInput.value);
+  const nick = nicknameInput.value.trim() || 'Survivor';
+  localStorage.setItem('zombie_game_nick', nick);
   localStorage.setItem('zombie_game_server', serverUrlInput.value);
 
   try {
-    const ok = await networkManager.connect(serverUrlInput.value, nicknameInput.value);
+    const ok = await networkManager.connect(serverUrlInput.value, nick);
     status.value = networkManager.status;
     if (ok) {
       await refreshRooms();
     } else {
-      errorMessage.value = 'No se pudo conectar al servidor multijugador. Inténtalo de nuevo en un momento.';
+      errorMessage.value = 'No se pudo conectar al servidor. Inténtalo de nuevo en un momento.';
     }
   } catch (err: any) {
     errorMessage.value = err?.message || 'Error al conectar con el servidor.';
@@ -555,6 +315,7 @@ async function refreshRooms() {
 }
 
 async function startSingleplayer() {
+  await saveNickname();
   // Asegurarse de salir de cualquier sala previa si estaba conectado
   if (networkManager.isConnected && networkManager.currentRoom) {
     await networkManager.leaveRoom();
@@ -564,10 +325,14 @@ async function startSingleplayer() {
 }
 
 async function joinGlobalAndPlay() {
+  const nick = await saveNickname();
   if (status.value !== 'connected') {
     await connectToServer();
     if (status.value !== 'connected') return;
   }
+
+  // Asegurar que el servidor confirme el nickname antes de unirse
+  await networkManager.setNickname(nick);
 
   isJoining.value = true;
   joiningRoomId.value = 'GLOBAL';
@@ -578,63 +343,10 @@ async function joinGlobalAndPlay() {
     sound.playPlayClick();
     emit('launch-demo');
   } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al unirse a la Sala Global.';
+    errorMessage.value = err?.message || 'Error al unirse a la partida.';
   } finally {
     isJoining.value = false;
     joiningRoomId.value = null;
-  }
-}
-
-async function joinRoomAndPlay(roomId: string, isPrivate: boolean) {
-  if (status.value !== 'connected') return;
-
-  const pwd = isPrivate ? (passwordInputs.value[roomId] || '').trim() : undefined;
-  if (isPrivate && !pwd) {
-    errorMessage.value = 'Por favor introduce la contraseña de la sala privada.';
-    return;
-  }
-
-  isJoining.value = true;
-  joiningRoomId.value = roomId;
-  errorMessage.value = '';
-
-  try {
-    await networkManager.joinRoom(roomId, pwd);
-    sound.playPlayClick();
-    emit('launch-demo');
-  } catch (err: any) {
-    errorMessage.value = err?.message || 'No se pudo ingresar a la sala seleccionada.';
-  } finally {
-    isJoining.value = false;
-    joiningRoomId.value = null;
-  }
-}
-
-async function createRoomAndPlay() {
-  if (status.value !== 'connected') return;
-  const name = newRoomName.value.trim();
-  if (!name) {
-    errorMessage.value = 'El nombre de la sala no puede estar vacío.';
-    return;
-  }
-
-  isCreatingRoom.value = true;
-  errorMessage.value = '';
-
-  try {
-    const isPrivate = !!newRoomPassword.value.trim();
-    await networkManager.createRoom(
-      name,
-      newRoomMaxPlayers.value || 16,
-      isPrivate,
-      isPrivate ? newRoomPassword.value.trim() : undefined
-    );
-    sound.playPlayClick();
-    emit('launch-demo');
-  } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al crear la sala.';
-  } finally {
-    isCreatingRoom.value = false;
   }
 }
 
@@ -657,11 +369,12 @@ onMounted(() => {
   networkManager.onError = (err) => {
     errorMessage.value = err;
     isJoining.value = false;
-    isCreatingRoom.value = false;
   };
 
   if (status.value === 'connected') {
     refreshRooms();
+  } else if (status.value !== 'connecting') {
+    connectToServer();
   }
 });
 

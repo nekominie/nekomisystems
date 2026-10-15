@@ -26,6 +26,20 @@ export const DEFAULT_SERVER_URL: string =
   (import.meta.env.VITE_GAME_SERVER_URL as string | undefined)?.trim() ||
   (import.meta.env.DEV ? DEV_SERVER_URL : PROD_SERVER_URL);
 
+/**
+ * URL de servidor recordada del navegador (la que el usuario escribió en
+ * "Avanzado"). En PRODUCCIÓN se ignoran valores de localhost: son restos de
+ * pruebas locales y romperían la conexión para cualquier visitante.
+ */
+export function getSavedServerUrl(): string {
+  const saved = localStorage.getItem('zombie_game_server')?.trim() || '';
+  if (!saved) return DEFAULT_SERVER_URL;
+  if (!import.meta.env.DEV && /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/i.test(saved)) {
+    return DEFAULT_SERVER_URL;
+  }
+  return saved;
+}
+
 export class NetworkManager {
   private hub: signalR.HubConnection | null = null;
   private serverUrl = DEFAULT_SERVER_URL;
@@ -62,6 +76,34 @@ export class NetworkManager {
   public onPlayerShotEvent?: (shot: PlayerShotNetworkEvent) => void;
   public onError?: (errorMessage: string) => void;
 
+  private _listeners: Record<string, ((...args: any[]) => void)[]> = {};
+
+  public on(event: string, listener: (...args: any[]) => void): () => void {
+    if (!this._listeners[event]) {
+      this._listeners[event] = [];
+    }
+    this._listeners[event].push(listener);
+    return () => this.off(event, listener);
+  }
+
+  public off(event: string, listener: (...args: any[]) => void): void {
+    if (!this._listeners[event]) return;
+    this._listeners[event] = this._listeners[event].filter((l) => l !== listener);
+  }
+
+  public emit(event: string, ...args: any[]): void {
+    const list = this._listeners[event];
+    if (list) {
+      for (const fn of list) {
+        try {
+          fn(...args);
+        } catch (err) {
+          console.error(`[NetworkManager] Error in listener for event "${event}":`, err);
+        }
+      }
+    }
+  }
+
   get status(): ConnectionStatus {
     return this._status;
   }
@@ -71,6 +113,10 @@ export class NetworkManager {
   }
 
   get currentNickname(): string {
+    const saved = localStorage.getItem('zombie_game_nick')?.trim();
+    if (saved && saved !== this._currentNickname) {
+      this._currentNickname = saved;
+    }
     return this._currentNickname;
   }
 
@@ -89,16 +135,24 @@ export class NetworkManager {
   private setStatus(status: ConnectionStatus, msg?: string) {
     this._status = status;
     this.onStatusChange?.(status, msg);
+    this.emit('statusChange', status, msg);
   }
 
   /**
    * Conecta al backend SignalR mediante WebSockets.
    */
-  async connect(serverUrl = DEFAULT_SERVER_URL, nickname = 'Superviviente'): Promise<boolean> {
-    if (this.isConnected) return true;
+  async connect(serverUrl = DEFAULT_SERVER_URL, nickname?: string): Promise<boolean> {
+    const desiredNick = (nickname?.trim() || localStorage.getItem('zombie_game_nick')?.trim() || this._currentNickname || 'Superviviente');
+
+    if (this.isConnected) {
+      if (desiredNick && desiredNick !== this._currentNickname) {
+        await this.setNickname(desiredNick);
+      }
+      return true;
+    }
 
     this.serverUrl = serverUrl.replace(/\/+$/, '');
-    this._currentNickname = nickname.trim() || 'Superviviente';
+    this._currentNickname = desiredNick;
     this.setStatus('connecting');
 
     try {
@@ -122,8 +176,8 @@ export class NetworkManager {
 
       return true;
     } catch (err: any) {
-      console.warn('[NetworkManager] Error conectando a SignalR:', err);
-      this.setStatus('error', err?.message ?? 'No se pudo conectar al servidor multijugador.');
+      console.warn(`[NetworkManager] Error conectando a SignalR en ${this.serverUrl}:`, err);
+      this.setStatus('error', `${err?.message ?? 'No se pudo conectar'} (${this.serverUrl})`);
       return false;
     }
   }
@@ -177,6 +231,7 @@ export class NetworkManager {
       this._currentRoom = room;
       this._currentRoomPlayers = players || [];
       this.onJoinedRoom?.(room, players);
+      this.emit('joinedRoom', room, players);
     });
 
     this.hub.on('OnPlayerJoined', (player: PlayerNetworkState) => {
@@ -187,11 +242,13 @@ export class NetworkManager {
         this._currentRoomPlayers.push(player);
       }
       this.onPlayerJoined?.(player);
+      this.emit('playerJoined', player);
     });
 
     this.hub.on('OnPlayerLeft', (connId: string, nick: string) => {
       this._currentRoomPlayers = this._currentRoomPlayers.filter((p) => p.connectionId !== connId);
       this.onPlayerLeft?.(connId, nick);
+      this.emit('playerLeft', connId, nick);
     });
 
     this.hub.on('OnRemotePlayerUpdate', (state: PlayerNetworkState) => {
@@ -207,13 +264,18 @@ export class NetworkManager {
     });
 
     this.hub.on('OnReceiveChatMessage', (msg: ChatMessageDto) => {
+      if (msg.senderConnectionId === this._connectionId && (!msg.senderName || msg.senderName === 'Superviviente')) {
+        msg.senderName = this.currentNickname;
+      }
       this.chatMessages.push(msg);
       if (this.chatMessages.length > 50) this.chatMessages.shift();
       this.onReceiveChatMessage?.(msg);
+      this.emit('receiveChatMessage', msg);
     });
 
     this.hub.on('OnRoomListUpdated', (rooms: RoomSummaryDto[]) => {
       this.onRoomListUpdated?.(rooms);
+      this.emit('roomListUpdated', rooms);
     });
 
     this.hub.on('OnZombieAlertEvent', (zombieId: string, x: number, z: number) => {
@@ -260,9 +322,15 @@ export class NetworkManager {
   // --- MÉTODOS CLIENTE -> SERVIDOR ---
 
   async setNickname(nickname: string): Promise<void> {
+    const clean = nickname.trim() || 'Superviviente';
+    this._currentNickname = clean;
+    localStorage.setItem('zombie_game_nick', clean);
     if (!this.isConnected || !this.hub) return;
-    this._currentNickname = nickname.trim();
-    await this.hub.invoke('SetNickname', this._currentNickname);
+    try {
+      await this.hub.invoke('SetNickname', clean);
+    } catch (err) {
+      console.warn('[NetworkManager] Error invocando SetNickname:', err);
+    }
   }
 
   async joinGlobalRoom(): Promise<void> {
@@ -285,6 +353,7 @@ export class NetworkManager {
     await this.hub.invoke('LeaveCurrentRoom');
     this._currentRoom = null;
     this._currentRoomPlayers = [];
+    this.emit('leftRoom');
   }
 
   async getRoomList(): Promise<RoomSummaryDto[]> {
@@ -309,7 +378,7 @@ export class NetworkManager {
     const fullState: PlayerNetworkState = {
       ...state,
       connectionId: this._connectionId || '',
-      nickname: this._currentNickname,
+      nickname: this.currentNickname,
       timestamp: Date.now(),
     };
 
@@ -322,7 +391,7 @@ export class NetworkManager {
     const fullState: VehicleNetworkState = {
       ...state,
       driverConnectionId: this._connectionId || '',
-      driverNickname: this._currentNickname,
+      driverNickname: this.currentNickname,
       timestamp: Date.now(),
     };
 
@@ -335,7 +404,7 @@ export class NetworkManager {
     const fullHit: ZombieHitNetworkEvent = {
       ...hit,
       attackerConnectionId: this._connectionId || '',
-      attackerNickname: this._currentNickname,
+      attackerNickname: this.currentNickname,
     };
 
     this.hub.invoke('SendZombieHit', fullHit).catch(() => {});
@@ -386,14 +455,15 @@ export class NetworkManager {
     const fullShot: PlayerShotNetworkEvent = {
       ...shot,
       shooterConnectionId: this._connectionId || '',
-      shooterNickname: this._currentNickname,
+      shooterNickname: this.currentNickname,
     };
     this.hub.invoke('SendPlayerShot', fullShot).catch(() => {});
   }
 
   sendChatMessage(message: string, channel: 'room' | 'global' | 'proximity' = 'room', posX?: number, posZ?: number): void {
     if (!this.isConnected || !this.hub) return;
-    this.hub.invoke('SendChatMessage', message, channel, posX ?? null, posZ ?? null).catch(() => {});
+    const nick = this.currentNickname;
+    this.hub.invoke('SendChatMessage', message, channel, posX ?? null, posZ ?? null, nick).catch(() => {});
   }
 }
 

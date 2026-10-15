@@ -152,13 +152,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue';
-import { networkManager, DEFAULT_SERVER_URL } from '../../game/network/networkManager';
-import type { ChatMessageDto, RoomSummaryDto } from '../../game/network/networkTypes';
-
-const emit = defineEmits<{
-  (e: 'chatFocusChange', isFocused: boolean): void;
-}>();
+import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { networkManager, getSavedServerUrl } from '../../game/network/networkManager';
+import type { RoomSummaryDto, ConnectionStatus } from '../../game/network/networkTypes';
 
 const network = reactive({
   status: networkManager.status,
@@ -168,41 +164,25 @@ const network = reactive({
 
 const showLobbyModal = ref(false);
 const nicknameInput = ref(localStorage.getItem('zombie_game_nick') || `Survivor_${Math.floor(Math.random() * 900 + 100)}`);
-const serverUrlInput = ref(localStorage.getItem('zombie_game_server') || DEFAULT_SERVER_URL);
+const serverUrlInput = ref(getSavedServerUrl());
 
 const roomList = ref<RoomSummaryDto[]>([]);
 
-// Chat
-const messages = ref<ChatMessageDto[]>([]);
-const chatOpen = ref(false);
-const chatDraft = ref('');
-const chatChannel = ref<'room' | 'global'>('room');
-const chatHistoryEl = ref<HTMLDivElement | null>(null);
-const chatInputEl = ref<HTMLInputElement | null>(null);
-
-function scrollChatBottom() {
-  nextTick(() => {
-    if (chatHistoryEl.value) {
-      chatHistoryEl.value.scrollTop = chatHistoryEl.value.scrollHeight;
-    }
-  });
-}
-
 async function connectToServer() {
-  localStorage.setItem('zombie_game_nick', nicknameInput.value);
+  const nick = nicknameInput.value.trim() || localStorage.getItem('zombie_game_nick')?.trim() || networkManager.currentNickname;
+  nicknameInput.value = nick;
+  localStorage.setItem('zombie_game_nick', nick);
   localStorage.setItem('zombie_game_server', serverUrlInput.value);
 
-  const ok = await networkManager.connect(serverUrlInput.value, nicknameInput.value);
+  const ok = await networkManager.connect(serverUrlInput.value, nick);
   if (ok) {
     refreshRooms();
   }
 }
 
 async function joinGlobal() {
-  // Asegurar que el nickname elegido se aplique al entrar
-  if (nicknameInput.value.trim() && nicknameInput.value.trim() !== networkManager.currentNickname) {
-    await networkManager.setNickname(nicknameInput.value);
-  }
+  const nick = nicknameInput.value.trim() || localStorage.getItem('zombie_game_nick')?.trim() || networkManager.currentNickname;
+  await networkManager.setNickname(nick);
   await networkManager.joinGlobalRoom();
   showLobbyModal.value = false;
 }
@@ -216,79 +196,38 @@ async function refreshRooms() {
   roomList.value = await networkManager.getRoomList();
 }
 
-function openChat() {
-  chatOpen.value = true;
-  emit('chatFocusChange', true);
-  nextTick(() => {
-    chatInputEl.value?.focus();
-  });
-}
-
-function closeChat() {
-  chatOpen.value = false;
-  emit('chatFocusChange', false);
-}
-
-function sendChat() {
-  if (!chatDraft.value.trim()) {
-    closeChat();
-    return;
-  }
-
-  networkManager.sendChatMessage(chatDraft.value, chatChannel.value);
-  chatDraft.value = '';
-  closeChat();
-}
-
 function onGlobalKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter') {
-    if (!chatOpen.value && !showLobbyModal.value) {
-      e.preventDefault();
-      openChat();
-    }
-  } else if (e.key === 'Escape') {
-    if (chatOpen.value) {
-      closeChat();
-    } else if (showLobbyModal.value) {
-      showLobbyModal.value = false;
-    }
+  if (e.key === 'Escape' && showLobbyModal.value) {
+    showLobbyModal.value = false;
   }
 }
+
+let unsubs: (() => void)[] = [];
 
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown);
 
-  networkManager.onStatusChange = (status) => {
-    network.status = status;
-    network.currentRoom = networkManager.currentRoom;
-    network.currentNickname = networkManager.currentNickname;
-  };
+  unsubs = [
+    networkManager.on('statusChange', (status: ConnectionStatus) => {
+      network.status = status;
+      network.currentRoom = networkManager.currentRoom;
+      network.currentNickname = networkManager.currentNickname;
+    }),
+    networkManager.on('joinedRoom', (room: RoomSummaryDto) => {
+      network.currentRoom = room;
+    }),
+    networkManager.on('leftRoom', () => {
+      network.currentRoom = null;
+    }),
+    networkManager.on('roomListUpdated', (rooms: RoomSummaryDto[]) => {
+      roomList.value = rooms;
+    }),
+  ];
 
-  networkManager.onJoinedRoom = (room) => {
-    network.currentRoom = room;
-  };
-
-  networkManager.onRoomListUpdated = (rooms) => {
-    roomList.value = rooms;
-  };
-
-  networkManager.onReceiveChatMessage = (msg) => {
-    messages.value.push(msg);
-    if (messages.value.length > 50) messages.value.shift();
-    scrollChatBottom();
-  };
-
-  networkManager.onError = (err) => {
-    messages.value.push({
-      roomId: 'system',
-      senderName: 'Error',
-      senderConnectionId: 'system',
-      message: err,
-      channel: 'system',
-      timestamp: new Date(),
-    });
-    scrollChatBottom();
-  };
+  // Sincronizar estado inicial
+  network.status = networkManager.status;
+  network.currentRoom = networkManager.currentRoom;
+  network.currentNickname = networkManager.currentNickname;
 
   // Intentar conectar automáticamente en segundo plano si hay servidor configurado
   connectToServer();
@@ -296,6 +235,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onGlobalKeydown);
+  unsubs.forEach((u) => u());
   networkManager.disconnect();
 });
 </script>

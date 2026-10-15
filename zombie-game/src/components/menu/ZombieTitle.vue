@@ -50,13 +50,13 @@
         <circle cx="64.5" cy="52" r="3.5" fill="#7f1d1d" />
       </svg>
 
-      <!-- The Typography: "Zombie game" -->
+      <!-- The Typography: "project hatsune" -->
       <div class="relative z-10 flex flex-col items-center">
         <h1
-          class="title-text text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-wider uppercase m-0 leading-tight select-none"
+          class="title-text text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-wider uppercase m-0 leading-tight select-none flex flex-wrap items-center justify-center gap-x-3 sm:gap-x-5"
         >
-          <span class="zombie-word">ZOMBIE</span>
-          <span class="game-word ml-3 sm:ml-5">GAME</span>
+          <span class="zombie-word">PROJECT</span>
+          <span class="game-word">HATSUNE</span>
         </h1>
         
         <!-- Subtitle plate -->
