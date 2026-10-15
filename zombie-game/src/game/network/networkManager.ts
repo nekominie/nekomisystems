@@ -13,9 +13,22 @@ import type {
 
 export type NetworkEventHandler<T> = (data: T) => void;
 
+/**
+ * URL por defecto del backend multijugador.
+ * - Prioridad 1: variable de build `VITE_GAME_SERVER_URL` (configurar al compilar).
+ * - Desarrollo local: `http://localhost:5000`.
+ * - Producción: subdominio dedicado del backend (Cloudflare → Docker).
+ */
+const DEV_SERVER_URL = 'http://localhost:5000';
+const PROD_SERVER_URL = 'https://zombie-api.nekomisystems.com';
+
+export const DEFAULT_SERVER_URL: string =
+  (import.meta.env.VITE_GAME_SERVER_URL as string | undefined)?.trim() ||
+  (import.meta.env.DEV ? DEV_SERVER_URL : PROD_SERVER_URL);
+
 export class NetworkManager {
   private hub: signalR.HubConnection | null = null;
-  private serverUrl = 'http://localhost:5000';
+  private serverUrl = DEFAULT_SERVER_URL;
   private _status: ConnectionStatus = 'disconnected';
   private _currentNickname = 'Superviviente';
   private _currentRoom: RoomSummaryDto | null = null;
@@ -81,7 +94,7 @@ export class NetworkManager {
   /**
    * Conecta al backend SignalR mediante WebSockets.
    */
-  async connect(serverUrl = 'http://localhost:5000', nickname = 'Superviviente'): Promise<boolean> {
+  async connect(serverUrl = DEFAULT_SERVER_URL, nickname = 'Superviviente'): Promise<boolean> {
     if (this.isConnected) return true;
 
     this.serverUrl = serverUrl.replace(/\/+$/, '');

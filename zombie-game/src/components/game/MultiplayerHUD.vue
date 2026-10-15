@@ -57,32 +57,20 @@
           </button>
         </div>
 
-        <!-- Configuración de Conexión y Nombre de Usuario -->
-        <div class="grid grid-cols-2 gap-3 bg-stone-900/60 p-3 border border-stone-800">
-          <div>
-            <label class="block text-[10px] uppercase text-stone-400 mb-1">Nombre de Superviviente:</label>
-            <input
-              v-model="nicknameInput"
-              type="text"
-              maxlength="24"
-              class="w-full bg-black border border-stone-700 px-2.5 py-1 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500"
-              placeholder="Ej: Survivor_01"
-              :disabled="network.status === 'connecting'"
-            />
-          </div>
-          <div>
-            <label class="block text-[10px] uppercase text-stone-400 mb-1">Servidor Backend (.NET):</label>
-            <input
-              v-model="serverUrlInput"
-              type="text"
-              class="w-full bg-black border border-stone-700 px-2.5 py-1 text-xs text-stone-300 focus:outline-none focus:border-emerald-500"
-              placeholder="http://localhost:5000"
-              :disabled="network.status === 'connecting'"
-            />
-          </div>
+        <!-- Configuración mínima: solo nickname -->
+        <div class="bg-stone-900/60 p-3 border border-stone-800">
+          <label class="block text-[10px] uppercase text-stone-400 mb-1">Nombre de Superviviente:</label>
+          <input
+            v-model="nicknameInput"
+            type="text"
+            maxlength="24"
+            class="w-full bg-black border border-stone-700 px-2.5 py-1 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500"
+            placeholder="Ej: Survivor_01"
+            :disabled="network.status === 'connecting'"
+          />
         </div>
 
-        <!-- Botones de Acción de Conexión -->
+        <!-- Acciones: reconectar (si cae) / sala global / salir -->
         <div class="flex items-center gap-2">
           <button
             v-if="network.status !== 'connected'"
@@ -91,23 +79,23 @@
             :disabled="network.status === 'connecting'"
             @click="connectToServer"
           >
-            {{ network.status === 'connecting' ? 'Conectando...' : 'Conectar al Servidor' }}
+            {{ network.status === 'connecting' ? 'Conectando...' : 'Reconectar al Servidor' }}
           </button>
           <template v-else>
             <button
+              v-if="!network.currentRoom"
               type="button"
               class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 text-xs uppercase"
               @click="joinGlobal"
             >
               Unirse a Sala Global Abierta
             </button>
-            <button
-              type="button"
-              class="bg-stone-800 hover:bg-stone-700 text-stone-300 py-2 px-3 text-xs uppercase"
-              @click="showCreateRoomForm = !showCreateRoomForm"
+            <div
+              v-else
+              class="flex-1 border border-emerald-700/60 bg-emerald-950/40 py-2 px-3 text-xs text-emerald-300 uppercase text-center"
             >
-              {{ showCreateRoomForm ? 'Cancelar' : '+ Crear Sala' }}
-            </button>
+              ● {{ network.currentRoom.name }}
+            </div>
             <button
               v-if="network.currentRoom"
               type="button"
@@ -119,47 +107,32 @@
           </template>
         </div>
 
-        <!-- Formulario para Crear Sala -->
-        <div
-          v-if="showCreateRoomForm && network.status === 'connected'"
-          class="bg-black/90 border border-emerald-700/60 p-3 flex flex-col gap-2.5"
-        >
-          <div class="text-xs font-bold text-emerald-400 uppercase">Nueva Sala Personalizada</div>
-          <div class="grid grid-cols-2 gap-2">
+        <!-- Configuración avanzada del servidor (oculta por defecto) -->
+        <details>
+          <summary class="text-[10px] text-stone-600 hover:text-stone-400 cursor-pointer uppercase tracking-wider select-none">
+            ⚙ Avanzado: servidor personalizado
+          </summary>
+          <div class="mt-2 bg-stone-900/60 p-3 border border-stone-800 flex gap-1.5">
             <input
-              v-model="newRoomName"
+              v-model="serverUrlInput"
               type="text"
-              placeholder="Nombre de la partida..."
-              class="bg-stone-900 border border-stone-700 px-2 py-1 text-xs text-stone-200"
-            />
-            <input
-              v-model.number="newRoomMaxPlayers"
-              type="number"
-              min="2"
-              max="64"
-              placeholder="Máx jugadores (2-64)"
-              class="bg-stone-900 border border-stone-700 px-2 py-1 text-xs text-stone-200"
-            />
-          </div>
-          <div class="flex items-center gap-2">
-            <input
-              v-model="newRoomPassword"
-              type="password"
-              placeholder="Contraseña (opcional)..."
-              class="flex-1 bg-stone-900 border border-stone-700 px-2 py-1 text-xs text-stone-200"
+              class="flex-1 bg-black border border-stone-700 px-2.5 py-1 text-xs text-stone-300 focus:outline-none focus:border-emerald-500"
+              placeholder="https://zombie-api.nekomisystems.com"
+              :disabled="network.status === 'connecting'"
             />
             <button
               type="button"
-              class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1 px-4 text-xs uppercase"
-              @click="createRoom"
+              class="bg-stone-800 hover:bg-stone-700 text-stone-300 py-1 px-3 text-xs uppercase shrink-0"
+              :disabled="network.status === 'connecting'"
+              @click="connectToServer"
             >
-              Crear
+              Conectar
             </button>
           </div>
-        </div>
+        </details>
 
-        <!-- Explorador de Salas Públicas -->
-        <div class="flex-1 flex flex-col gap-2 min-h-48">
+        <!-- Explorador de salas (deshabilitado: solo sala global por ahora) -->
+        <div v-if="false" class="flex-1 flex-col gap-2 min-h-48">
           <div class="flex items-center justify-between text-xs text-stone-400 uppercase">
             <span>Salas Disponibles ({{ roomList.length }})</span>
             <button
@@ -171,63 +144,6 @@
               ↻ Refrescar
             </button>
           </div>
-
-          <div class="flex-1 overflow-y-auto max-h-56 flex flex-col gap-1.5 pr-1">
-            <div
-              v-if="roomList.length === 0"
-              class="text-center py-6 text-stone-600 text-xs italic"
-            >
-              {{ network.status === 'connected' ? 'No hay salas creadas. ¡Sé el primero o únete a la global!' : 'Conéctate para ver las salas activas.' }}
-            </div>
-
-            <div
-              v-for="r in roomList"
-              :key="r.roomId"
-              class="bg-stone-900/90 border border-stone-800 p-2.5 flex items-center justify-between hover:border-stone-600 transition-colors"
-              :class="{ 'border-emerald-500/80 bg-emerald-950/20': network.currentRoom?.roomId === r.roomId }"
-            >
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="font-bold text-stone-200 text-xs">{{ r.name }}</span>
-                  <span
-                    v-if="r.roomId === 'GLOBAL'"
-                    class="text-[9px] px-1 py-0.2 bg-blue-900/60 border border-blue-600 text-blue-300 uppercase"
-                  >
-                    Oficial
-                  </span>
-                  <span
-                    v-if="r.isPrivate"
-                    class="text-[9px] px-1 py-0.2 bg-yellow-900/60 border border-yellow-600 text-yellow-300 uppercase"
-                  >
-                    🔒 Con Clave
-                  </span>
-                </div>
-                <div class="text-[10px] text-stone-500 mt-0.5">
-                  Host: {{ r.hostNickname }} · ID: <span class="text-stone-400">{{ r.roomId }}</span>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-3">
-                <span class="text-xs font-mono text-stone-400">
-                  {{ r.currentPlayers }}/{{ r.maxPlayers }}
-                </span>
-                <button
-                  v-if="network.currentRoom?.roomId !== r.roomId"
-                  type="button"
-                  class="bg-stone-800 hover:bg-emerald-600 hover:text-white text-stone-300 py-1 px-3 text-xs uppercase transition-colors"
-                  @click="joinSpecificRoom(r.roomId, r.isPrivate)"
-                >
-                  Unirse
-                </button>
-                <span
-                  v-else
-                  class="text-xs text-emerald-400 font-bold uppercase px-2"
-                >
-                  Dentro
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -237,7 +153,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue';
-import { networkManager } from '../../game/network/networkManager';
+import { networkManager, DEFAULT_SERVER_URL } from '../../game/network/networkManager';
 import type { ChatMessageDto, RoomSummaryDto } from '../../game/network/networkTypes';
 
 const emit = defineEmits<{
@@ -251,13 +167,9 @@ const network = reactive({
 });
 
 const showLobbyModal = ref(false);
-const showCreateRoomForm = ref(false);
 const nicknameInput = ref(localStorage.getItem('zombie_game_nick') || `Survivor_${Math.floor(Math.random() * 900 + 100)}`);
-const serverUrlInput = ref(localStorage.getItem('zombie_game_server') || 'http://localhost:5000');
+const serverUrlInput = ref(localStorage.getItem('zombie_game_server') || DEFAULT_SERVER_URL);
 
-const newRoomName = ref('Partida de Supervivencia');
-const newRoomMaxPlayers = ref(16);
-const newRoomPassword = ref('');
 const roomList = ref<RoomSummaryDto[]>([]);
 
 // Chat
@@ -287,30 +199,11 @@ async function connectToServer() {
 }
 
 async function joinGlobal() {
-  await networkManager.joinGlobalRoom();
-  showLobbyModal.value = false;
-}
-
-async function createRoom() {
-  if (!newRoomName.value.trim()) return;
-  await networkManager.createRoom(
-    newRoomName.value.trim(),
-    newRoomMaxPlayers.value,
-    !!newRoomPassword.value.trim(),
-    newRoomPassword.value.trim() || undefined,
-  );
-  showCreateRoomForm.value = false;
-  showLobbyModal.value = false;
-}
-
-async function joinSpecificRoom(roomId: string, isPrivate: boolean) {
-  let pwd: string | undefined = undefined;
-  if (isPrivate) {
-    const input = prompt('Introduce la contraseña de la sala:');
-    if (!input) return;
-    pwd = input;
+  // Asegurar que el nickname elegido se aplique al entrar
+  if (nicknameInput.value.trim() && nicknameInput.value.trim() !== networkManager.currentNickname) {
+    await networkManager.setNickname(nicknameInput.value);
   }
-  await networkManager.joinRoom(roomId, pwd);
+  await networkManager.joinGlobalRoom();
   showLobbyModal.value = false;
 }
 

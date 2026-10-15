@@ -156,53 +156,53 @@
         </template>
 
         <!-- ========================================== -->
-        <!-- VISTA DE MODO: MULTIJUGADOR                -->
+        <!-- VISTA DE MODO: MULTIJUGADOR (SEAMLESS)     -->
         <!-- ========================================== -->
         <template v-else>
-          <!-- Barra de Configuración de Red: Nickname y Servidor -->
-          <div class="bg-black/70 border border-stone-800 p-3 rounded-xs flex flex-col sm:flex-row gap-3">
-            <div class="flex-1">
-              <label class="block text-[10px] uppercase text-stone-400 mb-1">Tu Nombre de Superviviente:</label>
-              <div class="relative">
-                <input
-                  v-model="nicknameInput"
-                  type="text"
-                  maxlength="20"
-                  class="w-full bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500"
-                  placeholder="Ej: Survivor_01"
-                />
-              </div>
-            </div>
+          <!-- Solo se pide el nombre de superviviente; la conexión es automática -->
+          <div class="bg-black/70 border border-stone-800 p-3 rounded-xs">
+            <label class="block text-[10px] uppercase text-stone-400 mb-1">Tu Nombre de Superviviente:</label>
+            <input
+              v-model="nicknameInput"
+              type="text"
+              maxlength="20"
+              class="w-full bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500"
+              placeholder="Ej: Survivor_01"
+            />
+          </div>
 
-            <div class="flex-1">
-              <label class="block text-[10px] uppercase text-stone-400 mb-1">Servidor Backend (.NET):</label>
-              <div class="flex gap-1.5">
-                <input
-                  v-model="serverUrlInput"
-                  type="text"
-                  class="flex-1 bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-stone-300 focus:outline-none focus:border-emerald-500"
-                  placeholder="http://localhost:5000"
-                  :disabled="isConnecting"
-                />
-                <button
-                  type="button"
-                  class="px-3 py-1.5 text-xs font-bold uppercase transition-colors shrink-0"
-                  :class="
-                    status === 'connected'
-                      ? 'bg-emerald-950 border border-emerald-600 text-emerald-400 hover:bg-emerald-900'
-                      : isConnecting
-                        ? 'bg-yellow-950 border border-yellow-600 text-yellow-300 animate-pulse'
-                        : 'bg-stone-800 border border-stone-600 text-stone-200 hover:bg-stone-700'
-                  "
-                  :disabled="isConnecting"
-                  @click="connectToServer"
-                >
-                  <span v-if="status === 'connected'"><i class="bi bi-check-circle-fill"></i> Conectado</span>
-                  <span v-else-if="isConnecting"><i class="bi bi-arrow-repeat animate-spin"></i> Conectando</span>
-                  <span v-else><i class="bi bi-plug-fill"></i> Conectar</span>
-                </button>
-              </div>
-            </div>
+          <!-- Estado de conexión (la conexión se inicia sola al elegir multijugador) -->
+          <div
+            class="border p-2.5 text-xs flex items-center gap-2"
+            :class="
+              status === 'connected'
+                ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-300'
+                : status === 'connecting'
+                  ? 'bg-yellow-950/50 border-yellow-700/60 text-yellow-300'
+                  : 'bg-stone-900/50 border-stone-800 text-stone-400'
+            "
+          >
+            <i
+              class="bi"
+              :class="
+                status === 'connected'
+                  ? 'bi-check-circle-fill'
+                  : status === 'connecting'
+                    ? 'bi-arrow-repeat animate-spin'
+                    : 'bi-hdd-network'
+              "
+            ></i>
+            <span v-if="status === 'connected'">Conectado al servidor · {{ globalPlayerCount }} supervivientes en línea</span>
+            <span v-else-if="status === 'connecting'">Conectando al servidor...</span>
+            <span v-else>Servidor no disponible. Reintentando en segundo plano…</span>
+            <button
+              v-if="status !== 'connected' && status !== 'connecting'"
+              type="button"
+              class="ml-auto text-emerald-400 hover:text-emerald-300 text-[10px] uppercase underline"
+              @click="connectToServer"
+            >
+              Reintentar
+            </button>
           </div>
 
           <!-- Mensaje de Error si la conexión falla -->
@@ -223,56 +223,59 @@
             </button>
           </div>
 
-          <!-- Banner para conectarse si está desconectado -->
-          <div
-            v-if="status !== 'connected' && !isConnecting"
-            class="bg-stone-900/50 border border-stone-800 p-4 text-center flex flex-col items-center gap-2.5"
-          >
-            <div class="w-10 h-10 rounded-full bg-emerald-950/80 border border-emerald-600/50 flex items-center justify-center text-emerald-400 text-lg">
-              <i class="bi bi-hdd-network"></i>
+          <!-- Acción principal: Sala Global -->
+          <div class="bg-gradient-to-r from-emerald-950/40 via-stone-900/60 to-black border border-emerald-600/60 p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="font-bold text-sm text-emerald-300 uppercase tracking-wide">SALA GLOBAL OFICIAL</span>
+                <span class="text-[9px] px-1.5 py-0.5 bg-emerald-900/80 border border-emerald-600 text-emerald-200 uppercase font-bold">
+                  Pública / Abierta
+                </span>
+              </div>
+              <p class="text-[11px] text-stone-400 mt-0.5">
+                El mundo compartido principal. Entra y juega con quien esté en línea.
+              </p>
             </div>
-            <p class="text-xs text-stone-300 max-w-md">
-              Conéctate al servidor .NET para explorar las partidas activas, unirte a la Sala Global compartida o crear tu propia sala.
-            </p>
+
             <button
               type="button"
-              class="px-5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs uppercase transition-colors"
-              @click="connectToServer"
+              class="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 transition-colors shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="isJoining"
+              @click="joinGlobalAndPlay"
             >
-              Conectar al Servidor Multijugador
+              <i v-if="isJoining" class="bi bi-arrow-repeat animate-spin"></i>
+              <i v-else class="bi bi-box-arrow-in-right"></i>
+              <span>{{ status === 'connected' ? 'UNIRSE Y JUGAR' : 'CONECTAR Y JUGAR' }}</span>
             </button>
           </div>
 
-          <!-- Panel de Selección de Salas cuando está CONECTADO -->
-          <template v-else-if="status === 'connected'">
-            <!-- Botón Rápido: Sala Global Oficial -->
-            <div class="bg-gradient-to-r from-emerald-950/40 via-stone-900/60 to-black border border-emerald-600/60 p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span class="font-bold text-sm text-emerald-300 uppercase tracking-wide">SALA GLOBAL OFICIAL</span>
-                  <span class="text-[9px] px-1.5 py-0.5 bg-emerald-900/80 border border-emerald-600 text-emerald-200 uppercase font-bold">
-                    Pública / Abierta
-                  </span>
-                </div>
-                <p class="text-[11px] text-stone-400 mt-0.5">
-                  La sala principal compartida. Ideal para entrar directamente sin contraseñas.
-                </p>
-              </div>
-
+          <!-- Configuración avanzada (servidor) — oculta por defecto para no abrumar al jugador -->
+          <details class="group">
+            <summary class="text-[10px] text-stone-600 hover:text-stone-400 cursor-pointer uppercase tracking-wider select-none">
+              ⚙ Avanzado: servidor personalizado
+            </summary>
+            <div class="mt-2 bg-black/70 border border-stone-800 p-3 flex gap-1.5">
+              <input
+                v-model="serverUrlInput"
+                type="text"
+                class="flex-1 bg-[#12151c] border border-stone-700 px-2.5 py-1.5 text-xs text-stone-300 focus:outline-none focus:border-emerald-500"
+                placeholder="https://zombie-api.nekomisystems.com"
+                :disabled="isConnecting"
+              />
               <button
                 type="button"
-                class="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 transition-colors shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.4)]"
-                :disabled="isJoining"
-                @click="joinGlobalAndPlay"
+                class="px-3 py-1.5 text-xs font-bold uppercase bg-stone-800 border border-stone-600 text-stone-200 hover:bg-stone-700 transition-colors shrink-0"
+                :disabled="isConnecting"
+                @click="connectToServer"
               >
-                <i v-if="isJoining && joiningRoomId === 'GLOBAL'" class="bi bi-arrow-repeat animate-spin"></i>
-                <i v-else class="bi bi-box-arrow-in-right"></i>
-                <span>UNIRSE A SALA GLOBAL Y JUGAR</span>
+                Conectar
               </button>
             </div>
+          </details>
 
-            <!-- Botones de Acción Secundaria: Crear Sala y Refrescar -->
+          <!-- Panel de Selección de Salas cuando está CONECTADO -->
+          <template v-if="false && status === 'connected'">
             <div class="flex items-center justify-between pt-1">
               <button
                 type="button"
@@ -294,7 +297,6 @@
               </button>
             </div>
 
-            <!-- Formulario Desplegable para Crear Sala -->
             <div
               v-if="showCreateRoom"
               class="bg-black/90 border border-emerald-700/60 p-3.5 flex flex-col gap-3 animate-in fade-in duration-150"
@@ -348,7 +350,6 @@
               </div>
             </div>
 
-            <!-- Explorador de Salas Disponibles -->
             <div class="flex flex-col gap-2">
               <div class="text-[11px] uppercase tracking-wider text-stone-400 font-bold flex items-center justify-between">
                 <span>Salas Activas de la Comunidad ({{ otherRooms.length }})</span>
@@ -459,7 +460,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { sound } from '../../audio/soundEngine';
-import { networkManager } from '../../game/network/networkManager';
+import { networkManager, DEFAULT_SERVER_URL } from '../../game/network/networkManager';
 import type { RoomSummaryDto, ConnectionStatus } from '../../game/network/networkTypes';
 
 const emit = defineEmits<{
@@ -476,7 +477,7 @@ const nicknameInput = ref(
   localStorage.getItem('zombie_game_nick') || `Survivor_${Math.floor(Math.random() * 900 + 100)}`
 );
 const serverUrlInput = ref(
-  localStorage.getItem('zombie_game_server') || 'http://localhost:5000'
+  localStorage.getItem('zombie_game_server') || DEFAULT_SERVER_URL
 );
 
 // Connection & status
@@ -503,6 +504,12 @@ const otherRooms = computed(() => {
   return roomList.value.filter((r) => r.roomId !== 'GLOBAL');
 });
 
+// Jugadores en la sala global (para el mensaje de estado de conexión)
+const globalPlayerCount = computed(() => {
+  const g = roomList.value.find((r) => r.roomId === 'GLOBAL');
+  return g?.currentPlayers ?? 0;
+});
+
 function selectMode(mode: GameMode) {
   selectedMode.value = mode;
   sound.playClick();
@@ -525,7 +532,7 @@ async function connectToServer() {
     if (ok) {
       await refreshRooms();
     } else {
-      errorMessage.value = `No se pudo conectar a ${serverUrlInput.value}. Asegúrate de que el backend de .NET esté activo.`;
+      errorMessage.value = 'No se pudo conectar al servidor multijugador. Inténtalo de nuevo en un momento.';
     }
   } catch (err: any) {
     errorMessage.value = err?.message || 'Error al conectar con el servidor.';
