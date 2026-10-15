@@ -5,10 +5,26 @@ import type { ChunkData, Quad, Structure } from '../world/types';
 const TILE_RES = 128; // Pixels per chunk tile (2 pixels per meter for 64m chunks)
 const CHUNK_SIZE = WORLD.chunkSize; // 64m
 const PIXELS_PER_METER = TILE_RES / CHUNK_SIZE; // 2.0
+const MAX_CACHED_TILES = 256;
+
+export interface MapPlayerMarker {
+  id: string;
+  nickname: string;
+  x: number;
+  z: number;
+  heading: number;
+}
 
 export class MapManager {
   /** Claves de chunks descubiertos por el jugador local: "cx,cz" */
   readonly unlockedChunks = new Set<string>();
+  /** Invalida las vistas cacheadas al cambiar de mundo o descubrir terreno. */
+  revision = 0;
+
+  isDiscovered(x: number, z: number): boolean {
+    return Number.isFinite(x) && Number.isFinite(z) &&
+      this.unlockedChunks.has(`${Math.floor(x / CHUNK_SIZE)},${Math.floor(z / CHUNK_SIZE)}`);
+  }
 
   /** Caché de imágenes de chunks renderizados */
   private cachedTiles = new Map<string, HTMLCanvasElement>();
@@ -38,6 +54,7 @@ export class MapManager {
    */
   init(seed: number, spawnX = 0, spawnZ = 0, generator?: WorldGenerator) {
     this.seed = seed;
+    this.revision++;
     this.cachedTiles.clear();
     this.unlockedChunks.clear();
     this.loadFromStorage();
@@ -65,13 +82,12 @@ export class MapManager {
         if (!this.unlockedChunks.has(key)) {
           this.unlockedChunks.add(key);
           newlyUnlocked = true;
-          // Precargar tile en caché
-          this.getTile(cx, cz, generator);
         }
       }
     }
 
     if (newlyUnlocked) {
+      this.revision++;
       this.scheduleSave();
     }
   }
@@ -85,6 +101,12 @@ export class MapManager {
     if (!tile && typeof document !== 'undefined') {
       const data = generator.generateChunk(cx, cz);
       tile = this.renderChunkTile(data);
+      this.cachedTiles.set(key, tile);
+      if (this.cachedTiles.size > MAX_CACHED_TILES) {
+        this.cachedTiles.delete(this.cachedTiles.keys().next().value!);
+      }
+    } else if (tile) {
+      this.cachedTiles.delete(key);
       this.cachedTiles.set(key, tile);
     }
     return tile ?? null;
@@ -434,7 +456,7 @@ export class MapManager {
   /**
    * Dibuja el cursor / flecha GPS del jugador local
    */
-  private drawPlayerMarker(
+  drawPlayerMarker(
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
@@ -508,6 +530,72 @@ export class MapManager {
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
+      ctx.restore();
+    }
+  }
+
+  /** Sin indicadores de borde: nunca revela compañeros en terreno desconocido. */
+  drawRemotePlayers(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    centerX: number,
+    centerZ: number,
+    zoom: number,
+    players: readonly MapPlayerMarker[],
+  ) {
+    const colors = ['#a78bfa', '#fb7185', '#fbbf24', '#34d399', '#f472b6', '#60a5fa'];
+    for (const p of players) {
+      if (!Number.isFinite(p.heading) || !this.isDiscovered(p.x, p.z)) continue;
+      const sx = (p.x - centerX) * zoom + width / 2;
+      const sy = (p.z - centerZ) * zoom + height / 2;
+      if (sx < 10 || sx > width - 10 || sy < 34 || sy > height - 30) continue;
+      let hash = 0;
+      for (let i = 0; i < p.id.length; i++) hash = (hash * 31 + p.id.charCodeAt(i)) | 0;
+      const color = colors[(hash >>> 0) % colors.length];
+      ctx.save();
+      // Recorta incluso el cono y el nombre para no pintar sobre chunks ocultos.
+      const cx = Math.floor(p.x / CHUNK_SIZE);
+      const cz = Math.floor(p.z / CHUNK_SIZE);
+      ctx.beginPath();
+      ctx.rect(
+        (cx * CHUNK_SIZE - centerX) * zoom + width / 2,
+        (cz * CHUNK_SIZE - centerZ) * zoom + height / 2,
+        CHUNK_SIZE * zoom, CHUNK_SIZE * zoom,
+      );
+      ctx.clip();
+      ctx.translate(sx, sy);
+      ctx.save();
+      ctx.rotate(Math.PI / 2 - p.heading);
+      // Cono de mirada + flecha: +Z apunta abajo y +X a la derecha.
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.18;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 24, -0.42, 0.42);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.moveTo(9, 0);
+      ctx.lineTo(-6, -5.5);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-6, 5.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.restore();
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const label = p.nickname.slice(0, 12);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#07090e';
+      ctx.strokeText(label, 0, 11);
+      ctx.fillStyle = color;
+      ctx.fillText(label, 0, 11);
       ctx.restore();
     }
   }

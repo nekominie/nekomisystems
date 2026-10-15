@@ -239,29 +239,50 @@ interface Assets {
 }
 
 let assetsPromise: Promise<Assets> | null = null;
+let cachedZombieAssets: Assets | null = null;
+
+export async function preloadZombieAssets(onItemLoaded?: (name: string) => void): Promise<Assets> {
+  if (cachedZombieAssets) return cachedZombieAssets;
+
+  onItemLoaded?.('Modelo zombi base');
+  const base = await loadMikuTemplate('Running');
+
+  const zombieAnimList: { key: string; label: string }[] = [
+    { key: 'zombie_lento', label: 'Caminata lenta zombi' },
+    { key: 'zombie_correr_1', label: 'Carrera zombi tipo 1' },
+    { key: 'zombie_correr_2', label: 'Carrera zombi tipo 2' },
+    { key: 'zombie_walk_fast', label: 'Caminata rápida zombi' },
+    { key: 'correr', label: 'Carrera veloz zombi' },
+    { key: 'reaccion_golpe', label: 'Impacto recibido zombi' },
+    { key: 'zombie_attack', label: 'Ataque zombi' },
+  ];
+
+  const [slowWalk, run1, run2, walk, run, hit, attack] = await Promise.all(
+    zombieAnimList.map(async ({ key, label }) => {
+      const clip = await loadAnimation(key as any);
+      onItemLoaded?.(`Animación: ${label}`);
+      return clip;
+    })
+  );
+
+  cachedZombieAssets = {
+    base,
+    slowWalk,
+    run1,
+    run2,
+    walk,
+    run,
+    idle: slowWalk,
+    hit,
+    attack,
+  };
+  return cachedZombieAssets;
+}
+
 function loadAssets(): Promise<Assets> {
+  if (cachedZombieAssets) return Promise.resolve(cachedZombieAssets);
   if (!assetsPromise) {
-    assetsPromise = Promise.all([
-      loadMikuTemplate('Running'),
-      loadAnimation('zombie_lento'),
-      loadAnimation('zombie_correr_1'),
-      loadAnimation('zombie_correr_2'),
-      loadAnimation('zombie_walk_fast'),
-      loadAnimation('correr'),
-      loadAnimation('zombie_lento'),
-      loadAnimation('reaccion_golpe'),
-      loadAnimation('zombie_attack'),
-    ]).then(([base, slowWalk, run1, run2, walk, run, idle, hit, attack]) => ({
-      base,
-      slowWalk,
-      run1,
-      run2,
-      walk,
-      run,
-      idle,
-      hit,
-      attack,
-    }));
+    assetsPromise = preloadZombieAssets();
   }
   return assetsPromise;
 }
@@ -363,11 +384,15 @@ export class ZombieManager {
     private scene: THREE.Scene,
     private world: WorldManager,
   ) {
-    loadAssets()
-      .then((a) => {
-        if (!this.disposed) this.assets = a;
-      })
-      .catch((err) => console.error('[zombie-game] No se pudieron cargar los modelos de zombis:', err));
+    if (cachedZombieAssets) {
+      this.assets = cachedZombieAssets;
+    } else {
+      loadAssets()
+        .then((a) => {
+          if (!this.disposed) this.assets = a;
+        })
+        .catch((err) => console.error('[zombie-game] No se pudieron cargar los modelos de zombis:', err));
+    }
   }
 
   /** Zombis vivos. */

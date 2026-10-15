@@ -26,8 +26,8 @@
           <span class="font-bold tracking-wider text-stone-200">GPS NAV</span>
         </div>
         <div class="text-[8px] text-stone-400 tracking-tight font-mono">
-          <span class="text-stone-500">X:</span>{{ Math.round(playerX) }}
-          <span class="text-stone-500 ml-1">Z:</span>{{ Math.round(playerZ) }}
+          <span class="text-stone-500">X:</span>{{ liveX }}
+          <span class="text-stone-500 ml-1">Z:</span>{{ liveZ }}
         </div>
         <div class="flex items-center gap-0.5 font-bold text-amber-200 text-[9px]">
           <span class="text-red-400 text-[7px]">▲</span>N
@@ -82,9 +82,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import type { WorldGenerator } from '../../game/world/chunkGenerator';
-import type { MapManager } from '../../game/map/mapManager';
+import type { MapManager, MapPlayerMarker } from '../../game/map/mapManager';
 import { sound } from '../../audio/soundEngine';
 
 const props = defineProps<{
@@ -95,6 +95,9 @@ const props = defineProps<{
   mapManager: MapManager;
   clock?: string;
   isNight?: boolean;
+  readPlayer?: () => { x: number; z: number; rot: number };
+  readPlayers?: () => readonly MapPlayerMarker[];
+  readGenerator?: () => WorldGenerator | null;
 }>();
 
 const emit = defineEmits<{
@@ -105,44 +108,127 @@ const canvasSize = 210;
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let animFrameId: number | null = null;
 const ZOOM = 1.15; // Píxeles por metro (~180m de área visible)
+const MARGIN = 72;
+const terrainSize = canvasSize + MARGIN * 2;
+const liveX = ref(0);
+const liveZ = ref(0);
+let ctx: CanvasRenderingContext2D | null = null;
+let terrain: HTMLCanvasElement | null = null;
+let terrainCtx: CanvasRenderingContext2D | null = null;
+let lastGenerator: WorldGenerator | null = null;
+let lastRevision = -1;
+let tileCount = -1;
+let terrainX = 0;
+let terrainZ = 0;
+let centerX = 0;
+let centerZ = 0;
+let heading = 0;
+let initialized = false;
+let lastTime = 0;
+let lastLabels = 0;
+let dpr = 1;
 
 function handleClick() {
   sound.playClick();
   emit('openFullMap');
 }
 
-function render() {
-  if (!canvasRef.value || !props.generator) return;
-  const ctx = canvasRef.value.getContext('2d');
-  if (!ctx) return;
+function render(now: number) {
+  const generator = props.readGenerator ? props.readGenerator() : props.generator;
+  if (!ctx || !terrain || !terrainCtx || !generator) return;
+  const p = props.readPlayer?.() ?? { x: props.playerX, z: props.playerZ, rot: props.playerRot };
+  if (![p.x, p.z, p.rot].every(Number.isFinite)) return;
+  const dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
+  lastTime = now;
+  // Suavizado independiente de FPS; teleports/cambio de mundo no arrastran el mapa.
+  if (!initialized || generator !== lastGenerator || Math.hypot(p.x - centerX, p.z - centerZ) > 100) {
+    centerX = p.x;
+    centerZ = p.z;
+    heading = p.rot;
+    initialized = true;
+  } else {
+    const follow = 1 - Math.exp(-18 * dt);
+    centerX += (p.x - centerX) * follow;
+    centerZ += (p.z - centerZ) * follow;
+    const angle = p.rot - heading;
+    heading += Math.atan2(Math.sin(angle), Math.cos(angle)) * (1 - Math.exp(-24 * dt));
+  }
 
-  props.mapManager.drawMap(
-    ctx,
-    canvasSize,
-    canvasSize,
-    props.playerX,
-    props.playerZ,
-    ZOOM,
-    props.generator,
-    props.playerX,
-    props.playerZ,
-    props.playerRot,
+  const nextDpr = Math.min(2, window.devicePixelRatio || 1);
+  if (nextDpr !== dpr) {
+    dpr = nextDpr;
+    canvasRef.value!.width = Math.round(canvasSize * dpr);
+    canvasRef.value!.height = Math.round(canvasSize * dpr);
+    terrain.width = Math.round(terrainSize * dpr);
+    terrain.height = Math.round(terrainSize * dpr);
+    lastRevision = -1;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Reconstruir el terreno solo al agotar el margen o cambiar el descubrimiento.
+  if (generator !== lastGenerator || lastRevision !== props.mapManager.revision ||
+      tileCount !== props.mapManager.unlockedChunks.size ||
+      Math.abs(centerX - terrainX) * ZOOM > MARGIN / 2 ||
+      Math.abs(centerZ - terrainZ) * ZOOM > MARGIN / 2) {
+    terrainX = centerX;
+    terrainZ = centerZ;
+    terrainCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    props.mapManager.drawMap(terrainCtx, terrainSize, terrainSize, terrainX, terrainZ, ZOOM, generator);
+    lastGenerator = generator;
+    lastRevision = props.mapManager.revision;
+    tileCount = props.mapManager.unlockedChunks.size;
+  }
+  ctx.drawImage(
+    terrain,
+    (MARGIN + (centerX - terrainX) * ZOOM) * dpr,
+    (MARGIN + (centerZ - terrainZ) * ZOOM) * dpr,
+    canvasSize * dpr, canvasSize * dpr,
+    0, 0, canvasSize, canvasSize,
   );
+  const players = props.readPlayers?.();
+  if (players) {
+    props.mapManager.drawRemotePlayers(ctx, canvasSize, canvasSize, centerX, centerZ, ZOOM, players);
+  }
+  props.mapManager.drawPlayerMarker(
+    ctx, canvasSize, canvasSize, centerX, centerZ, ZOOM, p.x, p.z, heading,
+  );
+  // El texto no requiere 60 renders Vue por segundo.
+  if (now - lastLabels > 150) {
+    liveX.value = Math.round(p.x);
+    liveZ.value = Math.round(p.z);
+    lastLabels = now;
+  }
 }
 
 // Bucle de renderizado del minimapa (sincronizado con requestAnimationFrame)
-function loop() {
-  render();
+function loop(now: number) {
+  render(now);
   animFrameId = requestAnimationFrame(loop);
+}
+function onVisibilityChange() {
+  if (animFrameId !== null) cancelAnimationFrame(animFrameId);
+  animFrameId = null;
+  lastTime = performance.now();
+  if (!document.hidden) animFrameId = requestAnimationFrame(loop);
 }
 
 onMounted(() => {
-  animFrameId = requestAnimationFrame(loop);
+  ctx = canvasRef.value?.getContext('2d', { alpha: false }) ?? null;
+  terrain = document.createElement('canvas');
+  terrain.width = terrainSize;
+  terrain.height = terrainSize;
+  terrainCtx = terrain.getContext('2d', { alpha: false });
+  lastTime = performance.now();
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  onVisibilityChange();
 });
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange);
   if (animFrameId !== null) {
     cancelAnimationFrame(animFrameId);
   }
+  terrain = null;
+  terrainCtx = null;
+  ctx = null;
 });
 </script>

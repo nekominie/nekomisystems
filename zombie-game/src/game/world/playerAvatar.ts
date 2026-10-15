@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { disposeMikuInstance, instantiateMiku, loadMikuTemplate, type MikuInstance } from './mikuAssets';
+import { disposeMikuInstance, instantiateMiku, loadMikuTemplate, type MikuInstance, type MikuTemplate } from './mikuAssets';
 import { loadAnimation, splitClip } from './animationAssets';
 
 /** Velocidad base de referencia (m/s) para ajustar la cadencia de pasos. */
@@ -118,11 +118,58 @@ export class PlayerAvatar {
     if (initialUpper) initialUpper.play();
   }
 
-  static async load(): Promise<PlayerAvatar> {
-    // 1. Cargar el modelo base Miku
+  private static preloadedData: {
+    baseTemplate: MikuTemplate;
+    locomotionClips: Record<LocomotionClip, THREE.AnimationClip>;
+    actionClips: Record<ActionClip, THREE.AnimationClip>;
+  } | null = null;
+
+  static isPreloaded(): boolean {
+    return this.preloadedData !== null;
+  }
+
+  static createFromPreloaded(): PlayerAvatar {
+    if (!this.preloadedData) {
+      throw new Error('[PlayerAvatar] Se intentó instanciar sin haber precargado los assets.');
+    }
+    const inst = instantiateMiku(this.preloadedData.baseTemplate, false);
+    return new PlayerAvatar(inst, this.preloadedData.locomotionClips, this.preloadedData.actionClips);
+  }
+
+  static async preload(onItemLoaded?: (name: string) => void): Promise<void> {
+    if (this.preloadedData) return;
+
+    onItemLoaded?.('Modelo base Hatsune');
     const baseTemplate = await loadMikuTemplate('Running');
 
-    // 2. Cargar en paralelo todos los clips de animación provistos en src/animations
+    const animDefs: { key: string; label: string }[] = [
+      { key: 'idle', label: 'Reposo' },
+      { key: 'caminar', label: 'Caminar' },
+      { key: 'correr', label: 'Correr' },
+      { key: 'sigilo', label: 'Sigilo' },
+      { key: 'turn_left', label: 'Giro' },
+      { key: 'apuntar_espaldas', label: 'Rifle marcha atrás' },
+      { key: 'agachado_izquierda', label: 'Agachado izquierda' },
+      { key: 'agachado_derecha', label: 'Agachado derecha' },
+      { key: 'correr_rifle_abajo', label: 'Carrera con rifle' },
+      { key: 'caminar_recarga', label: 'Recarga en marcha' },
+      { key: 'correr_recarga', label: 'Recarga en carrera' },
+      { key: 'bloquear_1', label: 'Bloqueo táctico' },
+      { key: 'bat_swing', label: 'Golpe cuerpo a cuerpo' },
+      { key: 'punetazo', label: 'Puñetazo' },
+      { key: 'patada_derecha', label: 'Patada' },
+      { key: 'golpes_codo', label: 'Golpe de codo' },
+      { key: 'muerte', label: 'Secuencia de caída' },
+    ];
+
+    const clips = await Promise.all(
+      animDefs.map(async ({ key, label }) => {
+        const clip = await loadAnimation(key as any);
+        onItemLoaded?.(`Animación: ${label}`);
+        return clip;
+      })
+    );
+
     const [
       idleClip,
       walkClip,
@@ -141,25 +188,7 @@ export class PlayerAvatar {
       kickClip,
       elbowClip,
       deathClip,
-    ] = await Promise.all([
-      loadAnimation('idle'),
-      loadAnimation('caminar'),
-      loadAnimation('correr'),
-      loadAnimation('sigilo'),
-      loadAnimation('turn_left'),
-      loadAnimation('apuntar_espaldas'),
-      loadAnimation('agachado_izquierda'),
-      loadAnimation('agachado_derecha'),
-      loadAnimation('correr_rifle_abajo'),
-      loadAnimation('caminar_recarga'),
-      loadAnimation('correr_recarga'),
-      loadAnimation('bloquear_1'),
-      loadAnimation('bat_swing'),
-      loadAnimation('punetazo'),
-      loadAnimation('patada_derecha'),
-      loadAnimation('golpes_codo'),
-      loadAnimation('muerte'),
-    ]);
+    ] = clips;
 
     const { mirrorAnimation } = await import('./animationAssets');
     const turnRightClip = mirrorAnimation(turnLeftClip);
@@ -188,7 +217,15 @@ export class PlayerAvatar {
       death: deathClip,
     };
 
-    return new PlayerAvatar(instantiateMiku(baseTemplate, false), locomotionClips, actionClips);
+    this.preloadedData = { baseTemplate, locomotionClips, actionClips };
+  }
+
+  static async load(): Promise<PlayerAvatar> {
+    if (this.preloadedData) {
+      return this.createFromPreloaded();
+    }
+    await this.preload();
+    return this.createFromPreloaded();
   }
 
   /**

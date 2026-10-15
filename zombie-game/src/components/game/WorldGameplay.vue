@@ -365,6 +365,9 @@
         </button>
 
         <MinimapGPS
+          :read-player="readMinimapPlayer"
+          :read-players="readMinimapPlayers"
+          :read-generator="readMinimapGenerator"
           :player-x="player.x"
           :player-z="player.z"
           :player-rot="player.rot"
@@ -742,6 +745,15 @@ function newSeed() {
 // --- Estado de juego ---
 const isStealth = ref(false);
 const player = { x: 0, z: 0, rot: 0, stealthSpeed: 2.8, walkSpeed: 5.6, runSpeed: 9.6, radius: 0.4 };
+
+// El minimapa lee el motor por frame, sin forzar renders Vue del gameplay.
+const readMinimapPlayer = () => player;
+const emptyMapPlayers = Object.freeze([]);
+const readMinimapPlayers = () =>
+  networkManager.isConnected && networkManager.currentRoom
+    ? remotePlayers?.getMapMarkers() ?? emptyMapPlayers
+    : emptyMapPlayers;
+const readMinimapGenerator = () => world?.generator ?? null;
 const keys: Record<string, boolean> = {};
 
 // Cámara flotante superior (estilo Project Zomboid): ángulo fijo, rotable con Q/E.
@@ -902,6 +914,24 @@ function startWorld(newSeedValue: number) {
     }
     showToast(`¡Impacto crítico! -${damage} Salud por colisión violenta`);
     showHitMark(`-${damage}`, 'kill');
+  };
+  vehicles.onVehicleMoved = (car) => {
+    if (networkManager.isConnected && networkManager.currentRoom) {
+      networkManager.sendVehicleState({
+        vehicleId: car.id,
+        archetype: car.config.archetype,
+        x: car.x,
+        y: 0,
+        z: car.z,
+        heading: car.heading,
+        speed: car.currentSpeed,
+        steer: car.steer,
+        durability: car.currentDurability,
+        maxDurability: car.config.maxDurability,
+        fuel: car.fuel,
+        isEngineRunning: car.isEngineRunning,
+      });
+    }
   };
   refuel = new RefuelSession(scene, world);
   explosives = new ExplosivesManager(scene, world, zombies, vehicles);
@@ -1981,24 +2011,35 @@ function loop(now: number) {
   if (keys['q']) cam.yaw -= 1.6 * dt;
   if (keys['e']) cam.yaw += 1.6 * dt;
 
-  // Conduciendo: el jugador va dentro del carro (oculto) y la cámara sigue al carro
-  if (drv && vehicles) {
-    // Canalizando: el carro va solo (sin acelerador ni giro) hasta detenerse.
-    const input: DriveInput = reviving.value
-      ? { throttle: 0, steer: 0, handbrake: false }
-      : {
+  // Actualización de vehículos: faros de todos los carros tripulados, colisiones entre coches y conducción
+  if (vehicles) {
+    const input: DriveInput = (drv && !reviving.value)
+      ? {
         throttle: (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0) + mobileMove.value.y,
         steer: (keys['a'] || keys['arrowleft'] ? 1 : 0) - (keys['d'] || keys['arrowright'] ? 1 : 0) - mobileMove.value.x,
         handbrake: !!keys[' '],
-      };
-    vehicles.update(dt, input, cycle?.lampFactor ?? 0);
-    player.x = drv.x;
-    player.z = drv.z;
-    player.rot = drv.heading;
+      }
+      : { throttle: 0, steer: 0, handbrake: false };
 
-    // Alerta zombis circundantes por el radio de ruido dinámico del motor
-    if (drv.currentNoiseRadius > 0 && frame % 12 === 0) {
-      zombies?.alertNoise(drv.x, drv.z, drv.currentNoiseRadius);
+    const occupiedCarIds = new Set<string>();
+    if (drv) occupiedCarIds.add(drv.id);
+    if (remotePlayers) {
+      for (const r of remotePlayers.getInVehicleRiders()) {
+        if (r.vehicleId) occupiedCarIds.add(r.vehicleId);
+      }
+    }
+
+    vehicles.update(dt, input, cycle?.lampFactor ?? 0, occupiedCarIds);
+
+    if (drv) {
+      player.x = drv.x;
+      player.z = drv.z;
+      player.rot = drv.heading;
+
+      // Alerta zombis circundantes por el radio de ruido dinámico del motor
+      if (drv.currentNoiseRadius > 0 && frame % 12 === 0) {
+        zombies?.alertNoise(drv.x, drv.z, drv.currentNoiseRadius);
+      }
     }
   }
 
@@ -2359,8 +2400,19 @@ onMounted(() => {
   reticle = new AimReticle(scene);
   dropIndicator = new DropRangeIndicator(scene);
 
-  playerMesh = createPlayerMesh();
+  playerMesh = new THREE.Group();
   scene.add(playerMesh);
+
+  if (PlayerAvatar.isPreloaded()) {
+    const a = PlayerAvatar.createFromPreloaded();
+    playerMesh.add(a.root);
+    avatar = a;
+    companion?.setHandBone(a.getRightHandBone());
+  } else {
+    // Marcador provisional solo si no se hubiera precargado
+    const placeholder = createPlayerMesh();
+    playerMesh.add(placeholder);
+  }
 
   // Inicialización de jugadores remotos multijugador
   remotePlayers = new RemotePlayerManager(scene);
@@ -2423,6 +2475,16 @@ onMounted(() => {
   };
   networkManager.onRemoteVehicleUpdate = (state) => {
     if (!vehicles) return;
+    if (state.vehicleId.startsWith('car:')) {
+      const parts = state.vehicleId.substring(4).split(',');
+      if (parts.length === 2) {
+        const sx = parseFloat(parts[0]);
+        const sz = parseFloat(parts[1]);
+        if (!isNaN(sx) && !isNaN(sz)) {
+          world?.claimCar({ x: sx, z: sz } as any);
+        }
+      }
+    }
     let car = vehicles.getCar(state.vehicleId);
     if (!car && state.x !== 0) {
       car = vehicles.spawnCar(state.x, state.z, state.heading, state.archetype, state.vehicleId);
@@ -2437,6 +2499,7 @@ onMounted(() => {
       car.currentFuel = state.fuel;
       car.isEngineRunning = state.isEngineRunning;
       car.syncMesh();
+      world?.setDynamicCollider(car.id, car.collider());
     }
   };
   networkManager.onZombieHitEvent = (hit) => {
@@ -2508,19 +2571,21 @@ onMounted(() => {
     }
   };
 
-  // Carga de Miku (modelo + animaciones); reemplaza a la cápsula cuando esté lista
-  PlayerAvatar.load()
-    .then((a) => {
-      if (!playerMesh) {
-        a.dispose(); // el componente se desmontó mientras cargaba
-        return;
-      }
-      playerMesh.clear();
-      playerMesh.add(a.root);
-      avatar = a;
-      companion?.setHandBone(a.getRightHandBone());
-    })
-    .catch((err) => console.error('[zombie-game] No se pudo cargar el avatar de Miku:', err));
+  // Carga de Miku en segundo plano si no estaba precargado
+  if (!avatar) {
+    PlayerAvatar.load()
+      .then((a) => {
+        if (!playerMesh) {
+          a.dispose(); // el componente se desmontó mientras cargaba
+          return;
+        }
+        playerMesh.clear();
+        playerMesh.add(a.root);
+        avatar = a;
+        companion?.setHandBone(a.getRightHandBone());
+      })
+      .catch((err) => console.error('[zombie-game] No se pudo cargar el avatar de Miku:', err));
+  }
 
   startWorld(seed.value);
 

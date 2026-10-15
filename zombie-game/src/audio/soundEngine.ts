@@ -270,6 +270,58 @@ class SoundEngine {
     }
     this.isAmbientRunning = false;
   }
+
+  // Crash metálico y crujido para colisiones de vehículos
+  public playCarCrash(intensity = 1.0) {
+    if (this.isMuted) return;
+    try {
+      this.initContext();
+      if (!this.ctx || !this.masterGain) return;
+
+      const now = this.ctx.currentTime;
+      const factor = Math.min(1.6, Math.max(0.4, intensity / 5));
+
+      // 1. Impacto sordo de baja frecuencia (chasis)
+      const boom = this.ctx.createOscillator();
+      const boomGain = this.ctx.createGain();
+      boom.type = 'sine';
+      boom.frequency.setValueAtTime(140, now);
+      boom.frequency.exponentialRampToValueAtTime(32, now + 0.35);
+
+      boomGain.gain.setValueAtTime(0.4 * factor, now);
+      boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+      boom.connect(boomGain);
+      boomGain.connect(this.masterGain);
+      boom.start(now);
+      boom.stop(now + 0.4);
+
+      // 2. Ruido filtrado de deformación de metal y crujido
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.25);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(850, now);
+      filter.frequency.exponentialRampToValueAtTime(320, now + 0.25);
+      filter.Q.setValueAtTime(3.2, now);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.35 * factor, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(this.masterGain);
+      noise.start(now);
+    } catch {}
+  }
 }
 
 export const sound = new SoundEngine();

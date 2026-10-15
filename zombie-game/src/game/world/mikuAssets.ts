@@ -21,7 +21,32 @@ const ZOMBIE_TINT = new THREE.Color(0.55, 0.95, 0.5);
 
 // ---------- Texturas (únicas) ----------
 let textures: Record<'Body' | 'Cloth' | 'Face' | 'Hair' | 'HairStencil', THREE.Texture> | null = null;
-function getTextures() {
+
+export async function preloadMikuTextures(onItem?: (name: string) => void): Promise<void> {
+  if (textures) return;
+  const loader = new THREE.TextureLoader();
+  const defs = [
+    { key: 'Body', file: 'Body_baseColor.png', label: 'Textura: Cuerpo' },
+    { key: 'Cloth', file: 'Cloth_baseColor.png', label: 'Textura: Ropa' },
+    { key: 'Face', file: 'Face_baseColor.png', label: 'Textura: Rostro' },
+    { key: 'Hair', file: 'Hair_baseColor.png', label: 'Textura: Cabello' },
+    { key: 'HairStencil', file: 'Hair_Stencil_baseColor.png', label: 'Textura: Estarcido de cabello' },
+  ] as const;
+
+  const result: Partial<Record<'Body' | 'Cloth' | 'Face' | 'Hair' | 'HairStencil', THREE.Texture>> = {};
+  await Promise.all(
+    defs.map(async (d) => {
+      onItem?.(d.label);
+      const tex = await loader.loadAsync(`${BASE}/textures/${d.file}`);
+      tex.flipY = true;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      result[d.key] = tex;
+    })
+  );
+  textures = result as Record<'Body' | 'Cloth' | 'Face' | 'Hair' | 'HairStencil', THREE.Texture>;
+}
+
+export function getTextures() {
   if (textures) return textures;
   const loader = new THREE.TextureLoader();
   const t = (file: string) => {

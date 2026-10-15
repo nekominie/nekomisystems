@@ -9,9 +9,13 @@ const SMOKE_GEO = new THREE.DodecahedronGeometry(0.22, 1);
 const SPARK_GEO = new THREE.BoxGeometry(0.07, 0.07, 0.07);
 
 const MAT_TIRE = new THREE.MeshLambertMaterial({ color: 0x141414, roughness: 0.9 } as any);
-const MAT_HEADLIGHT = new THREE.MeshBasicMaterial({ color: 0xfff6c8 });
+const MAT_HEADLIGHT_ON = new THREE.MeshBasicMaterial({ color: 0xfffae0 });
+const MAT_HEADLIGHT_OFF = new THREE.MeshStandardMaterial({ color: 0x2e2c28, roughness: 0.8 });
+const MAT_HEADLIGHT = MAT_HEADLIGHT_ON;
 const MAT_HEADLIGHT_BROKEN = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95 });
-const MAT_TAILLIGHT = new THREE.MeshBasicMaterial({ color: 0x991b1b });
+const MAT_TAILLIGHT_ON = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+const MAT_TAILLIGHT_OFF = new THREE.MeshStandardMaterial({ color: 0x3d0b0b, roughness: 0.9 });
+const MAT_TAILLIGHT = MAT_TAILLIGHT_ON;
 const MAT_EMERGENCY_RED = new THREE.MeshBasicMaterial({ color: 0xef4444 });
 const MAT_EMERGENCY_BLUE = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
 
@@ -82,6 +86,7 @@ export class VehicleInstance {
   private glassMat!: THREE.MeshStandardMaterial;
   private bumperMat!: THREE.MeshStandardMaterial;
   private frontHeadlights: THREE.Mesh[] = [];
+  private rearTaillights: THREE.Mesh[] = [];
   private frontBumperMesh?: THREE.Mesh;
   private rearBumperMesh?: THREE.Mesh;
 
@@ -273,10 +278,12 @@ export class VehicleInstance {
 
     // Faros delanteros (+Z) y traseros (-Z)
     this.frontHeadlights = [];
+    this.rearTaillights = [];
     for (const sx of [-1, 1]) {
-      const hl = addBox(MAT_HEADLIGHT, sx * (W / 2 - 0.25), bodyY + bodyH * 0.45, L / 2 + 0.02, 0.32, 0.16, 0.05, false);
+      const hl = addBox(MAT_HEADLIGHT_OFF, sx * (W / 2 - 0.25), bodyY + bodyH * 0.45, L / 2 + 0.02, 0.32, 0.16, 0.05, false);
       this.frontHeadlights.push(hl);
-      addBox(MAT_TAILLIGHT, sx * (W / 2 - 0.25), bodyY + bodyH * 0.45, -L / 2 - 0.02, 0.32, 0.14, 0.05, false);
+      const tl = addBox(MAT_TAILLIGHT_OFF, sx * (W / 2 - 0.25), bodyY + bodyH * 0.45, -L / 2 - 0.02, 0.32, 0.14, 0.05, false);
+      this.rearTaillights.push(tl);
     }
 
     // Ruedas con suspensión y pivotes directrices delanteros
@@ -306,6 +313,20 @@ export class VehicleInstance {
     this.root.rotation.y = this.heading;
     for (const p of this.frontPivots) p.rotation.y = this.steer;
     for (const w of this.wheelMeshes) w.rotation.x = this.wheelSpin;
+  }
+
+  /**
+   * Enciende o apaga visualmente las bombillas de faros delanteros y traseros.
+   */
+  setHeadlightsActive(active: boolean): void {
+    for (const hl of this.frontHeadlights) {
+      if (hl.material !== MAT_HEADLIGHT_BROKEN) {
+        hl.material = active ? MAT_HEADLIGHT_ON : MAT_HEADLIGHT_OFF;
+      }
+    }
+    for (const tl of this.rearTaillights) {
+      tl.material = active ? MAT_TAILLIGHT_ON : MAT_TAILLIGHT_OFF;
+    }
   }
 
   private registerDeformable(mesh: THREE.Mesh): void {

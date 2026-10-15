@@ -6,18 +6,25 @@
     <!-- CRT Scanlines Overlay -->
     <div class="scanlines fixed inset-0 z-30 pointer-events-none opacity-40"></div>
 
-    <!-- Main Menu View (Hidden while playing prototype) -->
+    <!-- Main Menu View (Hidden while playing prototype or loading) -->
     <MainMenu
-      v-if="!showTeaser"
+      v-if="!showTeaser && !isLoading"
       @open-play="activeModal = 'play'"
       @open-settings="activeModal = 'settings'"
       @open-credits="activeModal = 'credits'"
     />
 
+    <!-- Pantalla de carga previa a la partida -->
+    <LoadingScreen
+      v-if="isLoading"
+      @ready="handleLoadingReady"
+      @cancel="handleLoadingCancel"
+    />
+
     <!-- Gameplay: mundo procedural infinito (three.js) -->
     <WorldGameplay
       v-if="showTeaser"
-      @exit="showTeaser = false"
+      @exit="handleExitGame"
     />
 
     <!-- Modals -->
@@ -53,16 +60,34 @@ import SettingsModal from './components/modals/SettingsModal.vue';
 import LockerModal from './components/modals/LockerModal.vue';
 import CreditsModal from './components/modals/CreditsModal.vue';
 import WorldGameplay from './components/game/WorldGameplay.vue';
+import LoadingScreen from './components/game/LoadingScreen.vue';
 import { sound } from './audio/soundEngine';
 
 type ModalType = 'none' | 'play' | 'settings' | 'locker' | 'credits';
 
 const activeModal = ref<ModalType>('none');
+const isLoading = ref(false);
 const showTeaser = ref(false);
 
 function handleLaunchDemo() {
   activeModal.value = 'none';
+  isLoading.value = true;
+}
+
+function handleLoadingReady() {
+  isLoading.value = false;
   showTeaser.value = true;
+}
+
+function handleLoadingCancel() {
+  isLoading.value = false;
+  showTeaser.value = false;
+  activeModal.value = 'play';
+}
+
+function handleExitGame() {
+  showTeaser.value = false;
+  isLoading.value = false;
 }
 
 function handleGlobalKey(e: KeyboardEvent) {

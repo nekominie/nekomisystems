@@ -4,6 +4,7 @@ import { WeaponCompanion } from '../weapons/weaponCompanion';
 import type { WeaponId } from '../weapons/weaponTypes';
 import { getWeaponDef } from '../weapons/weaponDefs';
 import type { PlayerNetworkState } from './networkTypes';
+import type { MapPlayerMarker } from '../map/mapManager';
 
 interface RemotePlayerEntry {
   state: PlayerNetworkState;
@@ -27,6 +28,25 @@ interface RemotePlayerEntry {
 export class RemotePlayerManager {
   private readonly scene: THREE.Scene;
   private readonly players = new Map<string, RemotePlayerEntry>();
+  private readonly mapMarkers: MapPlayerMarker[] = [];
+
+  /** Buffer reutilizable con las posiciones interpoladas que se ven en el mundo. */
+  getMapMarkers(): readonly MapPlayerMarker[] {
+    let i = 0;
+    for (const p of this.players.values()) {
+      const marker = this.mapMarkers[i] ?? (this.mapMarkers[i] = {
+        id: '', nickname: '', x: 0, z: 0, heading: 0,
+      });
+      marker.id = p.state.connectionId;
+      marker.nickname = p.state.nickname;
+      marker.x = p.currentX;
+      marker.z = p.currentZ;
+      marker.heading = p.currentHeading;
+      i++;
+    }
+    this.mapMarkers.length = i;
+    return this.mapMarkers;
+  }
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -77,27 +97,38 @@ export class RemotePlayerManager {
     nameTagSprite.position.set(0, 2.15, 0);
     root.add(nameTagSprite);
 
-    // 2. Malla temporal mientras carga el modelo Miku
-    const fallbackGeo = new THREE.CapsuleGeometry(0.28, 0.9, 4, 8);
-    fallbackGeo.translate(0, 0.75, 0);
-    const fallbackMat = new THREE.MeshLambertMaterial({ color: 0x38bdf8 });
-    const fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMat);
-    fallbackMesh.castShadow = true;
-    root.add(fallbackMesh);
-
-    this.scene.add(root);
-
-    // 3. Arma equipada visual
+    // 2. Arma equipada visual
     const companion = new WeaponCompanion(this.scene);
     if (state.equippedWeapon) {
       const def = getWeaponDef(state.equippedWeapon as WeaponId);
       companion.setWeapon(state.equippedWeapon as WeaponId, def?.category === 'melee');
     }
 
+    let avatar: PlayerAvatar | undefined;
+    let fallbackMesh: THREE.Mesh | undefined;
+
+    if (PlayerAvatar.isPreloaded()) {
+      avatar = PlayerAvatar.createFromPreloaded();
+      root.add(avatar.root);
+      companion.setHandBone(avatar.getRightHandBone());
+      avatar.root.visible = !state.isInVehicle;
+    } else {
+      // Malla temporal de seguridad mientras carga el modelo Miku
+      const fallbackGeo = new THREE.CapsuleGeometry(0.28, 0.9, 4, 8);
+      fallbackGeo.translate(0, 0.75, 0);
+      const fallbackMat = new THREE.MeshLambertMaterial({ color: 0x38bdf8 });
+      fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMat);
+      fallbackMesh.castShadow = true;
+      root.add(fallbackMesh);
+    }
+
+    this.scene.add(root);
+
     const entry: RemotePlayerEntry = {
       state,
       root,
       companion,
+      avatar,
       fallbackMesh,
       nameTagSprite,
       targetX: state.x,
@@ -112,26 +143,28 @@ export class RemotePlayerManager {
       health: state.health,
     };
 
-    // 3. Cargar el avatar Miku asíncronamente
-    PlayerAvatar.load()
-      .then((avatar) => {
-        if (!this.players.has(state.connectionId)) {
-          avatar.dispose();
-          return;
-        }
-        entry.avatar = avatar;
-        if (entry.fallbackMesh) {
-          root.remove(entry.fallbackMesh);
-          entry.fallbackMesh.geometry.dispose();
-          entry.fallbackMesh = undefined;
-        }
-        root.add(avatar.root);
-        entry.companion.setHandBone(avatar.getRightHandBone());
-        avatar.root.visible = !state.isInVehicle;
-      })
-      .catch((err) => {
-        console.warn('[RemotePlayerManager] Error cargando avatar Miku para jugador remoto:', err);
-      });
+    if (!avatar) {
+      // Cargar asíncronamente solo si no estaba precargado
+      PlayerAvatar.load()
+        .then((av) => {
+          if (!this.players.has(state.connectionId)) {
+            av.dispose();
+            return;
+          }
+          entry.avatar = av;
+          if (entry.fallbackMesh) {
+            root.remove(entry.fallbackMesh);
+            entry.fallbackMesh.geometry.dispose();
+            entry.fallbackMesh = undefined;
+          }
+          root.add(av.root);
+          entry.companion.setHandBone(av.getRightHandBone());
+          av.root.visible = !state.isInVehicle;
+        })
+        .catch((err) => {
+          console.warn('[RemotePlayerManager] Error cargando avatar Miku para jugador remoto:', err);
+        });
+    }
 
     return entry;
   }
