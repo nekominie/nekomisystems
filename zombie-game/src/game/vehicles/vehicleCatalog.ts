@@ -10,7 +10,7 @@ export const MINI_HATCHBACK: VehicleConfig = {
   brakingForce: 21.0,
   steerAngle: 0.62,
   offroadTractionMultiplier: 0.45,
-  maxDurability: 160,
+  maxDurability: 288, // +80% (era 160)
   fuelCapacity: 35,
   fuelConsumptionRate: 0.0085,
   engineNoiseIdle: 7,
@@ -39,7 +39,7 @@ export const CLASSIC_SEDAN: VehicleConfig = {
   brakingForce: 18.5,
   steerAngle: 0.55,
   offroadTractionMultiplier: 0.55,
-  maxDurability: 230,
+  maxDurability: 414, // +80% (era 230)
   fuelCapacity: 50,
   fuelConsumptionRate: 0.012,
   engineNoiseIdle: 10,
@@ -68,7 +68,7 @@ export const PICKUP_4X4: VehicleConfig = {
   brakingForce: 17.5,
   steerAngle: 0.50,
   offroadTractionMultiplier: 0.88,
-  maxDurability: 340,
+  maxDurability: 612, // +80% (era 340)
   fuelCapacity: 75,
   fuelConsumptionRate: 0.0165,
   engineNoiseIdle: 13,
@@ -98,7 +98,7 @@ export const CARGO_TRUCK: VehicleConfig = {
   brakingForce: 14.5,
   steerAngle: 0.42,
   offroadTractionMultiplier: 0.68,
-  maxDurability: 500,
+  maxDurability: 900, // +80% (era 500)
   fuelCapacity: 120,
   fuelConsumptionRate: 0.024,
   engineNoiseIdle: 16,
@@ -128,7 +128,7 @@ export const SPORT_COUPE_V8: VehicleConfig = {
   brakingForce: 24.0,
   steerAngle: 0.52,
   offroadTractionMultiplier: 0.35,
-  maxDurability: 180,
+  maxDurability: 324, // +80% (era 180)
   fuelCapacity: 55,
   fuelConsumptionRate: 0.0195,
   engineNoiseIdle: 15,
@@ -157,7 +157,7 @@ export const RURAL_AMBULANCE: VehicleConfig = {
   brakingForce: 19.0,
   steerAngle: 0.48,
   offroadTractionMultiplier: 0.72,
-  maxDurability: 350,
+  maxDurability: 630, // +80% (era 350)
   fuelCapacity: 80,
   fuelConsumptionRate: 0.0175,
   engineNoiseIdle: 11,

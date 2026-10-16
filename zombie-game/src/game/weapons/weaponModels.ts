@@ -49,6 +49,26 @@ const builders: Record<string, (g: THREE.Group) => void> = {
     cyl(g, 0.05, 0.02, 0.9, 0, 0, 0, WOOD_LIGHT); // cabeza gruesa hacia delante
     cyl(g, 0.024, 0.024, 0.22, 0, 0, -0.34, DARK); // empuñadura
   },
+  [WEAPON_IDS.flashlight]: (g) => {
+    // Cuerpo principal / mango cilíndrico de aluminio táctico negro
+    cyl(g, 0.02, 0.02, 0.22, 0, 0, -0.02, DARK);
+    // Anillos estriados de agarre antideslizante
+    cyl(g, 0.022, 0.022, 0.03, 0, 0, -0.06, METAL);
+    cyl(g, 0.022, 0.022, 0.03, 0, 0, 0.02, METAL);
+    // Tapa posterior con interruptor engomado
+    cyl(g, 0.021, 0.021, 0.03, 0, 0, -0.12, 0x111215);
+    cyl(g, 0.012, 0.012, 0.01, 0, 0, -0.136, 0xef4444);
+    // Cabezal que ensancha hacia la lente
+    cyl(g, 0.038, 0.022, 0.08, 0, 0, 0.1, DARK);
+    // Bisel frontal de corona táctica
+    cyl(g, 0.039, 0.039, 0.02, 0, 0, 0.145, 0x64748b);
+    // Lente frontal de cristal emisor cálido
+    const lensMat = new THREE.MeshBasicMaterial({ color: 0xfffaed });
+    const lensGeo = shared('fl_lens', () => new THREE.CylinderGeometry(0.034, 0.034, 0.008, 12).rotateX(Math.PI / 2));
+    const lens = new THREE.Mesh(lensGeo, lensMat);
+    lens.position.set(0, 0, 0.15);
+    g.add(lens);
+  },
   [WEAPON_IDS.pistol]: (g) => {
     box(g, 0.05, 0.06, 0.22, 0, 0.02, 0.02, METAL); // corredera
     box(g, 0.04, 0.045, 0.1, 0, -0.012, 0.0, DARK); // armazón

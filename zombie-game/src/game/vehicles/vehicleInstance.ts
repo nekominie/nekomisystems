@@ -948,7 +948,8 @@ export class VehicleInstance {
 
     if (spd > criticalThreshold) {
       const excess = spd - criticalThreshold;
-      playerDamage = Math.round(excess * 3.8 * (this.config.mass / 1400));
+      // Daño al jugador por choques reducido en un 60% (multiplicador 0.40)
+      playerDamage = Math.round(excess * 3.8 * 0.40 * (this.config.mass / 1400));
     }
 
     return playerDamage;
@@ -997,8 +998,8 @@ export class VehicleInstance {
       dir.z * pushMagnitude + perpZ * sidePush,
     );
 
-    // 3. Desgaste del parachoques/motor
-    const wearFraction = (0.003 + 0.004 * Math.min(1, spd / this.config.maxSpeed)) * (1400 / this.config.mass);
+    // 3. Desgaste del parachoques/motor (con resistencia vehicular incrementada en 80%)
+    const wearFraction = ((0.003 + 0.004 * Math.min(1, spd / this.config.maxSpeed)) * (1400 / this.config.mass)) / 1.80;
     const wear = this.config.maxDurability * wearFraction;
     this.currentDurability = Math.max(0, this.currentDurability - wear);
 

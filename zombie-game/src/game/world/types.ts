@@ -35,6 +35,31 @@ export interface Crate {
   loot: WeaponId;
 }
 
+/** Mueble/artículo colocado en el patio de una casa (coordenadas locales a la casa). */
+export interface BackyardPropPlacement {
+  /** Id del catálogo de patios (ver props/backyardCatalog.ts). */
+  id: string;
+  lx: number;
+  lz: number;
+  /** Giro Y local, relativo a la orientación de la casa. */
+  rot: number;
+  /** Si bloquea el movimiento (según el catálogo). */
+  blocks: boolean;
+}
+
+/** Patio residencial: barda en 3 lados y la propia pared de la casa como cuarto lado. */
+export interface Backyard {
+  /** Lado de la casa al que queda pegado ('back' = -Z local, donde no está la puerta). */
+  side: 'back' | 'left' | 'right';
+  /** Clase de tamaño (área del patio = 25% / 50% / 90% / 200% del área de la casa). */
+  size: 'small' | 'medium' | 'large' | 'huge';
+  /** Extensión desde la pared de la casa hacia afuera (m). */
+  depth: number;
+  /** Largo del lado de la casa al que se pega (m). */
+  width: number;
+  props: BackyardPropPlacement[];
+}
+
 /** Caja con techo piramidal opcional (roofH = 0 => techo plano). */
 export interface Structure {
   crate?: Crate;
@@ -48,6 +73,8 @@ export interface Structure {
   rot: number;
   wallColor: number;
   roofColor: number;
+  /** Patio procedural (solo casas residenciales; el 5% se queda sin patio). */
+  backyard?: Backyard;
 }
 
 export interface Plant {

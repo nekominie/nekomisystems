@@ -29,6 +29,7 @@ export function allWeaponDefs(): WeaponDef[] {
 
 export const WEAPON_IDS = {
   bat: 'baseball_bat',
+  flashlight: 'flashlight',
   pistol: 'pistol_9mm',
   shotgun: 'pump_shotgun',
   assaultRifle: 'assault_rifle',
@@ -53,6 +54,26 @@ export const WEAPON_IDS = {
   sniperMarksman: 'sniper_marksman',
   sniperHeavy50: 'sniper_heavy50',
 } as const;
+
+// Linterna táctica (emite haz de luz cónico al equiparse y permite golpe contundente ligero)
+registerWeapon({
+  id: WEAPON_IDS.flashlight,
+  name: 'Linterna',
+  category: 'melee',
+  damage: 10,
+  fireRateRPM: 120,
+  magSize: 0,
+  reloadDuration: 0,
+  baseSpread: 0,
+  spreadRecoverySpeed: 0,
+  pellets: 1,
+  effectiveRange: 1.8,
+  noiseRadius: 0,
+  isAutomatic: false,
+  recoilForce: { pitch: 0, yawVariation: 0 },
+  meleeArc: 1.2,
+  meleeMaxTargets: 1,
+});
 
 // 1) Bate de béisbol (cuerpo a cuerpo)
 registerWeapon({

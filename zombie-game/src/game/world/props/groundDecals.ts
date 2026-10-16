@@ -25,6 +25,22 @@ const BLOOD_BLOBS = [
 
 const OIL_GEO = new THREE.CircleGeometry(0.5, 14).rotateX(-Math.PI / 2);
 
+/** Losa de concreto del patio: plano XZ de 1x1 escalado por malla. */
+const SLAB_GEO = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+
+const slabMats = new Map<number, THREE.MeshLambertMaterial>();
+function slabMat(color: number): THREE.MeshLambertMaterial {
+  let m = slabMats.get(color);
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({
+      color,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    });
+    slabMats.set(color, m);
+  }
+  return m;
+}
+
 const MAT_BLOOD = new THREE.MeshBasicMaterial({
   color: 0x5a0d0d, transparent: true, opacity: 0.85,
   polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
@@ -65,6 +81,16 @@ export const GroundDecals = {
   /** Escombro o piedra (instanciado). Escala ~diámetro en metros. */
   rubble(sink: BucketSink, x: number, z: number, rot: number, s: number, color: number) {
     sink.add('stone', { x, y: 0, z, rot, sx: s, sy: s * 0.7, sz: s, color });
+  },
+
+  /** Losa de concreto del patio (malla individual; queda bajo los demás decals). */
+  slab(group: THREE.Group, x: number, z: number, w: number, d: number, rot: number, color = 0x9a958c) {
+    const mesh = new THREE.Mesh(SLAB_GEO, slabMat(color));
+    mesh.position.set(x, DECAL_Y - 0.005, z);
+    mesh.rotation.y = rot;
+    mesh.scale.set(w, 1, d);
+    mesh.receiveShadow = true;
+    group.add(mesh);
   },
 };
 

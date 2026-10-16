@@ -58,6 +58,37 @@ export const HUD_ICONS: Record<string, string> = {
     </svg>
   `,
 
+  flashlight: `
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full drop-shadow">
+      <defs>
+        <linearGradient id="flBody" x1="12" y1="40" x2="36" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#1e293b"/>
+          <stop offset="0.5" stop-color="#334155"/>
+          <stop offset="1" stop-color="#0f172a"/>
+        </linearGradient>
+        <linearGradient id="flBeam" x1="38" y1="24" x2="62" y2="12" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#fef08a" stop-opacity="0.8"/>
+          <stop offset="1" stop-color="#fef08a" stop-opacity="0.05"/>
+        </linearGradient>
+      </defs>
+      <!-- Mango / Cuerpo cilíndrico estriado -->
+      <rect x="12" y="32" width="22" height="10" rx="2" transform="rotate(-30 12 32)" fill="url(#flBody)" stroke="#090d16" stroke-width="1.3"/>
+      <!-- Texturas estriadas de agarre táctico -->
+      <line x1="18" y1="31" x2="23" y2="40" stroke="#475569" stroke-width="1.2"/>
+      <line x1="22" y1="29" x2="27" y2="38" stroke="#475569" stroke-width="1.2"/>
+      <!-- Tapa trasera con botón -->
+      <rect x="10" y="34.5" width="4" height="7.5" rx="1" transform="rotate(-30 10 34.5)" fill="#0f172a" stroke="#000" stroke-width="1"/>
+      <!-- Cabezal ensanchado -->
+      <path d="M30 22 L37 18 L42 27 L35 31 Z" fill="#475569" stroke="#1e293b" stroke-width="1.3"/>
+      <!-- Corona / Bisel frontal plateado -->
+      <path d="M37 18 L39 17 L44 26 L42 27 Z" fill="#94a3b8" stroke="#64748b" stroke-width="1"/>
+      <!-- Lente luminosa -->
+      <ellipse cx="40.5" cy="21.5" rx="1.5" ry="5.5" transform="rotate(-30 40.5 21.5)" fill="#fef08a" stroke="#ca8a04" stroke-width="0.8"/>
+      <!-- Haz de luz cónico brillante -->
+      <polygon points="41,19 60,8 63,30 43,26" fill="url(#flBeam)"/>
+    </svg>
+  `,
+
   // --- Pistolas ---
   pistol_9mm: `
     <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full drop-shadow">
@@ -456,6 +487,7 @@ export const HUD_ICONS: Record<string, string> = {
 
 export const WEAPON_SHORT_NAMES: Record<string, string> = {
   baseball_bat: 'BATE',
+  flashlight: 'LINTERNA',
   pipe_wrench: 'LLAVE',
   fire_axe: 'HACHA',
   katana: 'KATANA',

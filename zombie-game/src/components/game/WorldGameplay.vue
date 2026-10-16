@@ -107,6 +107,7 @@
         @clear-zombies="debugClearZombies"
         @refill-explosives="debugRefillExplosives"
         @reset-push="resetPushSliders"
+        @set-day-night="debugSetDayNight"
       />
 
       <!-- HUD Táctico del Jugador: Chat + Inventario (7 Slots) + Granadas + Barras Neón (Vida, Armadura, Stamina) -->
@@ -290,70 +291,13 @@
         </div>
       </div>
 
-      <!-- Tablero del carro (solo al conducir) -->
-      <div
+      <!-- Tablero analodigital del carro (solo al conducir, anclado al centro inferior sin texto) -->
+      <CarDashboardHUD
         v-if="carHud.driving"
-        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-black/90 border border-stone-700 px-5 py-3 font-mono text-xs flex items-center gap-6 shadow-2xl rounded-xs"
-      >
-        <div class="text-center min-w-16">
-          <div class="text-3xl font-bold text-stone-100 leading-none">{{ carHud.speed }}</div>
-          <div class="text-[10px] text-stone-500 uppercase">km/h</div>
-          <div class="text-[9px] text-stone-400 mt-1 uppercase tracking-wider font-bold">
-            {{ carHud.terrain }}
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-1.5 w-52">
-          <!-- Modelo y Estado del Motor -->
-          <div class="flex justify-between items-baseline">
-            <span class="font-bold text-stone-100 text-[11px] truncate">{{ carHud.name }}</span>
-            <span
-              class="text-[9px] px-1 py-0.2 uppercase border"
-              :class="carHud.durability <= 0 ? 'border-red-600 bg-red-950/60 text-red-300' : carHud.engineRunning ? 'border-emerald-600 bg-emerald-950/60 text-emerald-300' : 'border-stone-700 text-stone-500'"
-            >
-              {{ carHud.durability <= 0 ? 'AVERIADO' : carHud.engineRunning ? 'MOTOR ON' : 'MOTOR OFF' }}
-            </span>
-          </div>
-
-          <!-- Barra de Durabilidad / Chasis -->
-          <div>
-            <div class="flex justify-between text-[10px] uppercase mb-0.5" :class="carHud.durabilityPct <= 0.25 ? 'text-red-400' : 'text-stone-400'">
-              <span>🛡️ Chasis</span>
-              <span>{{ Math.round(carHud.durability) }} / {{ carHud.maxDurability }}</span>
-            </div>
-            <div class="h-2 bg-stone-900 border border-stone-700 overflow-hidden">
-              <div
-                class="h-full transition-all duration-150"
-                :class="carHud.durabilityPct <= 0.25 ? 'bg-red-600' : carHud.durabilityPct <= 0.55 ? 'bg-amber-500' : 'bg-emerald-500'"
-                :style="{ width: `${Math.round(carHud.durabilityPct * 100)}%` }"
-              ></div>
-            </div>
-          </div>
-
-          <!-- Barra de Gasolina -->
-          <div>
-            <div class="flex justify-between text-[10px] uppercase mb-0.5" :class="carHud.fuelPct <= 0.15 ? 'text-red-400' : 'text-stone-400'">
-              <span>⛽ Gasolina</span>
-              <span>{{ carHud.fuel.toFixed(1) }} L</span>
-            </div>
-            <div class="h-2 bg-stone-900 border border-stone-700 overflow-hidden">
-              <div
-                class="h-full transition-all duration-100"
-                :class="carHud.fuelPct <= 0.15 ? 'bg-red-600' : 'bg-yellow-400'"
-                :style="{ width: `${Math.round(carHud.fuelPct * 100)}%` }"
-              ></div>
-            </div>
-          </div>
-
-          <!-- Alerta de zombis por ruido de motor -->
-          <div v-if="carHud.engineRunning" class="text-[9px] text-stone-400 flex justify-between">
-            <span>Alerta sonora:</span>
-            <span :class="carHud.noiseRadius > 25 ? 'text-amber-400 font-bold' : 'text-stone-300'">
-              {{ Math.round(carHud.noiseRadius) }} m
-            </span>
-          </div>
-        </div>
-      </div>
+        :speed="carHud.speed"
+        :fuel-pct="carHud.fuelPct"
+        :durability-pct="carHud.durabilityPct"
+      />
 
       <!-- Esquina inferior derecha: ayuda arriba, minimapa en la mera esquina -->
       <div class="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2 pointer-events-auto">
@@ -432,6 +376,7 @@ import FullscreenMapModal from './FullscreenMapModal.vue';
 import PlayerHUD, { type HudWeaponSlot } from './PlayerHUD.vue';
 import BackpackModal from './BackpackModal.vue';
 import DebugModal from './DebugModal.vue';
+import CarDashboardHUD from './CarDashboardHUD.vue';
 import { mapManager } from '../../game/map/mapManager';
 import { networkManager } from '../../game/network/networkManager';
 import { RemotePlayerManager } from '../../game/network/remotePlayerManager';
@@ -785,6 +730,7 @@ let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function makeArsenal() {
   const a = new Arsenal();
   a.pickup({ weapon: WEAPON_IDS.bat }); // se empieza con un bate
+  a.pickup({ weapon: WEAPON_IDS.flashlight }); // linterna táctica con haz de luz cónico
   return a;
 }
 let arsenal = makeArsenal();
@@ -792,6 +738,10 @@ updateWeaponHud();
 const recoil = new RecoilController();
 const aim = new MouseAim();
 let companion: WeaponCompanion | null = null;
+let playerFlashlight: THREE.SpotLight | null = null;
+let playerFlashlightTarget: THREE.Object3D | null = null;
+let playerFlashlightCone: THREE.Mesh | null = null;
+let playerFlashlightBulb: THREE.PointLight | null = null;
 let shotFx: ShotFx | null = null;
 let reticle: AimReticle | null = null;
 let dropIndicator: DropRangeIndicator | null = null;
@@ -1522,6 +1472,26 @@ function debugReset() {
   showToast('Inventario reiniciado');
 }
 
+function debugSetDayNight(target?: 'day' | 'night') {
+  if (!requireDebug()) return;
+  if (!cycle) return;
+  let targetTime: number;
+  if (target === 'day') {
+    targetTime = 2 * 60; // 08:00
+  } else if (target === 'night') {
+    targetTime = 8 * 60 + 2 * 60; // 20:00
+  } else {
+    targetTime = cycle.isNight ? 2 * 60 : 8 * 60 + 2 * 60;
+  }
+  cycle.setTime(targetTime);
+  showToast(target === 'day' || (!target && !cycle.isNight) ? '☀️ Cambiado a Día (08:00)' : '🌙 Cambiado a Noche (20:00)');
+
+  // En multijugador, sincronizar la hora con todos los jugadores de la sala
+  if (networkManager.isConnected && networkManager.currentRoom) {
+    networkManager.sendDayNightSync(targetTime);
+  }
+}
+
 function resetPushSliders() {
   if (!requireDebug()) return;
   Object.assign(carPushConfig, DEFAULT_CAR_PUSH_CONFIG);
@@ -2168,7 +2138,7 @@ function loop(now: number) {
         isAiming: hasAim,
         isReloading: !!(w && w.reloading),
         reloadDuration: w && !w.isMelee ? w.def.reloadDuration : 0,
-        hasGun: !!(w && !w.isMelee),
+        hasGun: !!(w && (!w.isMelee || w.def.id === WEAPON_IDS.flashlight)),
         isBlocking: false,
       });
       avatar.update(dt);
@@ -2176,6 +2146,35 @@ function loop(now: number) {
 
     companion?.update(tSec, player.x, player.z, heading, true);
     companion?.muzzle(muzzlePos);
+
+    // Linterna del jugador: emite luz en un cono hacia enfrente (SpotLight + volumen)
+    const isFlashlightEquipped = !drv && w?.def.id === WEAPON_IDS.flashlight;
+    if (playerFlashlight && playerFlashlightTarget && playerFlashlightCone && playerFlashlightBulb) {
+      if (isFlashlightEquipped) {
+        const fx = Math.sin(aimHeading);
+        const fz = Math.cos(aimHeading);
+        const lx = muzzlePos.x;
+        const ly = muzzlePos.y;
+        const lz = muzzlePos.z;
+
+        playerFlashlight.visible = true;
+        playerFlashlightBulb.visible = true;
+        playerFlashlightCone.visible = true;
+
+        playerFlashlight.position.set(lx, ly, lz);
+        playerFlashlightTarget.position.set(lx + fx * 25, ly - 0.25, lz + fz * 25);
+        playerFlashlightTarget.updateMatrixWorld();
+
+        playerFlashlightBulb.position.set(lx, ly, lz);
+
+        playerFlashlightCone.position.set(lx, ly, lz);
+        playerFlashlightCone.rotation.set(0, aimHeading, 0);
+      } else {
+        playerFlashlight.visible = false;
+        playerFlashlightBulb.visible = false;
+        playerFlashlightCone.visible = false;
+      }
+    }
 
     // Dirección de disparo: del cañón al punto apuntado (las balas pasan por el cursor)
     let dx = aim.point.x - muzzlePos.x;
@@ -2206,6 +2205,9 @@ function loop(now: number) {
   } else {
     companion?.update(tSec, player.x, player.z, player.rot, false);
     reticle?.update(aim.point, 0, false, 0xffffff);
+    if (playerFlashlight) playerFlashlight.visible = false;
+    if (playerFlashlightBulb) playerFlashlightBulb.visible = false;
+    if (playerFlashlightCone) playerFlashlightCone.visible = false;
   }
   shotFx?.update(dt);
   updateShockRings(dt);
@@ -2415,6 +2417,39 @@ onMounted(() => {
 
   cycle = new DayNightCycle(background, fog, hemi, sun);
   lampLights = new LampLights(scene);
+
+  // Linterna del jugador: luz cónica SpotLight con haz volumétrico
+  playerFlashlightTarget = new THREE.Object3D();
+  scene.add(playerFlashlightTarget);
+
+  playerFlashlight = new THREE.SpotLight(0xfffaea, 20, 42, Math.PI / 5.5, 0.45, 1.2);
+  playerFlashlight.castShadow = true;
+  playerFlashlight.shadow.mapSize.set(512, 512);
+  playerFlashlight.shadow.camera.near = 0.5;
+  playerFlashlight.shadow.camera.far = 45;
+  playerFlashlight.shadow.bias = -0.001;
+  playerFlashlight.target = playerFlashlightTarget;
+  playerFlashlight.visible = false;
+  scene.add(playerFlashlight);
+
+  playerFlashlightBulb = new THREE.PointLight(0xfffaea, 2.0, 4.0, 2);
+  playerFlashlightBulb.visible = false;
+  scene.add(playerFlashlightBulb);
+
+  const flConeGeo = new THREE.ConeGeometry(3.4, 28, 20, 1, true);
+  flConeGeo.translate(0, -14, 0);
+  flConeGeo.rotateX(-Math.PI / 2);
+  const flConeMat = new THREE.MeshBasicMaterial({
+    color: 0xfff4c8,
+    transparent: true,
+    opacity: 0.15,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  playerFlashlightCone = new THREE.Mesh(flConeGeo, flConeMat);
+  playerFlashlightCone.visible = false;
+  scene.add(playerFlashlightCone);
 
   companion = new WeaponCompanion(scene);
   shotFx = new ShotFx(scene);
@@ -2652,6 +2687,26 @@ onBeforeUnmount(() => {
   reticle?.dispose();
   dropIndicator?.dispose();
   companion = shotFx = reticle = dropIndicator = null;
+  if (playerFlashlight) {
+    scene?.remove(playerFlashlight);
+    playerFlashlight.dispose();
+    playerFlashlight = null;
+  }
+  if (playerFlashlightTarget) {
+    scene?.remove(playerFlashlightTarget);
+    playerFlashlightTarget = null;
+  }
+  if (playerFlashlightBulb) {
+    scene?.remove(playerFlashlightBulb);
+    playerFlashlightBulb.dispose();
+    playerFlashlightBulb = null;
+  }
+  if (playerFlashlightCone) {
+    scene?.remove(playerFlashlightCone);
+    playerFlashlightCone.geometry.dispose();
+    (playerFlashlightCone.material as THREE.Material).dispose();
+    playerFlashlightCone = null;
+  }
   refuel?.dispose();
   vehicles?.dispose();
   zombies?.dispose();

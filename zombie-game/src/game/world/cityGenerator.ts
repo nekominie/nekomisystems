@@ -2,6 +2,7 @@ import { WORLD } from './worldConfig';
 import { hash2, mulberry32 } from './random';
 import { makeCar } from './cars';
 import { makeGasStation } from './gasStation';
+import { BACKYARD, backyardWorldRect, layoutBackyard, overlapRect, structureAABB } from './backyard';
 import type { Car, City, GasStation, Rect, Structure } from './types';
 
 const WALL_HOUSE = [0xb9a58a, 0x9c8f7a, 0xc7b8a0, 0x8d7b68, 0xa6a39a, 0x7f8a8c];
@@ -390,6 +391,36 @@ export class CityMap {
         }
       }
     }
+
+    // Fase 2: patios residenciales. Se generan cuando ya están TODAS las casas,
+    // para validar cada patio contra el resto del vecindario (calles, gasolinera y otros patios).
+    const rngY = mulberry32(hash2(city.seed, 913, 517));
+    const roads = this.getRoads(city);
+    const station = this.getStation(city);
+    const stationBox: Rect = {
+      minX: station.x - 14.5,
+      maxX: station.x + 14.5,
+      minZ: station.z - 13,
+      maxZ: station.z + 14,
+    };
+    const statics = out.map((s) => ({ rect: structureAABB(s), s }));
+    const patioRects: Rect[] = [];
+    for (const s of out) {
+      if (s.kind !== 'house') continue;
+      layoutBackyard(s, rngY, (r) => {
+        if (r.minX < city.minX - 1 || r.maxX > city.maxX + 1 || r.minZ < city.minZ - 1 || r.maxZ > city.maxZ + 1) return false;
+        for (const q of statics) {
+          if (q.s === s) continue;
+          if (overlapRect(r, q.rect, BACKYARD.margin.structure)) return false;
+        }
+        for (const q of roads) if (overlapRect(r, q, BACKYARD.margin.road)) return false;
+        for (const q of patioRects) if (overlapRect(r, q, BACKYARD.margin.patio)) return false;
+        if (overlapRect(r, stationBox, 0)) return false;
+        return true;
+      });
+      if (s.backyard) patioRects.push(backyardWorldRect(s));
+    }
+
     this.structures.set(key, out);
     return out;
   }

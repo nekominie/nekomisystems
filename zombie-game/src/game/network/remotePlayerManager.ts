@@ -23,6 +23,9 @@ interface RemotePlayerEntry {
   currentHeading: number;
   isMoving: boolean;
   health: number;
+  flashlight?: THREE.SpotLight;
+  flashlightTarget?: THREE.Object3D;
+  flashlightCone?: THREE.Mesh;
 }
 
 export class RemotePlayerManager {
@@ -249,6 +252,56 @@ export class RemotePlayerManager {
         entry.currentHeading,
         !entry.state.isInVehicle
       );
+
+      // Linterna del jugador remoto en multijugador
+      const isRemoteFlashlight = !entry.state.isInVehicle && entry.state.equippedWeapon === 'flashlight';
+      if (isRemoteFlashlight) {
+        if (!entry.flashlight) {
+          const spot = new THREE.SpotLight(0xfffaea, 16, 35, Math.PI / 5.5, 0.45, 1.2);
+          const target = new THREE.Object3D();
+          this.scene.add(spot);
+          this.scene.add(target);
+          spot.target = target;
+          entry.flashlight = spot;
+          entry.flashlightTarget = target;
+
+          const coneGeo = new THREE.ConeGeometry(3.0, 26, 16, 1, true);
+          coneGeo.translate(0, -13, 0);
+          coneGeo.rotateX(-Math.PI / 2);
+          const coneMat = new THREE.MeshBasicMaterial({
+            color: 0xfff4c8,
+            transparent: true,
+            opacity: 0.12,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          });
+          const cone = new THREE.Mesh(coneGeo, coneMat);
+          this.scene.add(cone);
+          entry.flashlightCone = cone;
+        }
+
+        entry.flashlight.visible = true;
+        if (entry.flashlightCone) entry.flashlightCone.visible = true;
+
+        const fx = Math.sin(entry.currentHeading);
+        const fz = Math.cos(entry.currentHeading);
+        const lx = entry.currentX + fx * 0.35;
+        const ly = entry.currentY + 1.15;
+        const lz = entry.currentZ + fz * 0.35;
+
+        entry.flashlight.position.set(lx, ly, lz);
+        entry.flashlightTarget!.position.set(lx + fx * 20, ly - 0.25, lz + fz * 20);
+        entry.flashlightTarget!.updateMatrixWorld();
+
+        if (entry.flashlightCone) {
+          entry.flashlightCone.position.set(lx, ly, lz);
+          entry.flashlightCone.rotation.set(0, entry.currentHeading, 0);
+        }
+      } else if (entry.flashlight) {
+        entry.flashlight.visible = false;
+        if (entry.flashlightCone) entry.flashlightCone.visible = false;
+      }
     }
   }
 
@@ -258,6 +311,17 @@ export class RemotePlayerManager {
   removePlayer(connectionId: string) {
     const entry = this.players.get(connectionId);
     if (!entry) return;
+
+    if (entry.flashlight) {
+      this.scene.remove(entry.flashlight);
+      this.scene.remove(entry.flashlightTarget!);
+      entry.flashlight.dispose();
+    }
+    if (entry.flashlightCone) {
+      this.scene.remove(entry.flashlightCone);
+      entry.flashlightCone.geometry.dispose();
+      (entry.flashlightCone.material as THREE.Material).dispose();
+    }
 
     this.scene.remove(entry.root);
     entry.avatar?.dispose();

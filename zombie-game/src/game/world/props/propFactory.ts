@@ -3,7 +3,7 @@ import { circle, type Collider } from '../collision';
 import { makeBoxCollider } from '../cabin';
 
 /** Cubetas de instanciado por chunk (una InstancedMesh por cubeta y chunk). */
-export type PropBucket = 'box' | 'cyl' | 'head' | 'flame' | 'stone' | 'paper';
+export type PropBucket = 'box' | 'cyl' | 'cone' | 'head' | 'flame' | 'stone' | 'paper';
 
 export interface BucketItem {
   x: number;
@@ -46,6 +46,7 @@ export interface PropPlacement {
 const GEO = {
   box: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
   cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 8).translate(0, 0.5, 0),
+  cone: new THREE.ConeGeometry(0.5, 1, 8).translate(0, 0.5, 0),
   stone: new THREE.DodecahedronGeometry(0.5, 0),
   paper: new THREE.PlaneGeometry(0.42, 0.3).rotateX(-Math.PI / 2),
 };

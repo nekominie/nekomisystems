@@ -3,6 +3,7 @@ import { hash2, mulberry32 } from './random';
 import { makeCar } from './cars';
 import { lootManager } from '../weapons/lootManager';
 import { CABIN } from './cabin';
+import { BACKYARD, backyardWorldRect, layoutBackyard, overlapRect, structureAABB } from './backyard';
 import type { CityMap } from './cityGenerator';
 import type { Car, Rect, Structure } from './types';
 
@@ -198,6 +199,25 @@ export class TownMap {
         ? { minX: s.from, maxX: s.to, minZ: s.line - s.halfW, maxZ: s.line + s.halfW }
         : { minX: s.line - s.halfW, maxX: s.line + s.halfW, minZ: s.from, maxZ: s.to },
     );
+
+    // Patios residenciales (tras las calles, para validarlos contra vías, casas y otros patios).
+    const rngY = mulberry32(hash2(this.seed + 606, tx, tz));
+    const statics = structures.map((s) => ({ rect: structureAABB(s), s }));
+    const patioRects: Rect[] = [];
+    for (const s of structures) {
+      if (s.kind !== 'house') continue;
+      layoutBackyard(s, rngY, (r) => {
+        if (r.minX < rect.minX + 1 || r.maxX > rect.maxX - 1 || r.minZ < rect.minZ + 1 || r.maxZ > rect.maxZ - 1) return false;
+        for (const q of statics) {
+          if (q.s === s) continue;
+          if (overlapRect(r, q.rect, BACKYARD.margin.structure)) return false;
+        }
+        for (const q of streetRects) if (overlapRect(r, q, BACKYARD.margin.road)) return false;
+        for (const q of patioRects) if (overlapRect(r, q, BACKYARD.margin.patio)) return false;
+        return true;
+      });
+      if (s.backyard) patioRects.push(backyardWorldRect(s));
+    }
 
     return { id: `${tx},${tz}`, rect, centerX: cx, centerZ: cz, streets: streetRects, structures, cars };
   }

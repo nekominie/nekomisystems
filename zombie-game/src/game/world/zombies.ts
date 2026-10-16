@@ -1368,7 +1368,7 @@ export class ZombieManager {
           if (z.attackCooldown <= 0) {
             z.attackAction.reset().play();
             z.attackCooldown = 1.25;
-            drv.onAttackedByZombie(drv.config.maxDurability * 0.001);
+            drv.onAttackedByZombie((drv.config.maxDurability * 0.001) / 1.80);
           }
         } else {
           z.targetRot = Math.atan2(edge.nx - z.x, edge.nz - z.z);
@@ -1632,7 +1632,7 @@ export class ZombieManager {
         this.carEdgeInfo(z, drv).surfaceDist < 1.55) {
       z.attackAction.reset().play();
       z.attackCooldown = 1.25;
-      drv.onAttackedByZombie(drv.config.maxDurability * 0.001);
+      drv.onAttackedByZombie((drv.config.maxDurability * 0.001) / 1.80);
     } else if (!drv && Math.hypot(z.x - px, z.z - pz) < 2 &&
         Math.hypot(s.targetX - px, s.targetZ - pz) < 2) {
       z.attackAction.reset().play();

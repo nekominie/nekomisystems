@@ -60,7 +60,7 @@ export class WeaponCompanion {
   }
 
   private applyAnchor() {
-    if (this.handBone && this.isMelee) {
+    if (this.handBone && this.isMelee && this.currentId !== 'flashlight') {
       this.handBone.add(this.group);
       // Ajustes específicos para que el bate o arma cuerpo a cuerpo encaje en la mano de Mixamo
       this.group.position.set(0.1, 0.05, 0.02);
@@ -84,11 +84,11 @@ export class WeaponCompanion {
     this.heading += diff * 0.35;
 
     // Si está anclado a la mano (bate), la sigue sin más cálculo
-    if (this.handBone && this.isMelee) return;
+    if (this.handBone && this.isMelee && this.currentId !== 'flashlight') return;
 
-    // Arma de fuego con mano disponible: nace de la mano animada (apunta,
+    // Arma de fuego o linterna con mano disponible: nace de la mano animada (apunta,
     // recarga y corre con los brazos) y mira al rumbo de apuntado.
-    if (this.handBone && !this.isMelee) {
+    if (this.handBone && (!this.isMelee || this.currentId === 'flashlight')) {
       this.handBone.getWorldPosition(_tmpHand);
       const fx = Math.sin(this.heading);
       const fz = Math.cos(this.heading);
@@ -108,12 +108,12 @@ export class WeaponCompanion {
     this.group.rotation.set(Math.sin(timeSec * 1.7) * 0.03, this.heading, 0);
   }
 
-  /** Punta del cañón en coordenadas del mundo (origen de las balas). */
+  /** Punta del cañón o lente de la linterna en coordenadas del mundo. */
   muzzle(out = new THREE.Vector3()): THREE.Vector3 {
     this.group.getWorldPosition(out);
     
     // Si está anclado (como el bate), el extremo del arma se calcula usando la rotación global de `this.model` o `this.group`
-    if (this.handBone && this.isMelee) {
+    if (this.handBone && this.isMelee && this.currentId !== 'flashlight') {
       const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(this.group.getWorldQuaternion(new THREE.Quaternion()));
       return out.add(fwd.multiplyScalar(this.length * 0.5));
     }

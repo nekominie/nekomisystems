@@ -89,9 +89,34 @@
             </div>
           </button>
 
+          <!-- Botón rápido Día / Noche (sincronizado en multijugador) -->
           <button
             type="button"
-            class="px-3 py-2 bg-stone-900 border border-stone-700 hover:border-red-500 hover:bg-red-950/40 text-stone-300 hover:text-red-200 text-xs font-bold transition-colors"
+            class="group flex items-center gap-2.5 px-3 py-2 rounded-xs border transition-all cursor-pointer"
+            :class="!controlsEnabled
+              ? 'border-stone-800 bg-stone-950/50 opacity-50 cursor-not-allowed'
+              : worldInfo.night
+                ? 'border-indigo-500/70 bg-indigo-950/50 hover:bg-indigo-900/60 shadow-[0_0_18px_rgba(99,102,241,0.25)]'
+                : 'border-amber-500/70 bg-amber-950/50 hover:bg-amber-900/60 shadow-[0_0_18px_rgba(245,158,11,0.25)]'"
+            :disabled="!controlsEnabled"
+            @click="$emit('setDayNight', worldInfo.night ? 'day' : 'night')"
+            :title="multiplayer ? 'Cambiar hora de la sala (sincronizado con todos los jugadores)' : 'Cambiar entre día y noche'"
+          >
+            <span class="text-base leading-none">{{ worldInfo.night ? '🌙' : '☀️' }}</span>
+            <div class="text-left leading-tight hidden xs:block">
+              <div class="text-[9px] uppercase tracking-widest font-bold" :class="worldInfo.night ? 'text-indigo-400' : 'text-amber-400'">
+                {{ worldInfo.night ? 'Noche' : 'Día' }}
+              </div>
+              <div class="text-xs font-black uppercase tracking-wide text-stone-200">
+                {{ worldInfo.clock }}
+                <span class="text-[9px] font-normal text-stone-400 ml-1">({{ worldInfo.night ? 'A Día' : 'A Noche' }})</span>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            class="px-3 py-2 bg-stone-900 border border-stone-700 hover:border-red-500 hover:bg-red-950/40 text-stone-300 hover:text-red-200 text-xs font-bold transition-colors cursor-pointer"
             @click="$emit('close')"
           >
             ✕ Cerrar
@@ -170,6 +195,35 @@
                 <div>
                   <span class="text-stone-600 block text-[9px] uppercase">Bajas</span>
                   <span class="text-stone-100 font-bold">{{ worldInfo.kills }}</span>
+                </div>
+                <!-- Control de Día / Noche -->
+                <div class="col-span-2 pt-2.5 mt-1 border-t border-stone-800/80">
+                  <span class="text-stone-500 block text-[9px] uppercase font-bold mb-1.5 tracking-wider">Control Ciclo Día / Noche</span>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      class="px-2.5 py-2 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-600/50 hover:border-amber-400 text-amber-200 text-xs font-bold rounded-xs flex items-center justify-center gap-1.5 transition-all shadow-[0_0_12px_rgba(245,158,11,0.1)] active:scale-[0.98] cursor-pointer"
+                      :class="{ 'opacity-50 cursor-not-allowed': !controlsEnabled }"
+                      :disabled="!controlsEnabled"
+                      @click="$emit('setDayNight', 'day')"
+                      title="Hacer de día (08:00) · sincronizado con la sala en multijugador"
+                    >
+                      <span class="text-sm">☀️</span> Hacer de Día
+                    </button>
+                    <button
+                      type="button"
+                      class="px-2.5 py-2 bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-600/50 hover:border-indigo-400 text-indigo-200 text-xs font-bold rounded-xs flex items-center justify-center gap-1.5 transition-all shadow-[0_0_12px_rgba(99,102,241,0.1)] active:scale-[0.98] cursor-pointer"
+                      :class="{ 'opacity-50 cursor-not-allowed': !controlsEnabled }"
+                      :disabled="!controlsEnabled"
+                      @click="$emit('setDayNight', 'night')"
+                      title="Hacer de noche (20:00) · sincronizado con la sala en multijugador"
+                    >
+                      <span class="text-sm">🌙</span> Hacer de Noche
+                    </button>
+                  </div>
+                  <p class="text-[9px] text-stone-500 mt-1.5 leading-tight">
+                    {{ multiplayer ? 'Cualquier jugador puede cambiar la hora; se sincroniza para todos en la sala.' : 'Ajusta la hora global del mundo.' }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -531,6 +585,7 @@ const emit = defineEmits<{
   (e: 'clearZombies'): void;
   (e: 'refillExplosives'): void;
   (e: 'resetPush'): void;
+  (e: 'setDayNight', phase: 'day' | 'night'): void;
 }>();
 
 const activeTab = ref<'general' | 'weapons' | 'vehicles' | 'zombies' | 'explosives' | 'physics'>('general');

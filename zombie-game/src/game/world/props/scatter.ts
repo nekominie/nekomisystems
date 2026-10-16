@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { chunkRng } from '../random';
-import type { ChunkData, Quad } from '../types';
+import type { ChunkData, Quad, Rect } from '../types';
 import type { ChunkObject } from '../chunkMesher';
 import type { Collider } from '../collision';
 import { distToSeg } from '../curves';
 import type { WorldGenerator } from '../chunkGenerator';
+import { backyardFrame, backyardWorldRect, patioToLocal } from '../backyard';
+import { cabinLocalToWorld } from '../cabin';
+import { buildBackyardFence, buildBackyardProp } from './backyardProps';
 import {
   EnvironmentPropsFactory,
   PROP_GEO,
@@ -124,9 +127,15 @@ export class WorldScatterManager {
     for (const f of data.fires) solids.push({ x: f.x, z: f.z, r: 1.6 });
     for (const st of data.stations) for (const p of st.pumps) solids.push({ x: p.x, z: p.z, r: 1.6 });
     const roads = [...data.roadQuads, ...data.dirtQuads];
+    // Patios de las casas de este chunk: nada de scatter dentro de una barda.
+    const yardRects: Rect[] = [];
+    for (const s of data.structures) if (s.backyard) yardRects.push(backyardWorldRect(s));
     const blocked = (x: number, z: number, r: number, roadMargin = 0.3) => {
       if (!inChunk(x, z, 0.5)) return true;
       for (const q of roads) if (distToQuad(q, x, z) <= roadMargin) return true;
+      for (const yr of yardRects) {
+        if (x >= yr.minX - 0.3 && x <= yr.maxX + 0.3 && z >= yr.minZ - 0.3 && z <= yr.maxZ + 0.3) return true;
+      }
       for (const s of solids) if (Math.hypot(x - s.x, z - s.z) < r + s.r) return true;
       return false;
     };
@@ -139,12 +148,13 @@ export class WorldScatterManager {
     const isUrban = isCity || isTown;
     const hasCamp = this.generator.camps.campOfChunk(cx, cz) !== undefined || data.tents.length > 0;
 
-    if (isUrban) this.scatterUrban(state, sink, group, data, rng, inChunk, blocked, claim, solids, roads);
+    if (isUrban) this.scatterUrban(state, sink, group, data, rng, inChunk, blocked, claim, solids, roads, yardRects);
     this.scatterWrecks(state, sink, group, data, rng, inChunk);
     this.scatterDirt(sink, data, rng, inChunk);
     if (!isUrban) this.scatterFields(state, sink, group, data, rng, inChunk, blocked, claim);
     if (hasCamp) this.scatterCamp(state, sink, data, rng, blocked, claim);
     this.scatterStations(state, sink, data, rng, blocked, claim);
+    this.scatterBackyards(state, sink, group, data, rng);
 
     // Finalizar cubetas instanciadas
     for (const [bucket, items] of buckets) {
@@ -192,6 +202,7 @@ export class WorldScatterManager {
     claim: (x: number, z: number, r: number) => void,
     solids: { x: number; z: number; r: number }[],
     roads: Quad[],
+    yards: Rect[],
   ) {
     // Farolas en las esquinas/intersecciones de las banquetas (no en medio de cuadras)
     let lampCount = 0;
@@ -249,6 +260,14 @@ export class WorldScatterManager {
         if (!clash) {
           for (const st of solids) {
             if (Math.hypot(lx - st.x, lz - st.z) < 1.2 + st.r) {
+              clash = true;
+              break;
+            }
+          }
+        }
+        if (!clash) {
+          for (const yr of yards) {
+            if (lx >= yr.minX - 0.7 && lx <= yr.maxX + 0.7 && lz >= yr.minZ - 0.7 && lz <= yr.maxZ + 0.7) {
               clash = true;
               break;
             }
@@ -560,16 +579,44 @@ export class WorldScatterManager {
     }
   }
 
+  // --- Patios residenciales: losa, barda (3 lados) y props ---
+
+  private scatterBackyards(
+    state: { colliders: Collider[] },
+    sink: BucketSink, group: THREE.Group, data: ChunkData,
+    rng: () => number,
+  ) {
+    for (const s of data.structures) {
+      if (!s.backyard) continue;
+      const f = backyardFrame(s);
+      if (!f) continue;
+      // Losa de concreto que cubre el patio completo
+      const c = patioToLocal(f, 0, f.depth / 2);
+      const cw = cabinLocalToWorld(s, c.lx, c.lz);
+      const yaw = s.rot + Math.atan2(-f.uz, f.ux);
+      GroundDecals.slab(group, cw.x, cw.z, f.span + 0.6, f.depth + 0.4, yaw);
+      // Barda (el cuarto lado es la pared de la casa)
+      state.colliders.push(...buildBackyardFence(sink, s, rng));
+      // Artículos del catálogo
+      for (const p of s.backyard.props) {
+        const w = cabinLocalToWorld(s, p.lx, p.lz);
+        state.colliders.push(...buildBackyardProp(sink, p.id, w.x, w.z, s.rot + p.rot, rng));
+      }
+    }
+  }
+
   private buildInstanced(bucket: PropBucket, items: BucketItem[]): THREE.InstancedMesh | null {
     if (!items.length) return null;
     const geo = bucket === 'box' || bucket === 'head' || bucket === 'flame'
       ? PROP_GEO.box
       : bucket === 'cyl'
         ? PROP_GEO.cyl
-        : bucket === 'stone'
-          ? PROP_GEO.stone
-          : PROP_GEO.paper;
-    const mat = bucket === 'box' || bucket === 'cyl' || bucket === 'stone' ? PROP_MAT.prop : PROP_MAT[bucket];
+        : bucket === 'cone'
+          ? PROP_GEO.cone
+          : bucket === 'stone'
+            ? PROP_GEO.stone
+            : PROP_GEO.paper;
+    const mat = bucket === 'box' || bucket === 'cyl' || bucket === 'cone' || bucket === 'stone' ? PROP_MAT.prop : PROP_MAT[bucket];
     const mesh = new THREE.InstancedMesh(geo, mat, items.length);
     mesh.castShadow = bucket !== 'paper';
     mesh.receiveShadow = true;
