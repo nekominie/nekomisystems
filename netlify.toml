@@ -31,3 +31,8 @@
   from = "/theos"
   to = "/frost-os/"
   status = 301
+
+[[redirects]]
+  from = "/whatsapp-reader"
+  to = "/whatsapp-reader/"
+  status = 301

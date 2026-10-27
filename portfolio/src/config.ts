@@ -70,6 +70,24 @@ export const PROJECTS: Project[] = [
     status: 'live',
   },
   {
+    id: 'whatsapp-reader',
+    title: 'WhatsApp Reader',
+    category: 'Herramienta',
+    summary: 'Visualizador y lector interactivo de chats exportados de WhatsApp.',
+    description:
+      'Lector de chats exportados de WhatsApp en formato .ZIP. Analiza el historial de texto y reconstruye la conversación con estética fiel a WhatsApp: soporte para fotos, notas de voz, videos, stickers, tarjetas de contacto (.vcf) y selección inteligente del participante protagonista.',
+    image: nekodriveImg,
+    previews: [],
+    technologies: [
+      { name: 'Vue.js',      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vuejs/vuejs-original.svg' },
+      { name: 'TypeScript',  icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg' },
+      { name: 'Tailwind CSS',icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tailwindcss/tailwindcss-original.svg' },
+      { name: 'JSZip',       icon: 'folder_zip' },
+    ],
+    cta: { label: 'Abrir', icon: 'chat', url: '/whatsapp-reader/' },
+    status: 'live',
+  },
+  {
     id: 'mikurig',
     title: 'Hatsune Miku Rigging',
     category: 'Web App',

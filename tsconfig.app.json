@@ -19,7 +19,7 @@
     "src/**/*.d.ts", 
     "src/**/*.tsx", 
     "src/**/*.vue",
-    "frost-os/**/*.ts", /* Asegúrate de incluir tus subcarpetas */
+    "frost-os/**/*.ts",
     "frost-os/**/*.vue",
     "landing/**/*.ts",
     "landing/**/*.vue",
@@ -28,6 +28,8 @@
     "portfolio/**/*.ts",
     "portfolio/**/*.vue",
     "zombie-game/**/*.ts",
-    "zombie-game/**/*.vue"
+    "zombie-game/**/*.vue",
+    "whatsapp-reader/**/*.ts",
+    "whatsapp-reader/**/*.vue"
   ]
 }

@@ -28,6 +28,7 @@ export default defineConfig({
                 manga_reader: resolve(__dirname, 'manga_reader/index.html'),
                 the_dropper: resolve(__dirname, 'the-dropper/index.html'),
                 zombie_game: resolve(__dirname, 'zombie-game/index.html'),
+                whatsapp_reader: resolve(__dirname, 'whatsapp-reader/index.html'),
             }
         }
     },
