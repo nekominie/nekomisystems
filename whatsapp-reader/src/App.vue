@@ -1,7 +1,10 @@
 <template>
   <div
-    class="w-full h-screen h-[100dvh] flex flex-col overflow-hidden select-none transition-colors duration-200"
-    :class="{ dark: isDark }"
+    class="w-full h-screen h-[100dvh] flex flex-col select-none transition-colors duration-200"
+    :class="[
+      isDark ? 'dark' : '',
+      currentStep === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'
+    ]"
   >
     <!-- Step 1: Upload Landing Page -->
     <LandingUploader
@@ -10,6 +13,13 @@
       :loading-status="loadingStatus"
       @file-selected="handleZipSelected"
       @load-demo="handleLoadDemo"
+      @open-login="currentStep = 'login'"
+    />
+
+    <!-- Step 1.5: Generic Login View -->
+    <LoginView
+      v-else-if="currentStep === 'login'"
+      @back="currentStep = 'upload'"
     />
 
     <!-- Step 2: Chat Interface -->
@@ -101,6 +111,7 @@ import { parseVCard } from './utils/vcard'
 import type { MediaItem } from './components/GalleryItemCard.vue'
 
 import LandingUploader from './components/LandingUploader.vue'
+import LoginView from './components/LoginView.vue'
 import SelectTxtModal from './components/SelectTxtModal.vue'
 import SelectProtagonistModal from './components/SelectProtagonistModal.vue'
 import ChatHeader from './components/ChatHeader.vue'
@@ -110,7 +121,7 @@ import MediaViewerModal from './components/MediaViewerModal.vue'
 import MediaGalleryModal from './components/MediaGalleryModal.vue'
 
 // App state
-const currentStep = ref<'upload' | 'chat'>('upload')
+const currentStep = ref<'upload' | 'login' | 'chat'>('upload')
 const isLoading = ref(false)
 const loadingStatus = ref('')
 const isDark = ref(true)

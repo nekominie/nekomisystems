@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen w-full flex flex-col justify-between p-4 sm:p-8 bg-gradient-to-b from-[#0b141a] via-[#111b21] to-[#0c1317] text-white">
+  <div class="min-h-screen w-full flex flex-col justify-between p-4 sm:p-8 bg-gradient-to-b from-[#0b141a] via-[#111b21] to-[#0c1317] text-white overflow-y-auto select-none">
     <!-- Header -->
-    <header class="w-full max-w-5xl mx-auto flex items-center justify-between py-2">
+    <header class="w-full max-w-5xl mx-auto flex items-center justify-between py-2 shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#25d366] to-[#128c7e] flex items-center justify-center shadow-lg shadow-[#25d366]/20">
           <i class="bi bi-whatsapp text-2xl text-white"></i>
@@ -146,8 +146,17 @@
     </main>
 
     <!-- Footer -->
-    <footer class="w-full max-w-5xl mx-auto text-center py-4 text-xs text-gray-500 border-t border-white/5">
+    <footer class="w-full max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 py-4 text-xs text-gray-500 border-t border-white/5 mt-8 shrink-0">
       <p>NekomiSystems — WhatsApp Reader. Creado con Vue 3 & Tailwind CSS.</p>
+      <button
+        type="button"
+        class="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-white/5 opacity-70 hover:opacity-100"
+        title="Acceder al sistema"
+        @click="$emit('open-login')"
+      >
+        <i class="bi bi-box-arrow-in-right text-xs"></i>
+        <span>Acceder</span>
+      </button>
     </footer>
   </div>
 </template>
@@ -163,6 +172,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'file-selected', file: File): void
   (e: 'load-demo'): void
+  (e: 'open-login'): void
 }>()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
